@@ -80,6 +80,106 @@
     deleted: "#8c98a4",
     trackStroke: "rgba(255,255,255,0.08)",
   });
+  const SHELL_COLOR_PRESETS = Object.freeze([
+    {
+      id: "black",
+      label: "Black",
+      popularity: 62,
+      swatch: "#262a31",
+      stops: ["#4a5059", "#30353d", "#1d2127"],
+    },
+    {
+      id: "dark-blue",
+      label: "Dark Blue",
+      popularity: 12,
+      swatch: "#3f536f",
+      stops: ["#6982a2", "#4d6482", "#2e3d52"],
+    },
+    {
+      id: "light-blue",
+      label: "Light Blue / Cyan",
+      popularity: 5,
+      swatch: "#79b9d4",
+      stops: ["#b1dce8", "#83bfd5", "#5c96af"],
+    },
+    {
+      id: "red",
+      label: "Red",
+      popularity: 4,
+      swatch: "#bb4f49",
+      stops: ["#de8d84", "#c76059", "#923a36"],
+    },
+    {
+      id: "green",
+      label: "Green",
+      popularity: 3.5,
+      swatch: "#5f8a53",
+      stops: ["#92b184", "#719b63", "#4a6b40"],
+    },
+    {
+      id: "yellow",
+      label: "Yellow",
+      popularity: 3,
+      swatch: "#d2be55",
+      stops: ["#efe08e", "#dcc75f", "#a79034"],
+    },
+    {
+      id: "orange",
+      label: "Orange",
+      popularity: 2,
+      swatch: "#d18849",
+      stops: ["#ebb17d", "#d99358", "#a76631"],
+    },
+    {
+      id: "off-white",
+      label: "White / Off-white",
+      popularity: 2.5,
+      swatch: "#d9d6ca",
+      stops: ["#f0ede6", "#d8d3c5", "#b9b3a4"],
+    },
+    {
+      id: "gray",
+      label: "Gray",
+      popularity: 1.5,
+      swatch: "#8f969d",
+      stops: ["#b5bcc3", "#8f969d", "#717980"],
+    },
+    {
+      id: "beige",
+      label: "Tan / Beige / Cream",
+      popularity: 1.5,
+      swatch: "#cbb798",
+      stops: ["#e5d5bc", "#ccb799", "#aa926f"],
+    },
+    {
+      id: "purple",
+      label: "Purple / Violet / Pink",
+      popularity: 1.25,
+      swatch: "#a472b5",
+      stops: ["#d2b0df", "#ab7abb", "#7b4f8f"],
+    },
+    {
+      id: "brown",
+      label: "Brown",
+      popularity: 0.5,
+      swatch: "#7d5740",
+      stops: ["#a98268", "#7f5a41", "#5f422f"],
+    },
+    {
+      id: "smoke",
+      label: "Frosted / Smoke",
+      popularity: 0.5,
+      swatch: "#8ea3a9",
+      stops: ["#c7d5d8", "#9fb0b4", "#72848a"],
+    },
+    {
+      id: "novelty",
+      label: "Metallic / Novelty",
+      popularity: 0.25,
+      swatch: "#9f9180",
+      stops: ["#d3c8bc", "#a89a88", "#786d60"],
+    },
+  ]);
   const DISK_MAP_PHYSICAL = Object.freeze({
     indexHoleAngle: Math.PI * 0.58,
     indexHoleRadius: 60,
@@ -188,6 +288,34 @@
         );
       })
       .join("");
+  };
+
+  const hashDiskName = function (value) {
+    const text =
+      String(value || "")
+        .trim()
+        .toUpperCase() || "UNTITLED";
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+
+  const pickShellColorPreset = function (diskName) {
+    const hash = hashDiskName(diskName);
+    const totalWeight = SHELL_COLOR_PRESETS.reduce(function (sum, preset) {
+      return sum + preset.popularity;
+    }, 0);
+    const target = (hash / 0xffffffff) * totalWeight;
+    let running = 0;
+    for (let index = 0; index < SHELL_COLOR_PRESETS.length; index += 1) {
+      const preset = SHELL_COLOR_PRESETS[index];
+      running += preset.popularity;
+      if (target <= running) return preset;
+    }
+    return SHELL_COLOR_PRESETS[0];
   };
 
   const flagMarkup = function (value, labels) {
@@ -1274,6 +1402,7 @@
     state.diskLayout = layout;
     const diskHeader = d64.readHeader(image);
     const diskFiles = d64.readFiles(image);
+    const shellPreset = pickShellColorPreset(diskHeader.diskName);
     const geometry = layout.geometry;
     const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
     const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
@@ -1481,9 +1610,15 @@
       '">' +
       "<defs>" +
       '<linearGradient id="disk-shell-fill" x1="0%" y1="0%" x2="0%" y2="100%">' +
-      '<stop offset="0%" stop-color="#9aa1a7" />' +
-      '<stop offset="56%" stop-color="#83898f" />' +
-      '<stop offset="100%" stop-color="#6a7178" />' +
+      '<stop offset="0%" stop-color="' +
+      shellPreset.stops[0] +
+      '" />' +
+      '<stop offset="56%" stop-color="' +
+      shellPreset.stops[1] +
+      '" />' +
+      '<stop offset="100%" stop-color="' +
+      shellPreset.stops[2] +
+      '" />' +
       "</linearGradient>" +
       '<linearGradient id="disk-label-fill" x1="0%" y1="0%" x2="100%" y2="100%">' +
       '<stop offset="0%" stop-color="#f7f3e5" />' +
@@ -1735,6 +1870,7 @@
     }
 
     const header = d64.readHeader(state.image);
+    const shellPreset = pickShellColorPreset(header.diskName);
     const files = d64.readFiles(state.image);
     const deletedEntries = d64.readDeletedEntries(state.image);
     const usage = d64.estimateImageUsage(files, {
