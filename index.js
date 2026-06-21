@@ -75,6 +75,12 @@
     deleted: "#8c98a4",
     trackStroke: "rgba(255,255,255,0.08)",
   });
+  const DISK_MAP_VIEWBOX = Object.freeze({
+    width: 760,
+    height: 620,
+    diskCenterX: 275,
+    diskCenterY: 300,
+  });
   const diskMapView = {
     scale: 1,
     offsetX: 0,
@@ -211,9 +217,19 @@
   };
 
   const resetDiskMapView = function () {
+    const svg = diskMap.querySelector("svg");
     diskMapView.scale = 1;
-    diskMapView.offsetX = 0;
-    diskMapView.offsetY = 0;
+    if (svg) {
+      const scaleX = svg.clientWidth / DISK_MAP_VIEWBOX.width;
+      const scaleY = svg.clientHeight / DISK_MAP_VIEWBOX.height;
+      diskMapView.offsetX =
+        svg.clientWidth * 0.5 - DISK_MAP_VIEWBOX.diskCenterX * scaleX;
+      diskMapView.offsetY =
+        svg.clientHeight * 0.5 - DISK_MAP_VIEWBOX.diskCenterY * scaleY;
+    } else {
+      diskMapView.offsetX = 0;
+      diskMapView.offsetY = 0;
+    }
     applyDiskMapTransform();
   };
 
@@ -1170,6 +1186,7 @@
     setCurrentImage(bytes, sourceName);
     updateDownloadLinkState();
     refreshView();
+    resetDiskMapView();
     setStatus(message || "Disk image ready.");
   };
 
