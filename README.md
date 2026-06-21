@@ -178,6 +178,13 @@ The lab lets you:
 - list directory files
 - toggle file lock and open/closed flags, then download the updated image
 
+The disk layout inspector in the lab can also show inferred disk-level context,
+such as the logical disk ID associated with a selected sector. A plain `.d64`
+image does not store low-level GCR details like sync marks, per-sector physical
+headers, or exact rotational timing. When the lab shows that kind of context,
+it is inferred from the logical DOS structures in the image, especially the
+header/BAM sector at track 18 sector 0.
+
 ## Notes
 
 - Registration failures are reported with `console.error`.

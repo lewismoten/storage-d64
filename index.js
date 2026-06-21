@@ -805,6 +805,13 @@
     const sectorBytes = d64.readSector(state.image, track, sector);
     const offset = d64.trackOffset(track, sector);
     const sectorIndex = d64.sectorIndex(track, sector, state.image);
+    const logicalHeader = d64.readHeader(state.image);
+    const logicalDiskIdBytes = d64
+      .readSector(state.image, 18, 0)
+      .subarray(
+        d64.headerOffsets.diskIdStart,
+        d64.headerOffsets.diskIdStart + 2,
+      );
     const rows = [
       ["Purpose", info ? info.label : "Sector data"],
       [
@@ -826,34 +833,39 @@
           " / S" +
           String(sectorBytes[1]).padStart(2, "0"),
       ],
+      [
+        "Logical Disk ID",
+        toHexByte(logicalDiskIdBytes[0]) +
+          " " +
+          toHexByte(logicalDiskIdBytes[1]) +
+          " (inferred from T18/S0 header)",
+      ],
     ];
 
     if (track === 18 && sector === 0) {
-      const header = d64.readHeader(state.image);
       const bam = d64.readBam(state.image);
       const freeBlocks = bam.tracks.reduce(function (sum, trackInfo) {
         return sum + Math.max(0, Number(trackInfo.freeCount) || 0);
       }, 0);
       rows.push(
-        ["Disk Name", toDisplayValue(header.diskName)],
-        ["Disk ID", toDisplayValue(header.diskId)],
-        ["DOS Type", toDisplayValue(header.dosType)],
-        ["DOS Version", toDisplayValue(header.dosVersionName)],
+        ["Disk Name", toDisplayValue(logicalHeader.diskName)],
+        ["Disk ID", toDisplayValue(logicalHeader.diskId)],
+        ["DOS Type", toDisplayValue(logicalHeader.dosType)],
+        ["DOS Version", toDisplayValue(logicalHeader.dosVersionName)],
         [
           "Directory Start",
           "T" +
-            String(header.nextDirectoryTrack).padStart(2, "0") +
+            String(logicalHeader.nextDirectoryTrack).padStart(2, "0") +
             " / S" +
-            String(header.nextDirectorySector).padStart(2, "0"),
+            String(logicalHeader.nextDirectorySector).padStart(2, "0"),
         ],
         ["BAM Free Blocks", formatNumber(freeBlocks)],
       );
     } else if (track === 18) {
-      const header = d64.readHeader(state.image);
       const directory = d64.readDirectoryEntriesFrom(
         state.image,
-        header.nextDirectoryTrack,
-        header.nextDirectorySector,
+        logicalHeader.nextDirectoryTrack,
+        logicalHeader.nextDirectorySector,
         { includeDeleted: true },
       );
       const sectorEntries = directory.entries.filter(function (entry) {
@@ -913,6 +925,7 @@
         })
         .join("") +
       "</dl>" +
+      '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID shown here is inferred from the logical DOS header at T18/S0.</p>' +
       '<div class="sector-inspector-dump">' +
       '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view</span></div>' +
       '<div class="sector-hex-viewer">' +

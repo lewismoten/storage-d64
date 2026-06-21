@@ -638,6 +638,14 @@ button:disabled {
   word-break: break-word;
 }
 
+.sector-inspector-note {
+  margin: -2px 0 0;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .sector-inspector-dump {
   padding: 12px;
   border: 1px solid rgba(185, 227, 242, 0.1);
