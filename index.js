@@ -180,6 +180,16 @@
       stops: ["#d3c8bc", "#a89a88", "#786d60"],
     },
   ]);
+  const LABEL_STYLE_PRESETS = Object.freeze([
+    { id: "standard", label: "Standard top", weight: 45 },
+    { id: "commercial", label: "Commercial print", weight: 15 },
+    { id: "no-label", label: "No label", weight: 15 },
+    { id: "smaller", label: "Smaller top", weight: 10 },
+    { id: "narrow", label: "Narrow strip", weight: 6 },
+    { id: "colored", label: "Colored label", weight: 4 },
+    { id: "layered", label: "Layered labels", weight: 3 },
+    { id: "corner", label: "Corner label", weight: 2 },
+  ]);
   const DISK_MAP_PHYSICAL = Object.freeze({
     indexHoleAngle: Math.PI * 0.58,
     indexHoleRadius: 60,
@@ -316,6 +326,143 @@
       if (target <= running) return preset;
     }
     return SHELL_COLOR_PRESETS[0];
+  };
+
+  const pickWeightedPreset = function (presets, hash) {
+    const totalWeight = presets.reduce(function (sum, preset) {
+      return sum + preset.weight;
+    }, 0);
+    const target = ((hash >>> 0) / 0xffffffff) * totalWeight;
+    let running = 0;
+    for (let index = 0; index < presets.length; index += 1) {
+      const preset = presets[index];
+      running += preset.weight;
+      if (target <= running) return preset;
+    }
+    return presets[0];
+  };
+
+  const buildLabelLayout = function (diskName, diskId, shellPreset) {
+    const key =
+      String(diskName || "")
+        .trim()
+        .toUpperCase() +
+      "|" +
+      String(diskId || "")
+        .trim()
+        .toUpperCase();
+    const styleHash = hashDiskName(key);
+    const offsetHash = hashDiskName(key + "|OFFSET");
+    const rotateHash = hashDiskName(key + "|ROTATE");
+    const colorHash = hashDiskName(key + "|COLOR");
+    const style = pickWeightedPreset(LABEL_STYLE_PRESETS, styleHash);
+    const shellX = DISK_MAP_PHYSICAL.shellX;
+    const shellY = DISK_MAP_PHYSICAL.shellY;
+    const shellWidth = DISK_MAP_PHYSICAL.shellWidth;
+    const shellHeight = DISK_MAP_PHYSICAL.shellHeight;
+    const topMargin = 12;
+    const centeredX = shellX + shellWidth * 0.5;
+    const offsetUnit = ((offsetHash >>> 0) / 0xffffffff - 0.5) * 10;
+    const rotation = (((rotateHash >>> 0) / 0xffffffff) * 2 - 1) * 2.2;
+    const pastelLabels = [
+      ["#fbf6d3", "#efe2a3"],
+      ["#e6f0ff", "#b8d4ff"],
+      ["#ffe4ef", "#f2b7ce"],
+      ["#e2f7e7", "#bce3c1"],
+    ];
+    const pastel =
+      pastelLabels[
+        Math.floor(((colorHash >>> 0) / 0xffffffff) * pastelLabels.length) %
+          pastelLabels.length
+      ];
+    const base = {
+      id: style.id,
+      x: shellX + shellWidth * 0.12,
+      y: shellY + topMargin,
+      width: shellWidth * 0.76,
+      height: shellHeight * 0.28,
+      rx: 14,
+      rotate: rotation,
+      fillStops: ["#f7f3e5", "#ece3ca"],
+      secondaryLabel: null,
+      textMode: "label",
+      titleScale: 1,
+      noteScale: 1,
+    };
+    if (style.id === "commercial") {
+      base.x = shellX + shellWidth * 0.09;
+      base.width = shellWidth * 0.82;
+      base.height = shellHeight * 0.29;
+      base.rotate = rotation * 0.35;
+      base.titleScale = 0.96;
+      return base;
+    }
+    if (style.id === "smaller") {
+      base.x = shellX + shellWidth * 0.14;
+      base.width = shellWidth * 0.72;
+      base.height = shellHeight * 0.24;
+      base.y += 2;
+      base.rotate = rotation * 0.7;
+      base.titleScale = 0.94;
+      return base;
+    }
+    if (style.id === "narrow") {
+      base.x = shellX + shellWidth * 0.12;
+      base.width = shellWidth * 0.76;
+      base.height = shellHeight * 0.18;
+      base.y += 4;
+      base.rotate = rotation * 0.45;
+      base.titleScale = 0.82;
+      base.noteScale = 0.82;
+      return base;
+    }
+    if (style.id === "corner") {
+      base.x = shellX + shellWidth * 0.54;
+      base.width = shellWidth * 0.34;
+      base.height = shellHeight * 0.18;
+      base.y += 5;
+      base.rotate = rotation * 0.35;
+      base.titleScale = 0.72;
+      base.noteScale = 0.7;
+      return base;
+    }
+    if (style.id === "colored") {
+      base.fillStops = pastel;
+      base.rotate = rotation * 0.65;
+      return base;
+    }
+    if (style.id === "layered") {
+      base.rotate = rotation * 0.5;
+      base.secondaryLabel = {
+        x: base.x + 8,
+        y: base.y + 5,
+        width: base.width * 0.96,
+        height: base.height * 0.92,
+        rx: 13,
+        rotate: base.rotate + 1.3,
+        fillStops: ["#f4ead6", "#e6d7b7"],
+      };
+      return base;
+    }
+    if (style.id === "no-label") {
+      return {
+        id: style.id,
+        x: shellX + 18,
+        y: shellY + 18,
+        width: 0,
+        height: 0,
+        rx: 0,
+        rotate: 0,
+        fillStops: null,
+        secondaryLabel: null,
+        textMode: "shell",
+        titleScale: 0.92,
+        noteScale: 0.8,
+      };
+    }
+    base.x += offsetUnit;
+    base.rotate = rotation * 0.55;
+    return base;
   };
 
   const flagMarkup = function (value, labels) {
@@ -1403,6 +1550,11 @@
     const diskHeader = d64.readHeader(image);
     const diskFiles = d64.readFiles(image);
     const shellPreset = pickShellColorPreset(diskHeader.diskName);
+    const labelLayout = buildLabelLayout(
+      diskHeader.diskName,
+      diskHeader.diskId,
+      shellPreset,
+    );
     const geometry = layout.geometry;
     const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
     const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
@@ -1432,10 +1584,8 @@
     const shellWidth = DISK_MAP_PHYSICAL.shellWidth;
     const shellHeight = DISK_MAP_PHYSICAL.shellHeight;
     const shellRadius = DISK_MAP_PHYSICAL.shellRadius;
-    const labelX = DISK_MAP_PHYSICAL.labelX;
-    const labelY = DISK_MAP_PHYSICAL.labelY;
-    const labelWidth = DISK_MAP_PHYSICAL.labelWidth;
-    const labelHeight = DISK_MAP_PHYSICAL.labelHeight;
+    const centeredX = shellX + shellWidth * 0.5;
+    const centeredY = shellY + shellHeight * 0.5;
     const shellCutoutFill = "#b9c8d2";
     const writeNotchX = shellX + shellWidth - 10;
     const writeNotchY = shellY + 118;
@@ -1621,8 +1771,24 @@
       '" />' +
       "</linearGradient>" +
       '<linearGradient id="disk-label-fill" x1="0%" y1="0%" x2="100%" y2="100%">' +
-      '<stop offset="0%" stop-color="#f7f3e5" />' +
-      '<stop offset="100%" stop-color="#ece3ca" />' +
+      '<stop offset="0%" stop-color="' +
+      (labelLayout.fillStops ? labelLayout.fillStops[0] : "#f7f3e5") +
+      '" />' +
+      '<stop offset="100%" stop-color="' +
+      (labelLayout.fillStops ? labelLayout.fillStops[1] : "#ece3ca") +
+      '" />' +
+      "</linearGradient>" +
+      '<linearGradient id="disk-label-fill-secondary" x1="0%" y1="0%" x2="100%" y2="100%">' +
+      '<stop offset="0%" stop-color="' +
+      (labelLayout.secondaryLabel
+        ? labelLayout.secondaryLabel.fillStops[0]
+        : "#f4ead6") +
+      '" />' +
+      '<stop offset="100%" stop-color="' +
+      (labelLayout.secondaryLabel
+        ? labelLayout.secondaryLabel.fillStops[1]
+        : "#e6d7b7") +
+      '" />' +
       "</linearGradient>" +
       '<radialGradient id="disk-platter-fill" cx="45%" cy="38%" r="70%">' +
       '<stop offset="0%" stop-color="#9b7650" />' +
@@ -1651,34 +1817,107 @@
       '" rx="' +
       shellRadius +
       '" fill="url(#disk-shell-fill)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" />' +
-      '<rect x="' +
-      labelX +
-      '" y="' +
-      labelY +
-      '" width="' +
-      labelWidth +
-      '" height="' +
-      labelHeight +
-      '" rx="14" fill="url(#disk-label-fill)" stroke="rgba(96, 100, 106, 0.24)" />' +
+      (labelLayout.secondaryLabel
+        ? '<rect x="' +
+          labelLayout.secondaryLabel.x.toFixed(2) +
+          '" y="' +
+          labelLayout.secondaryLabel.y.toFixed(2) +
+          '" width="' +
+          labelLayout.secondaryLabel.width.toFixed(2) +
+          '" height="' +
+          labelLayout.secondaryLabel.height.toFixed(2) +
+          '" rx="' +
+          labelLayout.secondaryLabel.rx.toFixed(2) +
+          '" fill="url(#disk-label-fill-secondary)" stroke="rgba(96, 100, 106, 0.18)" transform="rotate(' +
+          labelLayout.secondaryLabel.rotate.toFixed(2) +
+          " " +
+          centeredX.toFixed(2) +
+          " " +
+          (shellY + 52).toFixed(2) +
+          ')" />'
+        : "") +
+      (labelLayout.id === "no-label"
+        ? ""
+        : '<rect x="' +
+          labelLayout.x.toFixed(2) +
+          '" y="' +
+          labelLayout.y.toFixed(2) +
+          '" width="' +
+          labelLayout.width.toFixed(2) +
+          '" height="' +
+          labelLayout.height.toFixed(2) +
+          '" rx="' +
+          labelLayout.rx.toFixed(2) +
+          '" fill="url(#disk-label-fill)" stroke="rgba(96, 100, 106, 0.24)" transform="rotate(' +
+          labelLayout.rotate.toFixed(2) +
+          " " +
+          centeredX.toFixed(2) +
+          " " +
+          (shellY + 52).toFixed(2) +
+          ')" />') +
       '<text x="' +
-      (labelX + 20) +
+      (labelLayout.textMode === "shell" ? shellX + 18 : labelLayout.x + 16) +
       '" y="' +
-      (labelY + 25) +
-      '" class="disk-map-shell-title">' +
+      (labelLayout.textMode === "shell"
+        ? shellY + 30
+        : labelLayout.y + 22 * labelLayout.titleScale) +
+      '" class="disk-map-shell-title" transform="' +
+      (labelLayout.textMode === "shell"
+        ? ""
+        : "rotate(" +
+          labelLayout.rotate.toFixed(2) +
+          " " +
+          centeredX.toFixed(2) +
+          " " +
+          (shellY + 52).toFixed(2) +
+          ")") +
+      '" style="font-size:' +
+      (19 * labelLayout.titleScale).toFixed(2) +
+      'px">' +
       escapeHtml(diskNameLabel) +
       "</text>" +
       '<text x="' +
-      (labelX + 20) +
+      (labelLayout.textMode === "shell" ? shellX + 18 : labelLayout.x + 16) +
       '" y="' +
-      (labelY + 43) +
-      '" class="disk-map-shell-subtitle">' +
+      (labelLayout.textMode === "shell"
+        ? shellY + 48
+        : labelLayout.y + 40 * labelLayout.noteScale) +
+      '" class="disk-map-shell-subtitle" transform="' +
+      (labelLayout.textMode === "shell"
+        ? ""
+        : "rotate(" +
+          labelLayout.rotate.toFixed(2) +
+          " " +
+          centeredX.toFixed(2) +
+          " " +
+          (shellY + 52).toFixed(2) +
+          ")") +
+      '" style="font-size:' +
+      (10 * labelLayout.noteScale).toFixed(2) +
+      'px">' +
       escapeHtml(prgHintLabel) +
       "</text>" +
       '<text x="' +
-      (labelX + labelWidth - 22) +
+      (labelLayout.textMode === "shell"
+        ? shellX + shellWidth - 20
+        : labelLayout.x + labelLayout.width - 16) +
       '" y="' +
-      (labelY + 25) +
-      '" class="disk-map-shell-diskno">Disk: ' +
+      (labelLayout.textMode === "shell"
+        ? shellY + 30
+        : labelLayout.y + 22 * labelLayout.titleScale) +
+      '" class="disk-map-shell-diskno" transform="' +
+      (labelLayout.textMode === "shell"
+        ? ""
+        : "rotate(" +
+          labelLayout.rotate.toFixed(2) +
+          " " +
+          centeredX.toFixed(2) +
+          " " +
+          (shellY + 52).toFixed(2) +
+          ")") +
+      '" style="font-size:' +
+      (11 * labelLayout.titleScale).toFixed(2) +
+      'px">Disk: ' +
       escapeHtml(diskNumberLabel) +
       "</text>" +
       '<circle cx="' +
