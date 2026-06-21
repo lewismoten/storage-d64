@@ -1293,7 +1293,7 @@
     const labelY = DISK_MAP_PHYSICAL.labelY;
     const labelWidth = DISK_MAP_PHYSICAL.labelWidth;
     const labelHeight = DISK_MAP_PHYSICAL.labelHeight;
-    const shellCutoutFill = "#16384a";
+    const shellCutoutFill = "#b9c8d2";
     const writeNotchX = shellX + shellWidth - 10;
     const writeNotchY = shellY + 118;
     const diskNameLabel = String(diskHeader.diskName || "UNTITLED DISK");

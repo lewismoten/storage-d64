@@ -423,7 +423,7 @@ button:disabled {
   padding: 12px;
   border: 1px solid rgba(185, 227, 242, 0.1);
   border-radius: 16px;
-  background: rgba(5, 24, 35, 0.22);
+  background: #b9c8d2;
 }
 
 .disk-map-toolbar {
@@ -464,6 +464,8 @@ button:disabled {
   overflow: hidden;
   cursor: default;
   user-select: none;
+  background: #b9c8d2;
+  border-radius: 14px;
 }
 
 .disk-map.is-pannable {
