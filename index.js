@@ -88,10 +88,10 @@
     spindleOutlineRadius: 58,
     spindleHoleRadius: 46,
     headWindowOffsetX: 0,
-    headWindowOffsetY: 136,
-    headWindowWidth: 42,
-    headWindowHeight: 168,
-    headWindowRadius: 20,
+    headWindowOffsetY: 148,
+    headWindowWidth: 46,
+    headWindowHeight: 176,
+    headWindowRadius: 22,
     platterRadius: 246,
     mechanismOuterRadius: 226,
     mechanismInnerRadius: 104,
@@ -104,7 +104,7 @@
     labelX: 30,
     labelY: 30,
     labelWidth: 490,
-    labelHeight: 62,
+    labelHeight: 70,
   });
   const DISK_MAP_VIEWBOX = Object.freeze({
     width: 760,
@@ -1273,8 +1273,8 @@
     const cy = DISK_MAP_VIEWBOX.diskCenterY;
     const sectorZeroAngleOffset = DISK_MAP_PHYSICAL.indexHoleAngle;
     const indexHolePoint = {
-      x: cx + 82,
-      y: cy + 8,
+      x: cx + 74,
+      y: cy + 2,
     };
     const headWindowX =
       cx +
