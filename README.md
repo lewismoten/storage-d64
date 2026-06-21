@@ -12,6 +12,9 @@ The storage-medium support helpers live in [support.js](./support.js).
 
 The support API reference lives in [support.md](./support.md).
 
+The local browser test lab lives in [index.html](./index.html) and
+[index.js](./index.js).
+
 When loaded, it calls:
 
 ```js
@@ -149,6 +152,31 @@ Load the plug-in after the host has created `window.TPP`:
 ```
 
 After that, the host should be able to resolve the storage medium by id `d64`.
+
+## Local Test Lab
+
+This repo also includes a static D64 lab for exercising the low-level support
+helpers directly in the browser.
+
+Start a local web server from this folder:
+
+```bash
+npm run lab
+```
+
+Then open:
+
+```text
+http://localhost:1541/
+```
+
+The lab lets you:
+
+- create a blank `.d64` image with selectable geometry
+- load an existing `.d64` file from disk
+- inspect header metadata and geometry
+- list directory files
+- toggle file lock and open/closed flags, then download the updated image
 
 ## Notes
 

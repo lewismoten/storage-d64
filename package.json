@@ -6,6 +6,7 @@
   "author": "Lewis Moten",
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
+    "lab": "python3 -m http.server 1541",
     "format": "prettier --write \"**/*.{js,css,html,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,css,html,json,md}\""
   },
