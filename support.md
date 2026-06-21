@@ -5,7 +5,7 @@ This document describes the low-level support API exposed by [support.js](./supp
 When loaded, the file creates:
 
 ```js
-window.TPP.d64
+window.TPP.d64;
 ```
 
 The goal of this API is to make the disk-image building primitives reusable outside of Tiny Pockets Press. A different host can use these methods directly to estimate capacity, allocate sectors, build directory entries, and assemble `.d64` images.
@@ -17,7 +17,7 @@ This is not a full implementation of every D64 variant. It currently supports th
 The public namespace is:
 
 ```js
-window.TPP.d64
+window.TPP.d64;
 ```
 
 All support methods described below live under that object.
@@ -40,10 +40,10 @@ This is useful for:
 The support layer exposes header-related enums:
 
 ```js
-window.TPP.d64.diskFormats
-window.TPP.d64.dosVersions
-window.TPP.d64.dosTypes
-window.TPP.d64.headerOffsets
+window.TPP.d64.diskFormats;
+window.TPP.d64.dosVersions;
+window.TPP.d64.dosTypes;
+window.TPP.d64.headerOffsets;
 ```
 
 These currently cover the supported 35-track, 40-track, and 42-track image variants.
@@ -75,21 +75,21 @@ Common Commodore file types include:
 For readability, you can also use the built-in enum values:
 
 ```js
-window.TPP.d64.fileTypes.del
-window.TPP.d64.fileTypes.seq
-window.TPP.d64.fileTypes.prg
-window.TPP.d64.fileTypes.usr
-window.TPP.d64.fileTypes.rel
+window.TPP.d64.fileTypes.del;
+window.TPP.d64.fileTypes.seq;
+window.TPP.d64.fileTypes.prg;
+window.TPP.d64.fileTypes.usr;
+window.TPP.d64.fileTypes.rel;
 ```
 
 String keys are also accepted by helpers that normalize file types:
 
 ```js
-"del"
-"seq"
-"prg"
-"usr"
-"rel"
+"del";
+"seq";
+"prg";
+"usr";
+"rel";
 ```
 
 The optional `options` argument is only used for generic disk naming. A minimal shape is:
@@ -156,12 +156,12 @@ The support layer now understands these image geometries:
 Supported format enum values:
 
 ```js
-window.TPP.d64.diskFormats.d64_35_track
-window.TPP.d64.diskFormats.d64_35_track_error_info
-window.TPP.d64.diskFormats.d64_40_track
-window.TPP.d64.diskFormats.d64_40_track_error_info
-window.TPP.d64.diskFormats.d64_42_track
-window.TPP.d64.diskFormats.d64_42_track_error_info
+window.TPP.d64.diskFormats.d64_35_track;
+window.TPP.d64.diskFormats.d64_35_track_error_info;
+window.TPP.d64.diskFormats.d64_40_track;
+window.TPP.d64.diskFormats.d64_40_track_error_info;
+window.TPP.d64.diskFormats.d64_42_track;
+window.TPP.d64.diskFormats.d64_42_track_error_info;
 ```
 
 When error info is present, one extra byte is appended for every sector in track/sector order.
@@ -169,7 +169,7 @@ When error info is present, one extra byte is appended for every sector in track
 The support layer exposes:
 
 ```js
-window.TPP.d64.errorCodes
+window.TPP.d64.errorCodes;
 ```
 
 Right now it only defines:
@@ -199,13 +199,13 @@ SPRITES.BIN
 The support layer can now build true `REL` files when a file record uses:
 
 ```js
-type: "rel"
+type: "rel";
 ```
 
 or:
 
 ```js
-type: window.TPP.d64.fileTypes.rel
+type: window.TPP.d64.fileTypes.rel;
 ```
 
 For `REL` files:
@@ -248,7 +248,7 @@ That validation currently checks:
 The support layer exposes a readable enum:
 
 ```js
-window.TPP.d64.fileTypes
+window.TPP.d64.fileTypes;
 ```
 
 Shape:
@@ -1310,7 +1310,9 @@ const files = [
     name: "BOOK.IDX",
     type: "rel",
     recordLength: 9,
-    data: new Uint8Array([0x44, 0x53, 0x4b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00]),
+    data: new Uint8Array([
+      0x44, 0x53, 0x4b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    ]),
   },
 ];
 

@@ -18,7 +18,8 @@ When loaded, it calls:
 window.TPP.registerStorage({
   id: "d64",
   name: "Commodore 64 D64",
-  description: "Exports rendered page graphics and assets into Commodore 64 disk images.",
+  description:
+    "Exports rendered page graphics and assets into Commodore 64 disk images.",
   export: async function (options) {
     return window.TPP.exportImagesD64Core(options || {});
   },
@@ -51,7 +52,7 @@ The storage plug-in itself also lazy-loads its own D64 support module, which is 
 When that support script loads, it exposes:
 
 ```js
-window.TPP.d64
+window.TPP.d64;
 ```
 
 That namespace is intended to be usable directly by other repos, not just by Tiny Pockets Press.
@@ -75,7 +76,7 @@ await storage.export(options);
 The plug-in forwards a single `options` object unchanged to:
 
 ```js
-window.TPP.exportImagesD64Core(options)
+window.TPP.exportImagesD64Core(options);
 ```
 
 That means the real accepted shape is defined by the host.

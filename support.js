@@ -1,6 +1,6 @@
 (function () {
-  const TPP = window.TPP = window.TPP || {};
-  const d64 = TPP.d64 = TPP.d64 || {};
+  const TPP = (window.TPP = window.TPP || {});
+  const d64 = (TPP.d64 = TPP.d64 || {});
   const DEFAULT_IMAGE_NAME = "disk";
   const DEFAULT_TRACK_COUNT = 35;
   const DEFAULT_HAS_ERROR_INFO = false;
@@ -122,7 +122,10 @@
     let hasErrorInfo = DEFAULT_HAS_ERROR_INFO;
     if (typeof source === "string") {
       const format = String(source || "").trim();
-      if (format === d64.diskFormats.d64_42_track || format === d64.diskFormats.d64_42_track_error_info) {
+      if (
+        format === d64.diskFormats.d64_42_track ||
+        format === d64.diskFormats.d64_42_track_error_info
+      ) {
         trackCount = 42;
       } else if (
         format === d64.diskFormats.d64_40_track ||
@@ -137,7 +140,9 @@
       source instanceof Uint8Array ||
       source instanceof ArrayBuffer ||
       Array.isArray(source) ||
-      (source && typeof source.length === "number" && typeof source !== "function")
+      (source &&
+        typeof source.length === "number" &&
+        typeof source !== "function")
     ) {
       const length =
         source instanceof ArrayBuffer
@@ -152,7 +157,12 @@
         { trackCount: 42, hasErrorInfo: true },
       ];
       const known = knownFormats.find(function (candidate) {
-        return d64.imageSizeForGeometry(candidate.trackCount, candidate.hasErrorInfo) === length;
+        return (
+          d64.imageSizeForGeometry(
+            candidate.trackCount,
+            candidate.hasErrorInfo,
+          ) === length
+        );
       });
       if (known) {
         trackCount = known.trackCount;
@@ -180,7 +190,9 @@
       hasErrorInfo: hasErrorInfo,
       sectorCount: d64.totalSectorCount(normalizedTrackCount),
       dataSize: d64.dataSizeForTrackCount(normalizedTrackCount),
-      errorInfoSize: hasErrorInfo ? d64.errorInfoSizeForTrackCount(normalizedTrackCount) : 0,
+      errorInfoSize: hasErrorInfo
+        ? d64.errorInfoSizeForTrackCount(normalizedTrackCount)
+        : 0,
       imageSize: d64.imageSizeForGeometry(normalizedTrackCount, hasErrorInfo),
       errorInfoOffset: d64.dataSizeForTrackCount(normalizedTrackCount),
     };
@@ -205,14 +217,19 @@
     if (normalizedTrack > geometry.trackCount) return -1;
     if (normalizedSector >= d64.trackSectorCount(normalizedTrack)) return -1;
     let index = 0;
-    for (let currentTrack = 1; currentTrack < normalizedTrack; currentTrack += 1) {
+    for (
+      let currentTrack = 1;
+      currentTrack < normalizedTrack;
+      currentTrack += 1
+    ) {
       index += d64.trackSectorCount(currentTrack);
     }
     return index + normalizedSector;
   };
 
   d64.readSector = function (image, track, sector) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const offset = d64.trackOffset(track, sector);
     return bytes.subarray(offset, offset + 256);
   };
@@ -238,7 +255,8 @@
   };
 
   d64.decodeName = function (bytes) {
-    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    const data =
+      bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     const chars = [];
     for (let index = 0; index < data.length; index += 1) {
       const value = data[index];
@@ -253,11 +271,15 @@
   };
 
   d64.normalizeDiskId = function (diskId) {
-    return d64.decodeName(d64.encodeFileName(String(diskId || "TP"), 2)) || "TP";
+    return (
+      d64.decodeName(d64.encodeFileName(String(diskId || "TP"), 2)) || "TP"
+    );
   };
 
   d64.normalizeDosType = function (dosType) {
-    const value = String(dosType || d64.dosTypes.dos2a).trim().toUpperCase();
+    const value = String(dosType || d64.dosTypes.dos2a)
+      .trim()
+      .toUpperCase();
     return value || d64.dosTypes.dos2a;
   };
 
@@ -265,7 +287,9 @@
     if (typeof dosVersion === "number" && Number.isFinite(dosVersion)) {
       return Math.max(0, Math.min(255, Math.round(dosVersion)));
     }
-    const key = String(dosVersion || "").trim().toLowerCase();
+    const key = String(dosVersion || "")
+      .trim()
+      .toLowerCase();
     if (Object.prototype.hasOwnProperty.call(d64.dosVersions, key)) {
       return d64.dosVersions[key];
     }
@@ -278,7 +302,11 @@
     return {
       diskName:
         String(
-          config.diskName || config.name || config.title || config.baseName || DEFAULT_IMAGE_NAME,
+          config.diskName ||
+            config.name ||
+            config.title ||
+            config.baseName ||
+            DEFAULT_IMAGE_NAME,
         ).trim() || DEFAULT_IMAGE_NAME,
       diskId: d64.normalizeDiskId(config.diskId),
       dosType: d64.normalizeDosType(config.dosType),
@@ -299,7 +327,9 @@
     if (typeof type === "number" && Number.isFinite(type)) {
       return Math.max(0, Math.min(255, Math.round(type)));
     }
-    const key = String(type || "").trim().toLowerCase();
+    const key = String(type || "")
+      .trim()
+      .toLowerCase();
     if (Object.prototype.hasOwnProperty.call(d64.fileTypes, key)) {
       return d64.fileTypes[key];
     }
@@ -328,9 +358,10 @@
 
   d64.normalizeUnusedTailData = function (unusedTailData, expectedLength) {
     const length = Math.max(0, Math.floor(Number(expectedLength) || 0));
-    const source = unusedTailData instanceof Uint8Array
-      ? unusedTailData
-      : new Uint8Array(unusedTailData || []);
+    const source =
+      unusedTailData instanceof Uint8Array
+        ? unusedTailData
+        : new Uint8Array(unusedTailData || []);
     const result = new Uint8Array(length);
     result.set(source.subarray(0, length));
     return result;
@@ -355,15 +386,26 @@
       nextDirectorySector: sector[offsets.nextDirectorySector],
       dosVersionByte: sector[offsets.dosVersion],
       dosVersionName:
-        sector[offsets.dosVersion] === d64.dosVersions.dos2_6 ? "dos2_6" : "unknown",
+        sector[offsets.dosVersion] === d64.dosVersions.dos2_6
+          ? "dos2_6"
+          : "unknown",
       diskName: d64.decodeName(
-        sector.subarray(offsets.diskNameStart, offsets.diskNameStart + offsets.diskNameLength),
+        sector.subarray(
+          offsets.diskNameStart,
+          offsets.diskNameStart + offsets.diskNameLength,
+        ),
       ),
       diskId: d64.decodeName(
-        sector.subarray(offsets.diskIdStart, offsets.diskIdStart + offsets.diskIdLength),
+        sector.subarray(
+          offsets.diskIdStart,
+          offsets.diskIdStart + offsets.diskIdLength,
+        ),
       ),
       dosType: d64.decodeName(
-        sector.subarray(offsets.dosTypeStart, offsets.dosTypeStart + offsets.dosTypeLength),
+        sector.subarray(
+          offsets.dosTypeStart,
+          offsets.dosTypeStart + offsets.dosTypeLength,
+        ),
       ),
     };
   };
@@ -403,7 +445,9 @@
         for (let sectorIndex = 0; sectorIndex < sectorCount; sectorIndex += 1) {
           const byteIndex = 1 + (sectorIndex >> 3);
           const bitIndex = sectorIndex & 7;
-          sectorFree.push(Boolean(sector[bamOffset + byteIndex] & (1 << bitIndex)));
+          sectorFree.push(
+            Boolean(sector[bamOffset + byteIndex] & (1 << bitIndex)),
+          );
         }
       } else {
         for (let sectorIndex = 0; sectorIndex < sectorCount; sectorIndex += 1) {
@@ -437,7 +481,10 @@
   };
 
   d64.analyzeBamLikeSector = function (sectorBytes, options) {
-    const bytes = sectorBytes instanceof Uint8Array ? sectorBytes : new Uint8Array(sectorBytes || []);
+    const bytes =
+      sectorBytes instanceof Uint8Array
+        ? sectorBytes
+        : new Uint8Array(sectorBytes || []);
     const config = options || {};
     if (bytes.length < SECTOR_SIZE) return null;
     let validTrackEntries = 0;
@@ -466,7 +513,11 @@
         }
         if (isFree) computedFreeCount += 1;
       }
-      if (!impossibleBits && freeCount <= sectorCount && Math.abs(freeCount - computedFreeCount) <= 1) {
+      if (
+        !impossibleBits &&
+        freeCount <= sectorCount &&
+        Math.abs(freeCount - computedFreeCount) <= 1
+      ) {
         validTrackEntries += 1;
       } else {
         invalidTrackEntries += 1;
@@ -493,16 +544,17 @@
         d64.headerOffsets.dosTypeStart + d64.headerOffsets.dosTypeLength,
       ),
     );
-    const hasRecognizedDosVersion = Object.keys(d64.dosVersions).some(function (key) {
-      return d64.dosVersions[key] === dosVersionByte;
-    });
+    const hasRecognizedDosVersion = Object.keys(d64.dosVersions).some(
+      function (key) {
+        return d64.dosVersions[key] === dosVersionByte;
+      },
+    );
     const hasReadableIdentity = Boolean(diskName || diskId || dosType);
     const directoryPointerLooksValid =
       nextDirectoryTrack === 0 ||
-      (
-        nextDirectoryTrack <= MAX_TRACK_COUNT &&
-        nextDirectorySector < d64.trackSectorCount(Math.max(1, nextDirectoryTrack))
-      );
+      (nextDirectoryTrack <= MAX_TRACK_COUNT &&
+        nextDirectorySector <
+          d64.trackSectorCount(Math.max(1, nextDirectoryTrack)));
     let confidence = 0;
     if (validTrackEntries >= 24) confidence += 3;
     else if (validTrackEntries >= 12) confidence += 2;
@@ -531,10 +583,14 @@
   };
 
   d64.scanForUnexpectedBamSectors = function (image, options) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(bytes);
     const config = options || {};
-    const minConfidence = Math.max(1, Math.floor(Number(config.minConfidence) || 4));
+    const minConfidence = Math.max(
+      1,
+      Math.floor(Number(config.minConfidence) || 4),
+    );
     const validateContents = config.validateContents !== false;
     const candidates = [];
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -559,13 +615,19 @@
               : "bam-like sector found outside the normal BAM/header sector",
         };
         if (validateContents) {
-          candidate.validation = d64.validateUnexpectedBamSector(bytes, track, sector, config);
+          candidate.validation = d64.validateUnexpectedBamSector(
+            bytes,
+            track,
+            sector,
+            config,
+          );
         }
         candidates.push(candidate);
       }
     }
     return candidates.sort(function (left, right) {
-      if (right.confidence !== left.confidence) return right.confidence - left.confidence;
+      if (right.confidence !== left.confidence)
+        return right.confidence - left.confidence;
       if (left.track !== right.track) return left.track - right.track;
       return left.sector - right.sector;
     });
@@ -587,7 +649,8 @@
   };
 
   d64.readErrorInfo = function (image) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(bytes);
     return {
       format: geometry.format,
@@ -596,7 +659,10 @@
       hasErrorInfo: geometry.hasErrorInfo,
       errorInfoOffset: geometry.errorInfoOffset,
       bytes: geometry.hasErrorInfo
-        ? bytes.slice(geometry.errorInfoOffset, geometry.errorInfoOffset + geometry.errorInfoSize)
+        ? bytes.slice(
+            geometry.errorInfoOffset,
+            geometry.errorInfoOffset + geometry.errorInfoSize,
+          )
         : new Uint8Array(0),
     };
   };
@@ -606,20 +672,26 @@
     if (!geometry.hasErrorInfo) return null;
     const index = d64.sectorIndex(track, sector, geometry);
     if (index < 0) return null;
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     return bytes[geometry.errorInfoOffset + index];
   };
 
   d64.writeErrorInfo = function (image, errorInfo, options) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(options || bytes);
     if (!geometry.hasErrorInfo) return bytes;
-    bytes.set(d64.normalizeErrorInfo(errorInfo, geometry), geometry.errorInfoOffset);
+    bytes.set(
+      d64.normalizeErrorInfo(errorInfo, geometry),
+      geometry.errorInfoOffset,
+    );
     return bytes;
   };
 
   d64.writeSectorError = function (image, track, sector, errorCode, options) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(options || bytes);
     if (!geometry.hasErrorInfo) return bytes;
     const index = d64.sectorIndex(track, sector, geometry);
@@ -636,7 +708,10 @@
   };
 
   d64.parseDirectoryEntryBytes = function (entryBytes, meta) {
-    const entry = entryBytes instanceof Uint8Array ? entryBytes : new Uint8Array(entryBytes || []);
+    const entry =
+      entryBytes instanceof Uint8Array
+        ? entryBytes
+        : new Uint8Array(entryBytes || []);
     const info = meta || {};
     const typeByte = entry[2];
     const typeInfo = d64.decodeDirectoryEntryType(typeByte);
@@ -661,11 +736,20 @@
     };
   };
 
-  d64.readDirectoryEntriesFrom = function (image, startTrack, startSector, options) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+  d64.readDirectoryEntriesFrom = function (
+    image,
+    startTrack,
+    startSector,
+    options,
+  ) {
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(bytes);
     const config = options || {};
-    const maxEntries = Math.max(1, Math.floor(Number(config.maxEntries) || 144));
+    const maxEntries = Math.max(
+      1,
+      Math.floor(Number(config.maxEntries) || 144),
+    );
     const entries = [];
     const sectors = [];
     const visited = {};
@@ -673,9 +757,15 @@
     let sector = Math.max(0, Math.floor(Number(startSector) || 0));
     let index = 0;
     while (track && entries.length < maxEntries) {
-      if (track > geometry.trackCount || sector >= d64.trackSectorCount(track)) {
+      if (
+        track > geometry.trackCount ||
+        sector >= d64.trackSectorCount(track)
+      ) {
         throw new Error(
-          "Directory chain points outside geometry at " + String(track) + ":" + String(sector),
+          "Directory chain points outside geometry at " +
+            String(track) +
+            ":" +
+            String(sector),
         );
       }
       const key = String(track) + ":" + String(sector);
@@ -693,12 +783,15 @@
       });
       for (let slot = 0; slot < 8 && entries.length < maxEntries; slot += 1) {
         const offset = slot * 32;
-        const entry = d64.parseDirectoryEntryBytes(block.subarray(offset, offset + 32), {
-          index: index,
-          track: track,
-          sector: sector,
-          slot: slot,
-        });
+        const entry = d64.parseDirectoryEntryBytes(
+          block.subarray(offset, offset + 32),
+          {
+            index: index,
+            track: track,
+            sector: sector,
+            slot: slot,
+          },
+        );
         index += 1;
         if (!entry.typeByte) continue;
         entries.push(entry);
@@ -717,7 +810,11 @@
     const index = Math.max(0, Math.floor(Number(entryIndex) || 0));
     const sectorIndex = Math.floor(index / 8);
     const slotIndex = index % 8;
-    const sector = d64.readSector(image, DIRECTORY_TRACK, DIRECTORY_START_SECTOR + sectorIndex);
+    const sector = d64.readSector(
+      image,
+      DIRECTORY_TRACK,
+      DIRECTORY_START_SECTOR + sectorIndex,
+    );
     const offset = slotIndex * 32;
     return d64.parseDirectoryEntryBytes(sector.subarray(offset, offset + 32), {
       index: index,
@@ -729,7 +826,10 @@
 
   d64.readDirectoryEntries = function (image, options) {
     const config = options || {};
-    const maxEntries = Math.max(1, Math.floor(Number(config.maxEntries) || 144));
+    const maxEntries = Math.max(
+      1,
+      Math.floor(Number(config.maxEntries) || 144),
+    );
     const entries = [];
     for (let index = 0; index < maxEntries; index += 1) {
       const entry = d64.readDirectoryEntry(image, index);
@@ -740,11 +840,17 @@
   };
 
   d64.findDirectoryEntryByName = function (image, name, options) {
-    const target = String(name || "").trim().toUpperCase();
+    const target = String(name || "")
+      .trim()
+      .toUpperCase();
     if (!target) return null;
     const entries = d64.readDirectoryEntries(image, options);
     for (let index = 0; index < entries.length; index += 1) {
-      if (String(entries[index].name || "").trim().toUpperCase() === target) {
+      if (
+        String(entries[index].name || "")
+          .trim()
+          .toUpperCase() === target
+      ) {
         return entries[index];
       }
     }
@@ -767,15 +873,17 @@
       const block = d64.readSector(image, track, sector);
       const nextTrack = block[0];
       const nextSector = block[1];
-      const usedBytes = nextTrack === 0
-        ? Math.max(0, Math.min(254, nextSector - 1))
-        : 254;
+      const usedBytes =
+        nextTrack === 0 ? Math.max(0, Math.min(254, nextSector - 1)) : 254;
       const unusedBytes = nextTrack === 0 ? Math.max(0, 254 - usedBytes) : 0;
       for (let index = 0; index < usedBytes; index += 1) {
         payload.push(block[2 + index]);
       }
       if (!nextTrack && unusedBytes) {
-        unusedTailData = block.slice(2 + usedBytes, 2 + usedBytes + unusedBytes);
+        unusedTailData = block.slice(
+          2 + usedBytes,
+          2 + usedBytes + unusedBytes,
+        );
       }
       blocks.push({
         track: track,
@@ -800,8 +908,14 @@
     };
   };
 
-  d64.validateUnexpectedBamSector = function (image, bamTrack, bamSector, options) {
-    const bytes = image instanceof Uint8Array ? image : new Uint8Array(image || []);
+  d64.validateUnexpectedBamSector = function (
+    image,
+    bamTrack,
+    bamSector,
+    options,
+  ) {
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(bytes);
     const config = options || {};
     const sectorBytes = d64.readSector(bytes, bamTrack, bamSector);
@@ -840,7 +954,11 @@
     if (directoryReachable && directory) {
       directory.entries.forEach(function (entry) {
         try {
-          const chain = d64.readFileChain(bytes, entry.startTrack, entry.startSector);
+          const chain = d64.readFileChain(
+            bytes,
+            entry.startTrack,
+            entry.startSector,
+          );
           chain.blocks.forEach(function (block) {
             addReferencedSector(block.track, block.sector, "file");
           });
@@ -852,9 +970,17 @@
               entry.sideSectorSector,
             );
             sideSectors.forEach(function (sideSector) {
-              addReferencedSector(sideSector.track, sideSector.sector, "rel-side");
+              addReferencedSector(
+                sideSector.track,
+                sideSector.sector,
+                "rel-side",
+              );
               sideSector.dataSectors.forEach(function (dataSector) {
-                addReferencedSector(dataSector.track, dataSector.sector, "rel-data-ref");
+                addReferencedSector(
+                  dataSector.track,
+                  dataSector.sector,
+                  "rel-data-ref",
+                );
               });
             });
           }
@@ -883,7 +1009,11 @@
       mismatchedUsedAsFree: 0,
       mismatchedUsedAsUnknown: 0,
     };
-    for (let track = 1; track <= Math.min(DEFAULT_TRACK_COUNT, geometry.trackCount); track += 1) {
+    for (
+      let track = 1;
+      track <= Math.min(DEFAULT_TRACK_COUNT, geometry.trackCount);
+      track += 1
+    ) {
       const bamOffset = d64.headerOffsets.bamStart + (track - 1) * 4;
       const sectorCount = d64.trackSectorCount(track);
       const bit0 = sectorBytes[bamOffset + 1];
@@ -908,10 +1038,16 @@
       bamSector: bamSector,
       directoryReachable: directoryReachable,
       directoryError: directoryError
-        ? String(directoryError && directoryError.message ? directoryError.message : directoryError)
+        ? String(
+            directoryError && directoryError.message
+              ? directoryError.message
+              : directoryError,
+          )
         : null,
-      directoryEntryCount: directory && directory.entries ? directory.entries.length : 0,
-      directorySectorCount: directory && directory.sectors ? directory.sectors.length : 0,
+      directoryEntryCount:
+        directory && directory.entries ? directory.entries.length : 0,
+      directorySectorCount:
+        directory && directory.sectors ? directory.sectors.length : 0,
       validFileChains: validFileChains,
       invalidFileChains: invalidFileChains,
       fileResults: fileResults,
@@ -927,7 +1063,11 @@
     };
   };
 
-  d64.readRelativeSideSectors = function (image, sideSectorTrack, sideSectorSector) {
+  d64.readRelativeSideSectors = function (
+    image,
+    sideSectorTrack,
+    sideSectorSector,
+  ) {
     const sectors = [];
     const visited = {};
     let track = Math.max(0, Math.floor(Number(sideSectorTrack) || 0));
@@ -1082,9 +1222,10 @@
   d64.prepareFileLayout = function (file) {
     const entry = file || {};
     const type = d64.normalizeFileType(entry.type);
-    const bytes = entry.data instanceof Uint8Array
-      ? entry.data
-      : new Uint8Array(entry.data || []);
+    const bytes =
+      entry.data instanceof Uint8Array
+        ? entry.data
+        : new Uint8Array(entry.data || []);
     if (type !== d64.fileTypes.rel) {
       const dataSectors = Math.max(1, Math.ceil(bytes.length / 254));
       const unusedTailLength = Math.max(0, dataSectors * 254 - bytes.length);
@@ -1098,7 +1239,10 @@
         locked: Boolean(entry.locked),
         recordLength: 0,
         recordCount: 0,
-        unusedTailData: d64.normalizeUnusedTailData(entry.unusedTailData, unusedTailLength),
+        unusedTailData: d64.normalizeUnusedTailData(
+          entry.unusedTailData,
+          unusedTailLength,
+        ),
       };
     }
     const recordLength = d64.normalizeRecordLength(entry.recordLength);
@@ -1116,7 +1260,10 @@
         "REL file exceeds side-sector capacity: " + String(entry.name || ""),
       );
     }
-    const unusedTailLength = Math.max(0, dataSectors * 254 - paddedBytes.length);
+    const unusedTailLength = Math.max(
+      0,
+      dataSectors * 254 - paddedBytes.length,
+    );
     return {
       type: type,
       bytes: paddedBytes,
@@ -1127,7 +1274,10 @@
       locked: Boolean(entry.locked),
       recordLength: recordLength,
       recordCount: recordCount,
-      unusedTailData: d64.normalizeUnusedTailData(entry.unusedTailData, unusedTailLength),
+      unusedTailData: d64.normalizeUnusedTailData(
+        entry.unusedTailData,
+        unusedTailLength,
+      ),
     };
   };
 
@@ -1206,7 +1356,10 @@
     entry[4] = startSector;
     entry.set(d64.encodeFileName(filename, 16), 5);
     entry[21] = Math.max(0, Math.min(255, Number(config.sideSectorTrack) || 0));
-    entry[22] = Math.max(0, Math.min(255, Number(config.sideSectorSector) || 0));
+    entry[22] = Math.max(
+      0,
+      Math.min(255, Number(config.sideSectorSector) || 0),
+    );
     entry[23] = Math.max(0, Math.min(255, Number(config.recordLength) || 0));
     entry[28] = sectorCount & 0xff;
     entry[29] = (sectorCount >> 8) & 0xff;
@@ -1217,11 +1370,18 @@
 
   d64.allocateSectors = function (count, allocation) {
     const result = [];
-    const trackLimit = d64.normalizeTrackCount(allocation.trackCount || DEFAULT_TRACK_COUNT);
-    for (let track = allocation.track; track <= trackLimit && result.length < count; track += 1) {
+    const trackLimit = d64.normalizeTrackCount(
+      allocation.trackCount || DEFAULT_TRACK_COUNT,
+    );
+    for (
+      let track = allocation.track;
+      track <= trackLimit && result.length < count;
+      track += 1
+    ) {
       if (track === 18) continue;
       const sectorCount = d64.trackSectorCount(track);
-      allocation.map[track] = allocation.map[track] || new Array(sectorCount).fill(true);
+      allocation.map[track] =
+        allocation.map[track] || new Array(sectorCount).fill(true);
       for (
         let sector = allocation.sector;
         sector < sectorCount && result.length < count;
@@ -1246,7 +1406,8 @@
   };
 
   d64.writeFile = function (image, data, allocation, unusedTailData) {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data || []);
+    const bytes =
+      data instanceof Uint8Array ? data : new Uint8Array(data || []);
     const sectors = Math.max(1, Math.ceil(bytes.length / 254));
     const blocks = d64.allocateSectors(sectors, allocation);
     if (blocks.length < sectors) return null;
@@ -1306,8 +1467,15 @@
     return sector;
   };
 
-  d64.writeRelativeFile = function (image, data, allocation, recordLength, unusedTailData) {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data || []);
+  d64.writeRelativeFile = function (
+    image,
+    data,
+    allocation,
+    recordLength,
+    unusedTailData,
+  ) {
+    const bytes =
+      data instanceof Uint8Array ? data : new Uint8Array(data || []);
     const dataSectors = Math.max(1, Math.ceil(bytes.length / 254));
     const sideSectorCount = Math.max(
       1,
@@ -1340,7 +1508,12 @@
     sideBlocks.forEach(function (block, index) {
       const offset = d64.trackOffset(block.track, block.sector);
       image.set(
-        d64.createRelativeSideSector(sideBlocks, dataBlocks, index, recordLength),
+        d64.createRelativeSideSector(
+          sideBlocks,
+          dataBlocks,
+          index,
+          recordLength,
+        ),
         offset,
       );
     });
@@ -1383,7 +1556,13 @@
     };
   };
 
-  d64.finalizeImage = function (image, allocation, dirSectors, diskName, options) {
+  d64.finalizeImage = function (
+    image,
+    allocation,
+    dirSectors,
+    diskName,
+    options,
+  ) {
     const geometry = d64.describeGeometry(options || image);
     const freeMap = {};
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -1395,7 +1574,10 @@
       freeMap[18][sector] = false;
     }
     for (const allocationTrack in allocation.map) {
-      if (!Object.prototype.hasOwnProperty.call(allocation.map, allocationTrack)) continue;
+      if (
+        !Object.prototype.hasOwnProperty.call(allocation.map, allocationTrack)
+      )
+        continue;
       const trackIndex = Number(allocationTrack);
       freeMap[trackIndex] = allocation.map[trackIndex].slice();
     }
@@ -1405,7 +1587,10 @@
     const bamSector = d64.createBamSector(freeMap, diskName);
     image.set(bamSector, d64.trackOffset(18, 0));
     for (let index = 0; index < dirSectors; index += 1) {
-      image.set(allocation.directorySectors[index], d64.trackOffset(18, 1 + index));
+      image.set(
+        allocation.directorySectors[index],
+        d64.trackOffset(18, 1 + index),
+      );
     }
   };
 
@@ -1436,7 +1621,12 @@
               layout.recordLength,
               layout.unusedTailData,
             )
-          : d64.writeFile(image, layout.bytes, allocation, layout.unusedTailData);
+          : d64.writeFile(
+              image,
+              layout.bytes,
+              allocation,
+              layout.unusedTailData,
+            );
       if (!fileRecord) return null;
       directoryEntries.push(
         d64.createDirectoryEntry(
@@ -1456,20 +1646,17 @@
       );
     }
     const entriesPerDirectorySector = 8;
-    const dirSectors = Math.max(1, Math.ceil(directoryEntries.length / entriesPerDirectorySector));
+    const dirSectors = Math.max(
+      1,
+      Math.ceil(directoryEntries.length / entriesPerDirectorySector),
+    );
     if (dirSectors > d64.trackSectorCount(18) - 1) return null;
     for (let i = 0; i < dirSectors; i += 1) {
       allocation.directorySectors.push(
         d64.createDirectorySector(directoryEntries, i, dirSectors),
       );
     }
-    d64.finalizeImage(
-      image,
-      allocation,
-      dirSectors,
-      diskInfo,
-      geometry,
-    );
+    d64.finalizeImage(image, allocation, dirSectors, diskInfo, geometry);
     if (geometry.hasErrorInfo) {
       d64.writeErrorInfo(image, diskInfo.errorInfo, geometry);
     }
@@ -1512,9 +1699,15 @@
     const targetName =
       typeof entryOrName === "string"
         ? String(entryOrName).trim().toUpperCase()
-        : String((entryOrName && entryOrName.name) || "").trim().toUpperCase();
+        : String((entryOrName && entryOrName.name) || "")
+            .trim()
+            .toUpperCase();
     const index = files.findIndex(function (file) {
-      return String(file.name || "").trim().toUpperCase() === targetName;
+      return (
+        String(file.name || "")
+          .trim()
+          .toUpperCase() === targetName
+      );
     });
     if (index < 0) {
       throw new Error("File not found: " + String(entryOrName || ""));
@@ -1537,12 +1730,17 @@
         ? patch.recordLength
         : files[index].recordLength,
       data: Object.prototype.hasOwnProperty.call(patch, "data")
-        ? (patch.data instanceof Uint8Array ? patch.data : new Uint8Array(patch.data || []))
+        ? patch.data instanceof Uint8Array
+          ? patch.data
+          : new Uint8Array(patch.data || [])
         : files[index].data,
-      unusedTailData: Object.prototype.hasOwnProperty.call(patch, "unusedTailData")
-        ? (patch.unusedTailData instanceof Uint8Array
+      unusedTailData: Object.prototype.hasOwnProperty.call(
+        patch,
+        "unusedTailData",
+      )
+        ? patch.unusedTailData instanceof Uint8Array
           ? patch.unusedTailData
-          : new Uint8Array(patch.unusedTailData || []))
+          : new Uint8Array(patch.unusedTailData || [])
         : files[index].unusedTailData,
     };
     return d64.rebuildImage(image, files, options);
@@ -1558,7 +1756,12 @@
     return Boolean(file && file.hasUnusedTailData);
   };
 
-  d64.updateUnusedTailData = function (image, entryOrName, unusedTailData, options) {
+  d64.updateUnusedTailData = function (
+    image,
+    entryOrName,
+    unusedTailData,
+    options,
+  ) {
     return d64.updateFile(
       image,
       entryOrName,
@@ -1642,9 +1845,15 @@
     const targetName =
       typeof entryOrName === "string"
         ? String(entryOrName).trim().toUpperCase()
-        : String((entryOrName && entryOrName.name) || "").trim().toUpperCase();
+        : String((entryOrName && entryOrName.name) || "")
+            .trim()
+            .toUpperCase();
     const filtered = files.filter(function (file) {
-      return String(file.name || "").trim().toUpperCase() !== targetName;
+      return (
+        String(file.name || "")
+          .trim()
+          .toUpperCase() !== targetName
+      );
     });
     if (filtered.length === files.length) {
       throw new Error("File not found: " + String(entryOrName || ""));
@@ -1655,12 +1864,17 @@
   d64.fileName = function (options) {
     const config = options || {};
     const rawBaseName =
-      config.baseName || config.name || config.diskName || config.title || DEFAULT_IMAGE_NAME;
-    const safeBaseName = String(rawBaseName || DEFAULT_IMAGE_NAME)
-      .trim()
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "") || DEFAULT_IMAGE_NAME;
+      config.baseName ||
+      config.name ||
+      config.diskName ||
+      config.title ||
+      DEFAULT_IMAGE_NAME;
+    const safeBaseName =
+      String(rawBaseName || DEFAULT_IMAGE_NAME)
+        .trim()
+        .replace(/[^A-Za-z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "") || DEFAULT_IMAGE_NAME;
     return safeBaseName.replace(/\.d64$/i, "") + ".d64";
   };
 

@@ -4,7 +4,9 @@
     "Exports rendered page graphics and assets into Commodore 64 disk images.";
   const baseMessage = `Storage medium "${name}" could not register.`;
   const supportUrl =
-    typeof document !== "undefined" && document.currentScript && document.currentScript.src
+    typeof document !== "undefined" &&
+    document.currentScript &&
+    document.currentScript.src
       ? new URL("./support.js", document.currentScript.src).toString()
       : "support.js";
   const logError = function (message, err) {
@@ -47,7 +49,9 @@
           resolve();
           return;
         }
-        reject(new Error("D64 support script loaded without required helpers."));
+        reject(
+          new Error("D64 support script loaded without required helpers."),
+        );
       };
       script.onerror = function () {
         reject(new Error("D64 support script load failed."));
@@ -78,7 +82,10 @@
       description: description,
       export: async function (options) {
         await ensureSupport();
-        if (!window.TPP || typeof window.TPP.exportImagesD64Core !== "function") {
+        if (
+          !window.TPP ||
+          typeof window.TPP.exportImagesD64Core !== "function"
+        ) {
           throw new Error("TPP.exportImagesD64Core not found.");
         }
         return window.TPP.exportImagesD64Core(options || {});
