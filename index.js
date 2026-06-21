@@ -100,7 +100,19 @@
   const flagMarkup = function (value, labels) {
     const className = value ? labels.trueClass : labels.falseClass;
     const text = value ? labels.trueText : labels.falseText;
-    return '<span class="flag ' + className + '">' + text + "</span>";
+    return (
+      '<button type="button" class="flag ' +
+      className +
+      '" data-action="' +
+      labels.action +
+      '" data-name="' +
+      escapeHtml(labels.fileName) +
+      '" aria-label="' +
+      escapeHtml(labels.ariaLabel) +
+      '">' +
+      text +
+      "</button>"
+    );
   };
 
   const updateDownloadLinkState = function () {
@@ -291,11 +303,18 @@
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
           "</td>" +
           "<td>" +
+          escapeHtml(formatNumber((file.data && file.data.length) || 0)) +
+          "</td>" +
+          "<td>" +
           flagMarkup(file.closed, {
             trueClass: "good",
             falseClass: "warn",
             trueText: "Closed",
             falseText: "Open",
+            action: "toggle-closed",
+            fileName: file.name,
+            ariaLabel:
+              (file.closed ? "Mark open " : "Mark closed ") + file.name,
           }) +
           "</td>" +
           "<td>" +
@@ -304,20 +323,11 @@
             falseClass: "good",
             trueText: "Locked",
             falseText: "Unlocked",
+            action: "toggle-lock",
+            fileName: file.name,
+            ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
           }) +
           "</td>" +
-          '<td><div class="row-actions">' +
-          '<button type="button" data-action="toggle-lock" data-name="' +
-          escapeHtml(file.name) +
-          '">' +
-          (file.locked ? "Unlock" : "Lock") +
-          "</button>" +
-          '<button type="button" data-action="toggle-closed" data-name="' +
-          escapeHtml(file.name) +
-          '">' +
-          (file.closed ? "Mark Open" : "Mark Closed") +
-          "</button>" +
-          "</div></td>" +
           "</tr>"
         );
       })
