@@ -57,11 +57,11 @@
     "trackSectorCount",
   ];
   const DISK_MAP_COLORS = Object.freeze({
-    free: "#183a4e",
+    free: "#6f5133",
     unknownUsed: "#6c8ea3",
     reservedTrack: "#7d8c98",
-    reservedTrackFree: "#51606b",
-    reservedTrackStroke: "rgba(216, 225, 233, 0.75)",
+    reservedTrackFree: "#4f3823",
+    reservedTrackStroke: "rgba(255,255,255,0.08)",
     header: "#f2a65a",
     bam: "#ffd166",
     directory: "#7ed6df",
