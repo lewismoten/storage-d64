@@ -256,7 +256,7 @@
   };
 
   const zoomDiskMapByWheel = function (deltaY, clientX, clientY) {
-    const factor = Math.exp(-Math.max(-240, Math.min(240, deltaY)) * 0.0012);
+    const factor = Math.exp(-Math.max(-240, Math.min(240, deltaY)) * 0.0042);
     zoomDiskMapAtPoint(factor, clientX, clientY);
   };
 
