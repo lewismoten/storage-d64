@@ -5,6 +5,7 @@
     image: null,
     sourceName: "",
     objectUrl: null,
+    deletedTypeHints: {},
   };
 
   const createForm = document.getElementById("create-form");
@@ -87,6 +88,10 @@
     currentFileName.textContent = state.sourceName || "Unsaved image";
     downloadButton.disabled = !state.image;
     refreshButton.disabled = !state.image;
+  };
+
+  const resetDeletedTypeHints = function () {
+    state.deletedTypeHints = {};
   };
 
   const renderDefinitionList = function (node, rows) {
@@ -200,7 +205,9 @@
     deletedFilesPanel.hidden = false;
     deletedFilesList.innerHTML = deletedFiles
       .map(function (entry) {
-        const defaultType = entry.sideSectorTrack ? "rel" : "prg";
+        const hintedType =
+          state.deletedTypeHints[entry.index] ||
+          (entry.sideSectorTrack ? "rel" : "prg");
         return (
           '<article class="deleted-file-card">' +
           "<div>" +
@@ -218,13 +225,20 @@
           '<label class="restore-type-field"><span>Type</span><select data-restore-type="' +
           String(entry.index) +
           '">' +
+          '<option value=""' +
+          (hintedType ? "" : " selected") +
+          ">Unknown...</option>" +
           '<option value="prg"' +
-          (defaultType === "prg" ? " selected" : "") +
+          (hintedType === "prg" ? " selected" : "") +
           ">PRG</option>" +
-          '<option value="seq">SEQ</option>' +
-          '<option value="usr">USR</option>' +
+          '<option value="seq"' +
+          (hintedType === "seq" ? " selected" : "") +
+          ">SEQ</option>" +
+          '<option value="usr"' +
+          (hintedType === "usr" ? " selected" : "") +
+          ">USR</option>" +
           '<option value="rel"' +
-          (defaultType === "rel" ? " selected" : "") +
+          (hintedType === "rel" ? " selected" : "") +
           ">REL</option>" +
           "</select></label>" +
           '<button type="button" class="restore-button" data-action="restore-file" data-entry-index="' +
@@ -404,7 +418,11 @@
       .join("");
   };
 
-  const loadImageBytes = function (bytes, sourceName, message) {
+  const loadImageBytes = function (bytes, sourceName, message, options) {
+    const config = options || {};
+    if (config.resetDeletedTypeHints !== false) {
+      resetDeletedTypeHints();
+    }
     setCurrentImage(bytes, sourceName);
     updateDownloadLinkState();
     refreshView();
@@ -493,10 +511,20 @@
   const deleteFile = function (fileName) {
     if (!state.image) return;
     try {
+      const file = d64.readFiles(state.image).find(function (entry) {
+        return entry.name === fileName;
+      });
+      if (!file || !file.entry) {
+        throw new Error("File not found: " + fileName);
+      }
+      state.deletedTypeHints[file.entry.index] = String(file.type || "")
+        .trim()
+        .toLowerCase();
       loadImageBytes(
         d64.scratchFile(state.image, fileName),
         state.sourceName || "disk.d64",
         "Deleted " + fileName + ".",
+        { resetDeletedTypeHints: false },
       );
     } catch (error) {
       setStatus(error.message || String(error), true);
@@ -520,7 +548,9 @@
           " as " +
           restoreType.toUpperCase() +
           ".",
+        { resetDeletedTypeHints: false },
       );
+      delete state.deletedTypeHints[deletedEntry.index];
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
