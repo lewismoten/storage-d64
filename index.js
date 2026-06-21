@@ -59,6 +59,9 @@
   const DISK_MAP_COLORS = Object.freeze({
     free: "#183a4e",
     unknownUsed: "#6c8ea3",
+    reservedTrack: "#7d8c98",
+    reservedTrackFree: "#51606b",
+    reservedTrackStroke: "rgba(216, 225, 233, 0.75)",
     header: "#f2a65a",
     bam: "#ffd166",
     directory: "#7ed6df",
@@ -486,19 +489,37 @@
           trackInfo && Array.isArray(trackInfo.sectorFree)
             ? trackInfo.sectorFree[sector]
             : null;
+        const isReservedTrack = track === 18;
         markSector(sectorMap, track, sector, {
           category:
             isFree === true
-              ? "free"
+              ? isReservedTrack
+                ? "reservedFree"
+                : "free"
               : isFree === false
-                ? "unknownUsed"
+                ? isReservedTrack
+                  ? "reservedUsed"
+                  : "unknownUsed"
                 : "unknownUsed",
           color:
             isFree === true
-              ? DISK_MAP_COLORS.free
-              : DISK_MAP_COLORS.unknownUsed,
-          stroke: DISK_MAP_COLORS.trackStroke,
-          label: isFree === true ? "Free sector" : "Used or untracked sector",
+              ? isReservedTrack
+                ? DISK_MAP_COLORS.reservedTrackFree
+                : DISK_MAP_COLORS.free
+              : isReservedTrack
+                ? DISK_MAP_COLORS.reservedTrack
+                : DISK_MAP_COLORS.unknownUsed,
+          stroke: isReservedTrack
+            ? DISK_MAP_COLORS.reservedTrackStroke
+            : DISK_MAP_COLORS.trackStroke,
+          label:
+            isFree === true
+              ? isReservedTrack
+                ? "Free sector on reserved BAM/directory track"
+                : "Free sector"
+              : isReservedTrack
+                ? "Reserved BAM/directory track sector"
+                : "Used or untracked sector",
           usedFraction: isFree === true ? 0 : 1,
         });
       }
@@ -622,6 +643,11 @@
         title: "Disk Structure",
         rows: [
           ["Header", DISK_MAP_COLORS.header, "Track 18 sector 0 disk header"],
+          [
+            "Track 18",
+            DISK_MAP_COLORS.reservedTrack,
+            "Reserved directory track underlay",
+          ],
           [
             "BAM / Free",
             DISK_MAP_COLORS.free,
