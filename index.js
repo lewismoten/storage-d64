@@ -84,22 +84,33 @@
     indexHoleAngle: Math.PI * 0.58,
     indexHoleRadius: 60,
     indexHoleSize: 4.2,
-    spindleRadius: 46,
-    spindleOutlineRadius: 57,
-    headWindowOffsetX: 118,
-    headWindowWidth: 34,
-    headWindowHeight: 154,
-    headWindowRadius: 16,
-    platterRadius: 250,
-    mechanismOuterRadius: 224,
-    mechanismInnerRadius: 82,
+    spindleRadius: 50,
+    spindleOutlineRadius: 67,
+    spindleHoleRadius: 38,
+    headWindowOffsetX: 0,
+    headWindowOffsetY: 123,
+    headWindowWidth: 42,
+    headWindowHeight: 168,
+    headWindowRadius: 20,
+    platterRadius: 184,
+    mechanismOuterRadius: 166,
+    mechanismInnerRadius: 78,
     mechanismTrackCount: 40,
+    shellX: 38,
+    shellY: 28,
+    shellWidth: 474,
+    shellHeight: 560,
+    shellRadius: 18,
+    labelX: 56,
+    labelY: 44,
+    labelWidth: 438,
+    labelHeight: 102,
   });
   const DISK_MAP_VIEWBOX = Object.freeze({
     width: 760,
     height: 620,
     diskCenterX: 275,
-    diskCenterY: 300,
+    diskCenterY: 332,
   });
   const diskMapView = {
     scale: 1,
@@ -1247,6 +1258,8 @@
 
     const layout = buildDiskSectorMap(image);
     state.diskLayout = layout;
+    const diskHeader = d64.readHeader(image);
+    const diskFiles = d64.readFiles(image);
     const geometry = layout.geometry;
     const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
     const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
@@ -1256,20 +1269,42 @@
       (mechanismOuterRadius - mechanismInnerRadius) / mechanismTrackCount;
     const outerRadius = mechanismOuterRadius;
     const innerRadius = outerRadius - trackBand * geometry.trackCount;
-    const cx = 275;
-    const cy = 300;
+    const cx = DISK_MAP_VIEWBOX.diskCenterX;
+    const cy = DISK_MAP_VIEWBOX.diskCenterY;
     const sectorZeroAngleOffset = DISK_MAP_PHYSICAL.indexHoleAngle;
-    const indexHolePoint = polarToCartesian(
-      cx,
-      cy,
-      DISK_MAP_PHYSICAL.indexHoleRadius,
-      DISK_MAP_PHYSICAL.indexHoleAngle,
-    );
+    const indexHolePoint = {
+      x: cx + 82,
+      y: cy + 8,
+    };
     const headWindowX =
       cx +
       DISK_MAP_PHYSICAL.headWindowOffsetX -
       DISK_MAP_PHYSICAL.headWindowWidth / 2;
-    const headWindowY = cy - DISK_MAP_PHYSICAL.headWindowHeight / 2;
+    const headWindowY =
+      cy +
+      DISK_MAP_PHYSICAL.headWindowOffsetY -
+      DISK_MAP_PHYSICAL.headWindowHeight / 2;
+    const shellX = DISK_MAP_PHYSICAL.shellX;
+    const shellY = DISK_MAP_PHYSICAL.shellY;
+    const shellWidth = DISK_MAP_PHYSICAL.shellWidth;
+    const shellHeight = DISK_MAP_PHYSICAL.shellHeight;
+    const shellRadius = DISK_MAP_PHYSICAL.shellRadius;
+    const labelX = DISK_MAP_PHYSICAL.labelX;
+    const labelY = DISK_MAP_PHYSICAL.labelY;
+    const labelWidth = DISK_MAP_PHYSICAL.labelWidth;
+    const labelHeight = DISK_MAP_PHYSICAL.labelHeight;
+    const writeNotchX = shellX + shellWidth - 10;
+    const writeNotchY = shellY + 226;
+    const diskNameLabel = String(diskHeader.diskName || "UNTITLED DISK");
+    const diskNumberLabel = String(diskHeader.diskId || "00");
+    const firstPrgFile = diskFiles.find(function (file) {
+      return String(file.type || "").toLowerCase() === "prg";
+    });
+    const prgHintLabel = firstPrgFile
+      ? 'LOAD"' +
+        String(firstPrgFile.name || "").replace(/"/g, "") +
+        '",8,1  RUN'
+      : "No PRG auto-run hint available";
     const sectors = [];
 
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -1430,10 +1465,23 @@
       ) +
       '">' +
       "<defs>" +
+      '<linearGradient id="disk-shell-fill" x1="0%" y1="0%" x2="0%" y2="100%">' +
+      '<stop offset="0%" stop-color="#9aa1a7" />' +
+      '<stop offset="56%" stop-color="#83898f" />' +
+      '<stop offset="100%" stop-color="#6a7178" />' +
+      "</linearGradient>" +
+      '<linearGradient id="disk-label-fill" x1="0%" y1="0%" x2="100%" y2="100%">' +
+      '<stop offset="0%" stop-color="#f7f3e5" />' +
+      '<stop offset="100%" stop-color="#ece3ca" />' +
+      "</linearGradient>" +
       '<radialGradient id="disk-platter-fill" cx="45%" cy="38%" r="70%">' +
       '<stop offset="0%" stop-color="#9b7650" />' +
       '<stop offset="48%" stop-color="#7b5a3a" />' +
       '<stop offset="100%" stop-color="#4b3624" />' +
+      "</radialGradient>" +
+      '<radialGradient id="disk-inner-ring-fill" cx="50%" cy="50%" r="75%">' +
+      '<stop offset="0%" stop-color="#0d1115" />' +
+      '<stop offset="100%" stop-color="#1f252b" />' +
       "</radialGradient>" +
       '<radialGradient id="disk-hub-fill" cx="50%" cy="50%" r="75%">' +
       '<stop offset="0%" stop-color="#10222d" />' +
@@ -1441,13 +1489,54 @@
       "</radialGradient>" +
       '<marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></marker>' +
       "</defs>" +
+      '<rect x="' +
+      shellX +
+      '" y="' +
+      shellY +
+      '" width="' +
+      shellWidth +
+      '" height="' +
+      shellHeight +
+      '" rx="' +
+      shellRadius +
+      '" fill="url(#disk-shell-fill)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" />' +
+      '<rect x="' +
+      labelX +
+      '" y="' +
+      labelY +
+      '" width="' +
+      labelWidth +
+      '" height="' +
+      labelHeight +
+      '" rx="14" fill="url(#disk-label-fill)" stroke="rgba(96, 100, 106, 0.24)" />' +
+      '<text x="' +
+      (labelX + 20) +
+      '" y="' +
+      (labelY + 38) +
+      '" class="disk-map-shell-title">' +
+      escapeHtml(diskNameLabel) +
+      "</text>" +
+      '<text x="' +
+      (labelX + 20) +
+      '" y="' +
+      (labelY + 68) +
+      '" class="disk-map-shell-subtitle">' +
+      escapeHtml(prgHintLabel) +
+      "</text>" +
+      '<text x="' +
+      (labelX + labelWidth - 22) +
+      '" y="' +
+      (labelY + 38) +
+      '" class="disk-map-shell-diskno">Disk: ' +
+      escapeHtml(diskNumberLabel) +
+      "</text>" +
       '<circle cx="' +
       cx +
       '" cy="' +
       cy +
       '" r="' +
-      String(platterRadius + 6) +
-      '" fill="url(#disk-platter-fill)" stroke="rgba(207, 177, 137, 0.26)" stroke-width="1.5" />' +
+      String(platterRadius + 5) +
+      '" fill="url(#disk-platter-fill)" stroke="rgba(40, 28, 18, 0.44)" stroke-width="1.4" />' +
       '<circle cx="' +
       cx +
       '" cy="' +
@@ -1462,56 +1551,6 @@
       '" r="' +
       mechanismInnerRadius.toFixed(2) +
       '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
-      '<line x1="' +
-      (cx + mechanismInnerRadius + 10) +
-      '" y1="' +
-      cy +
-      '" x2="' +
-      (cx + mechanismOuterRadius + 64) +
-      '" y2="' +
-      cy +
-      '" stroke="rgba(215, 190, 155, 0.34)" stroke-width="2" stroke-dasharray="7 7" />' +
-      '<line x1="' +
-      (cx + mechanismInnerRadius + 10) +
-      '" y1="' +
-      (cy - 8) +
-      '" x2="' +
-      (cx + mechanismInnerRadius + 10) +
-      '" y2="' +
-      (cy + 8) +
-      '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
-      '<line x1="' +
-      (cx + mechanismOuterRadius + 10) +
-      '" y1="' +
-      (cy - 8) +
-      '" x2="' +
-      (cx + mechanismOuterRadius + 10) +
-      '" y2="' +
-      (cy + 8) +
-      '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
-      '<rect x="' +
-      (cx + mechanismOuterRadius + 40) +
-      '" y="' +
-      (cy - 14) +
-      '" width="28" height="28" rx="5" fill="rgba(200, 219, 224, 0.16)" stroke="rgba(215, 237, 240, 0.34)" />' +
-      '<path d="M ' +
-      (cx + mechanismOuterRadius + 40) +
-      " " +
-      (cy - 6) +
-      " L " +
-      (cx + mechanismOuterRadius + 26) +
-      " " +
-      cy +
-      " L " +
-      (cx + mechanismOuterRadius + 40) +
-      " " +
-      (cy + 6) +
-      '" fill="rgba(200, 219, 224, 0.22)" stroke="rgba(215, 237, 240, 0.3)" />' +
-      '<text class="disk-map-center-subtitle" x="' +
-      (cx + mechanismOuterRadius + 54) +
-      '" y="' +
-      (cy - 22) +
-      '">Head path</text>' +
       sectors.join("") +
       '<circle cx="' +
       cx +
@@ -1519,7 +1558,14 @@
       cy +
       '" r="' +
       DISK_MAP_PHYSICAL.spindleOutlineRadius.toFixed(2) +
-      '" fill="none" stroke="rgba(214, 188, 154, 0.36)" stroke-width="1.2" />' +
+      '" fill="url(#disk-inner-ring-fill)" stroke="rgba(42, 48, 54, 0.66)" stroke-width="1.3" />' +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      (DISK_MAP_PHYSICAL.spindleOutlineRadius - 8).toFixed(2) +
+      '" fill="none" stroke="rgba(154, 172, 188, 0.18)" stroke-width="1.1" />' +
       '<rect x="' +
       headWindowX.toFixed(2) +
       '" y="' +
@@ -1530,42 +1576,52 @@
       DISK_MAP_PHYSICAL.headWindowHeight.toFixed(2) +
       '" rx="' +
       DISK_MAP_PHYSICAL.headWindowRadius.toFixed(2) +
-      '" fill="none" stroke="rgba(214, 188, 154, 0.34)" stroke-width="1.1" />' +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      DISK_MAP_PHYSICAL.spindleRadius.toFixed(2) +
-      '" fill="url(#disk-hub-fill)" stroke="rgba(185, 227, 242, 0.18)" />' +
+      '" fill="none" stroke="rgba(42, 48, 54, 0.74)" stroke-width="1.4" />' +
       '<circle cx="' +
       indexHolePoint.x.toFixed(2) +
       '" cy="' +
       indexHolePoint.y.toFixed(2) +
       '" r="' +
       DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
-      '" fill="rgba(20, 14, 10, 0.9)" stroke="rgba(228, 197, 154, 0.14)" stroke-width="0.9" />' +
+      '" fill="rgba(18, 18, 18, 0.92)" stroke="rgba(42, 48, 54, 0.7)" stroke-width="0.9" />' +
       '<circle cx="' +
       indexHolePoint.x.toFixed(2) +
       '" cy="' +
       indexHolePoint.y.toFixed(2) +
       '" r="' +
       (DISK_MAP_PHYSICAL.indexHoleSize + 6).toFixed(2) +
-      '" fill="none" stroke="rgba(214, 188, 154, 0.34)" stroke-width="1.1" />' +
+      '" fill="none" stroke="rgba(42, 48, 54, 0.54)" stroke-width="1.1" />' +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      DISK_MAP_PHYSICAL.spindleHoleRadius.toFixed(2) +
+      '" fill="rgba(12, 43, 60, 0.92)" />' +
       '<path d="' +
       describeArcPath(
         cx,
         cy,
-        Math.max(DISK_MAP_PHYSICAL.spindleRadius - 14, 24),
+        Math.max(DISK_MAP_PHYSICAL.spindleHoleRadius - 8, 24),
         Math.PI * 1.22,
         Math.PI * 2.68,
       ) +
       '" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="3" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" />' +
-      '<text class="disk-map-center-label" x="' +
-      cx +
+      '<rect x="' +
+      writeNotchX +
       '" y="' +
-      (cy - 6) +
-      '">D64</text>' +
+      writeNotchY +
+      '" width="14" height="42" rx="2" fill="rgba(12, 43, 60, 0.92)" />' +
+      '<circle cx="' +
+      (shellX + shellWidth * 0.46).toFixed(2) +
+      '" cy="' +
+      (shellY + shellHeight).toFixed(2) +
+      '" r="6.4" fill="rgba(12, 43, 60, 0.92)" />' +
+      '<circle cx="' +
+      (shellX + shellWidth * 0.54).toFixed(2) +
+      '" cy="' +
+      (shellY + shellHeight).toFixed(2) +
+      '" r="6.4" fill="rgba(12, 43, 60, 0.92)" />' +
       "</svg>";
     applyDiskMapTransform();
     applySelectedDiskMapSector();

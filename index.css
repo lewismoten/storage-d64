@@ -518,6 +518,30 @@ button:disabled {
   text-anchor: middle;
 }
 
+.disk-map-shell-title {
+  font-size: 19px;
+  font-weight: 800;
+  fill: #3f3b36;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.disk-map-shell-subtitle {
+  font-size: 10px;
+  fill: #6b655f;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.disk-map-shell-diskno {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #4d4945;
+  text-anchor: end;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .disk-map-track-label {
   font-size: 7px;
   fill: rgba(223, 250, 255, 0.82);
