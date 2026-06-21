@@ -75,6 +75,16 @@
     deleted: "#8c98a4",
     trackStroke: "rgba(255,255,255,0.08)",
   });
+  const DISK_MAP_PHYSICAL = Object.freeze({
+    indexHoleAngle: Math.PI * 0.58,
+    indexHoleRadius: 60,
+    indexHoleSize: 4.2,
+    spindleRadius: 46,
+    platterRadius: 250,
+    mechanismOuterRadius: 224,
+    mechanismInnerRadius: 82,
+    mechanismTrackCount: 40,
+  });
   const DISK_MAP_VIEWBOX = Object.freeze({
     width: 760,
     height: 620,
@@ -691,11 +701,23 @@
 
     const layout = buildDiskSectorMap(image);
     const geometry = layout.geometry;
-    const outerRadius = 250;
-    const innerRadius = 54;
-    const trackBand = (outerRadius - innerRadius) / geometry.trackCount;
+    const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
+    const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
+    const mechanismInnerRadius = DISK_MAP_PHYSICAL.mechanismInnerRadius;
+    const mechanismTrackCount = DISK_MAP_PHYSICAL.mechanismTrackCount;
+    const trackBand =
+      (mechanismOuterRadius - mechanismInnerRadius) / mechanismTrackCount;
+    const outerRadius = mechanismOuterRadius;
+    const innerRadius = outerRadius - trackBand * geometry.trackCount;
     const cx = 275;
     const cy = 300;
+    const sectorZeroAngleOffset = DISK_MAP_PHYSICAL.indexHoleAngle;
+    const indexHolePoint = polarToCartesian(
+      cx,
+      cy,
+      DISK_MAP_PHYSICAL.indexHoleRadius,
+      DISK_MAP_PHYSICAL.indexHoleAngle,
+    );
     const sectors = [];
 
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -706,8 +728,11 @@
         const key = String(track) + ":" + String(sector);
         const info = layout.sectorMap[key];
         const startAngle =
-          ((sectorCount - sector - 1) / sectorCount) * Math.PI * 2;
-        const endAngle = ((sectorCount - sector) / sectorCount) * Math.PI * 2;
+          ((sectorCount - sector - 1) / sectorCount) * Math.PI * 2 +
+          sectorZeroAngleOffset;
+        const endAngle =
+          ((sectorCount - sector) / sectorCount) * Math.PI * 2 +
+          sectorZeroAngleOffset;
         const totalFraction =
           info && typeof info.usedFraction === "number" ? info.usedFraction : 1;
         const usedEndAngle =
@@ -863,55 +888,69 @@
       '" cy="' +
       cy +
       '" r="' +
-      String(outerRadius + 6) +
+      String(platterRadius + 6) +
       '" fill="url(#disk-platter-fill)" stroke="rgba(207, 177, 137, 0.26)" stroke-width="1.5" />' +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      mechanismOuterRadius.toFixed(2) +
+      '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      mechanismInnerRadius.toFixed(2) +
+      '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
       '<line x1="' +
-      (cx + innerRadius + 10) +
+      (cx + mechanismInnerRadius + 10) +
       '" y1="' +
       cy +
       '" x2="' +
-      (cx + outerRadius + 64) +
+      (cx + mechanismOuterRadius + 64) +
       '" y2="' +
       cy +
       '" stroke="rgba(215, 190, 155, 0.34)" stroke-width="2" stroke-dasharray="7 7" />' +
       '<line x1="' +
-      (cx + innerRadius + 10) +
+      (cx + mechanismInnerRadius + 10) +
       '" y1="' +
       (cy - 8) +
       '" x2="' +
-      (cx + innerRadius + 10) +
+      (cx + mechanismInnerRadius + 10) +
       '" y2="' +
       (cy + 8) +
       '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
       '<line x1="' +
-      (cx + outerRadius + 10) +
+      (cx + mechanismOuterRadius + 10) +
       '" y1="' +
       (cy - 8) +
       '" x2="' +
-      (cx + outerRadius + 10) +
+      (cx + mechanismOuterRadius + 10) +
       '" y2="' +
       (cy + 8) +
       '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
       '<rect x="' +
-      (cx + outerRadius + 40) +
+      (cx + mechanismOuterRadius + 40) +
       '" y="' +
       (cy - 14) +
       '" width="28" height="28" rx="5" fill="rgba(200, 219, 224, 0.16)" stroke="rgba(215, 237, 240, 0.34)" />' +
       '<path d="M ' +
-      (cx + outerRadius + 40) +
+      (cx + mechanismOuterRadius + 40) +
       " " +
       (cy - 6) +
       " L " +
-      (cx + outerRadius + 26) +
+      (cx + mechanismOuterRadius + 26) +
       " " +
       cy +
       " L " +
-      (cx + outerRadius + 40) +
+      (cx + mechanismOuterRadius + 40) +
       " " +
       (cy + 6) +
       '" fill="rgba(200, 219, 224, 0.22)" stroke="rgba(215, 237, 240, 0.3)" />' +
       '<text class="disk-map-center-subtitle" x="' +
-      (cx + outerRadius + 54) +
+      (cx + mechanismOuterRadius + 54) +
       '" y="' +
       (cy - 22) +
       '">Head path</text>' +
@@ -921,18 +960,20 @@
       '" cy="' +
       cy +
       '" r="' +
-      String(innerRadius - 10) +
+      DISK_MAP_PHYSICAL.spindleRadius.toFixed(2) +
       '" fill="url(#disk-hub-fill)" stroke="rgba(185, 227, 242, 0.18)" />' +
       '<circle cx="' +
-      (cx + 16) +
+      indexHolePoint.x.toFixed(2) +
       '" cy="' +
-      (cy - 6) +
-      '" r="6.5" fill="rgba(20, 14, 10, 0.9)" stroke="rgba(228, 197, 154, 0.16)" />' +
+      indexHolePoint.y.toFixed(2) +
+      '" r="' +
+      DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
+      '" fill="rgba(20, 14, 10, 0.9)" stroke="rgba(228, 197, 154, 0.14)" stroke-width="0.9" />' +
       '<path d="' +
       describeArcPath(
         cx,
         cy,
-        innerRadius - 23,
+        Math.max(DISK_MAP_PHYSICAL.spindleRadius - 14, 24),
         Math.PI * 1.22,
         Math.PI * 2.68,
       ) +
