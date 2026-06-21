@@ -319,6 +319,29 @@
     setSelectedDiskMapSectorElement(null);
   };
 
+  const centerDiskMapOnSectorElement = function (element) {
+    if (!element) return;
+    const mapRect = diskMap.getBoundingClientRect();
+    const sectorRect = element.getBoundingClientRect();
+    if (
+      !mapRect.width ||
+      !mapRect.height ||
+      !sectorRect.width ||
+      !sectorRect.height
+    ) {
+      return;
+    }
+    diskMapView.offsetX +=
+      mapRect.left +
+      mapRect.width * 0.5 -
+      (sectorRect.left + sectorRect.width * 0.5);
+    diskMapView.offsetY +=
+      mapRect.top +
+      mapRect.height * 0.5 -
+      (sectorRect.top + sectorRect.height * 0.5);
+    applyDiskMapTransform();
+  };
+
   const zoomDiskMapAtPoint = function (factor, clientX, clientY) {
     const nextScale = clampDiskMapScale(diskMapView.scale * factor);
     const appliedFactor = nextScale / diskMapView.scale;
@@ -613,10 +636,14 @@
     );
   };
 
-  const selectDiskMapSector = function (track, sector) {
+  const selectDiskMapSector = function (track, sector, options) {
+    const config = options || {};
     if (!isValidSectorAddress(track, sector, state.image)) return;
     state.selectedSectorKey = String(track) + ":" + String(sector);
     applySelectedDiskMapSector();
+    if (config.centerView) {
+      centerDiskMapOnSectorElement(diskMapView.selectedSectorElement);
+    }
     renderDiskMapInspector();
   };
 
@@ -1250,8 +1277,8 @@
           sectorZeroAngleOffset;
         const totalFraction =
           info && typeof info.usedFraction === "number" ? info.usedFraction : 1;
-        const usedEndAngle =
-          startAngle + (endAngle - startAngle) * totalFraction;
+        const usedStartAngle =
+          endAngle - (endAngle - startAngle) * totalFraction;
         const basePath = describeSectorPath(
           cx,
           cy,
@@ -1268,8 +1295,8 @@
                 cy,
                 trackInner,
                 trackOuter,
-                startAngle,
-                usedEndAngle,
+                usedStartAngle,
+                endAngle,
               ) +
               '" class="disk-map-sector" data-track="' +
               String(track) +
@@ -1302,8 +1329,8 @@
                 cy,
                 trackInner,
                 trackOuter,
-                usedEndAngle,
-                endAngle,
+                startAngle,
+                usedStartAngle,
               ) +
               '" class="disk-map-sector" data-track="' +
               String(track) +
@@ -2037,6 +2064,7 @@
         selectDiskMapSector(
           jumpButton.dataset.track,
           jumpButton.dataset.sector,
+          { centerView: true },
         );
         return;
       }
