@@ -23,6 +23,7 @@
   const usageChart = document.getElementById("usage-chart");
   const usageLegend = document.getElementById("usage-legend");
   const diskMap = document.getElementById("disk-map");
+  const diskMapPointer = document.getElementById("disk-map-pointer");
   const diskMapTooltip = document.getElementById("disk-map-tooltip");
   const diskMapLegend = document.getElementById("disk-map-legend");
   const diskMapSummary = document.getElementById("disk-map-summary");
@@ -83,6 +84,7 @@
     dragStartY: 0,
     originOffsetX: 0,
     originOffsetY: 0,
+    hoveredSectorElement: null,
   };
 
   const setStatus = function (message, isError) {
@@ -231,6 +233,31 @@
   const hideDiskMapTooltip = function () {
     diskMapTooltip.hidden = true;
     diskMapTooltip.textContent = "";
+  };
+
+  const showDiskMapPointer = function (track, sector) {
+    diskMapPointer.hidden = false;
+    diskMapPointer.textContent =
+      "Pointer: T" +
+      String(track).padStart(2, "0") +
+      " S" +
+      String(sector).padStart(2, "0");
+  };
+
+  const hideDiskMapPointer = function () {
+    diskMapPointer.hidden = true;
+    diskMapPointer.textContent = "";
+  };
+
+  const setHoveredDiskMapSector = function (element) {
+    if (diskMapView.hoveredSectorElement === element) return;
+    if (diskMapView.hoveredSectorElement) {
+      diskMapView.hoveredSectorElement.classList.remove("is-hovered");
+    }
+    diskMapView.hoveredSectorElement = element || null;
+    if (diskMapView.hoveredSectorElement) {
+      diskMapView.hoveredSectorElement.classList.add("is-hovered");
+    }
   };
 
   const zoomDiskMapAtPoint = function (factor, clientX, clientY) {
@@ -637,6 +664,8 @@
       diskMap.innerHTML =
         "Load or create a disk image to view tracks and sectors.";
       diskMap.className = "disk-map empty-state";
+      setHoveredDiskMapSector(null);
+      hideDiskMapPointer();
       hideDiskMapTooltip();
       resetDiskMapView();
       syncDiskMapControls();
@@ -686,6 +715,10 @@
                 startAngle,
                 usedEndAngle,
               ) +
+              '" class="disk-map-sector" data-track="' +
+              String(track) +
+              '" data-sector="' +
+              String(sector) +
               '" fill="' +
               info.color +
               '" stroke="' +
@@ -714,6 +747,10 @@
                 usedEndAngle,
                 endAngle,
               ) +
+              '" class="disk-map-sector" data-track="' +
+              String(track) +
+              '" data-sector="' +
+              String(sector) +
               '" fill="' +
               info.tailColor +
               '" stroke="' +
@@ -734,6 +771,10 @@
           sectors.push(
             '<path d="' +
               basePath +
+              '" class="disk-map-sector" data-track="' +
+              String(track) +
+              '" data-sector="' +
+              String(sector) +
               '" fill="' +
               (info ? info.color : DISK_MAP_COLORS.unknownUsed) +
               '" stroke="' +
@@ -1253,21 +1294,31 @@
     });
     diskMap.addEventListener("mousemove", function (event) {
       if (diskMapView.dragging) {
+        setHoveredDiskMapSector(null);
+        hideDiskMapPointer();
         hideDiskMapTooltip();
         return;
       }
       const target = event.target.closest("[data-tooltip]");
       if (!target) {
+        setHoveredDiskMapSector(null);
+        hideDiskMapPointer();
         hideDiskMapTooltip();
         return;
       }
+      setHoveredDiskMapSector(target);
+      showDiskMapPointer(target.dataset.track, target.dataset.sector);
       showDiskMapTooltip(
         target.getAttribute("data-tooltip"),
         event.clientX,
         event.clientY,
       );
     });
-    diskMap.addEventListener("mouseleave", hideDiskMapTooltip);
+    diskMap.addEventListener("mouseleave", function () {
+      setHoveredDiskMapSector(null);
+      hideDiskMapPointer();
+      hideDiskMapTooltip();
+    });
     diskMap.addEventListener("mousedown", function (event) {
       if (event.button !== 0) return;
       event.preventDefault();

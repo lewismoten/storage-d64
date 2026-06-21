@@ -479,6 +479,18 @@ button:disabled {
   will-change: transform;
 }
 
+.disk-map-sector {
+  transition:
+    filter 90ms ease,
+    stroke-width 90ms ease;
+}
+
+.disk-map-sector.is-hovered {
+  filter: brightness(1.22);
+  stroke: rgba(232, 248, 255, 0.9) !important;
+  stroke-width: 1.2 !important;
+}
+
 .disk-map.is-dragging {
   cursor: grabbing;
 }
@@ -519,6 +531,23 @@ button:disabled {
   box-shadow: 0 16px 32px rgba(6, 17, 27, 0.28);
   font-size: 0.78rem;
   line-height: 1.4;
+  pointer-events: none;
+}
+
+.disk-map-pointer {
+  position: absolute;
+  top: 54px;
+  left: 16px;
+  z-index: 2;
+  padding: 6px 10px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(8, 28, 39, 0.9);
+  box-shadow: 0 10px 24px rgba(6, 17, 27, 0.22);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   pointer-events: none;
 }
 
