@@ -435,7 +435,7 @@ button:disabled {
 }
 
 .disk-map-toolbar-label {
-  color: var(--muted);
+  color: #304653;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -466,6 +466,12 @@ button:disabled {
   user-select: none;
   background: #b9c8d2;
   border-radius: 14px;
+  color: #304653;
+}
+
+.disk-map.empty-state {
+  color: #304653;
+  font-weight: 600;
 }
 
 .disk-map.is-pannable {
@@ -475,7 +481,7 @@ button:disabled {
 .disk-map svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   transform-origin: center center;
   transition: transform 140ms ease;
   will-change: transform;

@@ -251,15 +251,29 @@
 
   const resetDiskMapView = function () {
     const svg = diskMap.querySelector("svg");
-    diskMapView.scale = 1;
     if (svg) {
+      const targetFillRatio = 0.98;
       const scaleX = svg.clientWidth / DISK_MAP_VIEWBOX.width;
       const scaleY = svg.clientHeight / DISK_MAP_VIEWBOX.height;
+      const shellCenterX =
+        DISK_MAP_PHYSICAL.shellX + DISK_MAP_PHYSICAL.shellWidth * 0.5;
+      const shellCenterY =
+        DISK_MAP_PHYSICAL.shellY + DISK_MAP_PHYSICAL.shellHeight * 0.5;
+      const fitScale = clampDiskMapScale(
+        Math.min(
+          (svg.clientWidth * targetFillRatio) /
+            (DISK_MAP_PHYSICAL.shellWidth * scaleX),
+          (svg.clientHeight * targetFillRatio) /
+            (DISK_MAP_PHYSICAL.shellHeight * scaleY),
+        ),
+      );
+      diskMapView.scale = fitScale;
       diskMapView.offsetX =
-        svg.clientWidth * 0.5 - DISK_MAP_VIEWBOX.diskCenterX * scaleX;
+        fitScale * (svg.clientWidth * 0.5 - shellCenterX * scaleX);
       diskMapView.offsetY =
-        svg.clientHeight * 0.5 - DISK_MAP_VIEWBOX.diskCenterY * scaleY;
+        fitScale * (svg.clientHeight * 0.5 - shellCenterY * scaleY);
     } else {
+      diskMapView.scale = 1;
       diskMapView.offsetX = 0;
       diskMapView.offsetY = 0;
     }
@@ -1488,7 +1502,8 @@
       '<stop offset="0%" stop-color="#10222d" />' +
       '<stop offset="100%" stop-color="#081620" />' +
       "</radialGradient>" +
-      '<marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></marker>' +
+      '<filter id="disk-spin-glow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="rgba(8, 28, 39, 0.78)" flood-opacity="1" /></filter>' +
+      '<marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(215, 250, 247, 0.96)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></marker>' +
       "</defs>" +
       '<rect x="' +
       shellX +
@@ -1611,7 +1626,7 @@
         Math.PI * 1.22,
         Math.PI * 2.68,
       ) +
-      '" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="3" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" />' +
+      '" fill="none" stroke="rgba(190, 244, 240, 0.96)" stroke-width="2.7" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" filter="url(#disk-spin-glow)" />' +
       '<rect x="' +
       writeNotchX +
       '" y="' +
