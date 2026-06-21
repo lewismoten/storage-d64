@@ -85,32 +85,32 @@
     indexHoleRadius: 60,
     indexHoleSize: 4.2,
     spindleRadius: 50,
-    spindleOutlineRadius: 67,
-    spindleHoleRadius: 38,
+    spindleOutlineRadius: 58,
+    spindleHoleRadius: 46,
     headWindowOffsetX: 0,
-    headWindowOffsetY: 123,
+    headWindowOffsetY: 136,
     headWindowWidth: 42,
     headWindowHeight: 168,
     headWindowRadius: 20,
-    platterRadius: 184,
-    mechanismOuterRadius: 166,
-    mechanismInnerRadius: 78,
+    platterRadius: 246,
+    mechanismOuterRadius: 226,
+    mechanismInnerRadius: 104,
     mechanismTrackCount: 40,
-    shellX: 38,
-    shellY: 28,
-    shellWidth: 474,
-    shellHeight: 560,
+    shellX: 17,
+    shellY: 20,
+    shellWidth: 516,
+    shellHeight: 516,
     shellRadius: 18,
-    labelX: 56,
-    labelY: 44,
-    labelWidth: 438,
-    labelHeight: 102,
+    labelX: 30,
+    labelY: 30,
+    labelWidth: 490,
+    labelHeight: 62,
   });
   const DISK_MAP_VIEWBOX = Object.freeze({
     width: 760,
     height: 620,
     diskCenterX: 275,
-    diskCenterY: 332,
+    diskCenterY: 276,
   });
   const diskMapView = {
     scale: 1,
@@ -1293,8 +1293,9 @@
     const labelY = DISK_MAP_PHYSICAL.labelY;
     const labelWidth = DISK_MAP_PHYSICAL.labelWidth;
     const labelHeight = DISK_MAP_PHYSICAL.labelHeight;
+    const shellCutoutFill = "#16384a";
     const writeNotchX = shellX + shellWidth - 10;
-    const writeNotchY = shellY + 226;
+    const writeNotchY = shellY + 118;
     const diskNameLabel = String(diskHeader.diskName || "UNTITLED DISK");
     const diskNumberLabel = String(diskHeader.diskId || "00");
     const firstPrgFile = diskFiles.find(function (file) {
@@ -1512,21 +1513,21 @@
       '<text x="' +
       (labelX + 20) +
       '" y="' +
-      (labelY + 38) +
+      (labelY + 25) +
       '" class="disk-map-shell-title">' +
       escapeHtml(diskNameLabel) +
       "</text>" +
       '<text x="' +
       (labelX + 20) +
       '" y="' +
-      (labelY + 68) +
+      (labelY + 43) +
       '" class="disk-map-shell-subtitle">' +
       escapeHtml(prgHintLabel) +
       "</text>" +
       '<text x="' +
       (labelX + labelWidth - 22) +
       '" y="' +
-      (labelY + 38) +
+      (labelY + 25) +
       '" class="disk-map-shell-diskno">Disk: ' +
       escapeHtml(diskNumberLabel) +
       "</text>" +
@@ -1564,7 +1565,7 @@
       '" cy="' +
       cy +
       '" r="' +
-      (DISK_MAP_PHYSICAL.spindleOutlineRadius - 8).toFixed(2) +
+      (DISK_MAP_PHYSICAL.spindleOutlineRadius - 5).toFixed(2) +
       '" fill="none" stroke="rgba(154, 172, 188, 0.18)" stroke-width="1.1" />' +
       '<rect x="' +
       headWindowX.toFixed(2) +
@@ -1583,7 +1584,9 @@
       indexHolePoint.y.toFixed(2) +
       '" r="' +
       DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
-      '" fill="rgba(18, 18, 18, 0.92)" stroke="rgba(42, 48, 54, 0.7)" stroke-width="0.9" />' +
+      '" fill="' +
+      shellCutoutFill +
+      '" stroke="rgba(42, 48, 54, 0.7)" stroke-width="0.9" />' +
       '<circle cx="' +
       indexHolePoint.x.toFixed(2) +
       '" cy="' +
@@ -1597,7 +1600,9 @@
       cy +
       '" r="' +
       DISK_MAP_PHYSICAL.spindleHoleRadius.toFixed(2) +
-      '" fill="rgba(12, 43, 60, 0.92)" />' +
+      '" fill="' +
+      shellCutoutFill +
+      '" />' +
       '<path d="' +
       describeArcPath(
         cx,
@@ -1611,17 +1616,23 @@
       writeNotchX +
       '" y="' +
       writeNotchY +
-      '" width="14" height="42" rx="2" fill="rgba(12, 43, 60, 0.92)" />' +
+      '" width="14" height="42" rx="2" fill="' +
+      shellCutoutFill +
+      '" />' +
       '<circle cx="' +
       (shellX + shellWidth * 0.46).toFixed(2) +
       '" cy="' +
       (shellY + shellHeight).toFixed(2) +
-      '" r="6.4" fill="rgba(12, 43, 60, 0.92)" />' +
+      '" r="6.4" fill="' +
+      shellCutoutFill +
+      '" />' +
       '<circle cx="' +
       (shellX + shellWidth * 0.54).toFixed(2) +
       '" cy="' +
       (shellY + shellHeight).toFixed(2) +
-      '" r="6.4" fill="rgba(12, 43, 60, 0.92)" />' +
+      '" r="6.4" fill="' +
+      shellCutoutFill +
+      '" />' +
       "</svg>";
     applyDiskMapTransform();
     applySelectedDiskMapSector();
