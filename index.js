@@ -85,6 +85,11 @@
     indexHoleRadius: 60,
     indexHoleSize: 4.2,
     spindleRadius: 46,
+    spindleOutlineRadius: 57,
+    headWindowOffsetX: 118,
+    headWindowWidth: 34,
+    headWindowHeight: 154,
+    headWindowRadius: 16,
     platterRadius: 250,
     mechanismOuterRadius: 224,
     mechanismInnerRadius: 82,
@@ -1260,6 +1265,11 @@
       DISK_MAP_PHYSICAL.indexHoleRadius,
       DISK_MAP_PHYSICAL.indexHoleAngle,
     );
+    const headWindowX =
+      cx +
+      DISK_MAP_PHYSICAL.headWindowOffsetX -
+      DISK_MAP_PHYSICAL.headWindowWidth / 2;
+    const headWindowY = cy - DISK_MAP_PHYSICAL.headWindowHeight / 2;
     const sectors = [];
 
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -1508,6 +1518,24 @@
       '" cy="' +
       cy +
       '" r="' +
+      DISK_MAP_PHYSICAL.spindleOutlineRadius.toFixed(2) +
+      '" fill="none" stroke="rgba(214, 188, 154, 0.36)" stroke-width="1.2" />' +
+      '<rect x="' +
+      headWindowX.toFixed(2) +
+      '" y="' +
+      headWindowY.toFixed(2) +
+      '" width="' +
+      DISK_MAP_PHYSICAL.headWindowWidth.toFixed(2) +
+      '" height="' +
+      DISK_MAP_PHYSICAL.headWindowHeight.toFixed(2) +
+      '" rx="' +
+      DISK_MAP_PHYSICAL.headWindowRadius.toFixed(2) +
+      '" fill="none" stroke="rgba(214, 188, 154, 0.34)" stroke-width="1.1" />' +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
       DISK_MAP_PHYSICAL.spindleRadius.toFixed(2) +
       '" fill="url(#disk-hub-fill)" stroke="rgba(185, 227, 242, 0.18)" />' +
       '<circle cx="' +
@@ -1517,6 +1545,13 @@
       '" r="' +
       DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
       '" fill="rgba(20, 14, 10, 0.9)" stroke="rgba(228, 197, 154, 0.14)" stroke-width="0.9" />' +
+      '<circle cx="' +
+      indexHolePoint.x.toFixed(2) +
+      '" cy="' +
+      indexHolePoint.y.toFixed(2) +
+      '" r="' +
+      (DISK_MAP_PHYSICAL.indexHoleSize + 6).toFixed(2) +
+      '" fill="none" stroke="rgba(214, 188, 154, 0.34)" stroke-width="1.1" />' +
       '<path d="' +
       describeArcPath(
         cx,
