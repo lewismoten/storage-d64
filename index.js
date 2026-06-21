@@ -830,7 +830,75 @@
           " sectors",
       ) +
       '">' +
-      '<defs><marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></marker></defs>' +
+      "<defs>" +
+      '<radialGradient id="disk-platter-fill" cx="45%" cy="38%" r="70%">' +
+      '<stop offset="0%" stop-color="#9b7650" />' +
+      '<stop offset="48%" stop-color="#7b5a3a" />' +
+      '<stop offset="100%" stop-color="#4b3624" />' +
+      "</radialGradient>" +
+      '<radialGradient id="disk-hub-fill" cx="50%" cy="50%" r="75%">' +
+      '<stop offset="0%" stop-color="#10222d" />' +
+      '<stop offset="100%" stop-color="#081620" />' +
+      "</radialGradient>" +
+      '<marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></marker>' +
+      "</defs>" +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      String(outerRadius + 6) +
+      '" fill="url(#disk-platter-fill)" stroke="rgba(207, 177, 137, 0.26)" stroke-width="1.5" />' +
+      '<line x1="' +
+      (cx + innerRadius + 10) +
+      '" y1="' +
+      cy +
+      '" x2="' +
+      (cx + outerRadius + 64) +
+      '" y2="' +
+      cy +
+      '" stroke="rgba(215, 190, 155, 0.34)" stroke-width="2" stroke-dasharray="7 7" />' +
+      '<line x1="' +
+      (cx + innerRadius + 10) +
+      '" y1="' +
+      (cy - 8) +
+      '" x2="' +
+      (cx + innerRadius + 10) +
+      '" y2="' +
+      (cy + 8) +
+      '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
+      '<line x1="' +
+      (cx + outerRadius + 10) +
+      '" y1="' +
+      (cy - 8) +
+      '" x2="' +
+      (cx + outerRadius + 10) +
+      '" y2="' +
+      (cy + 8) +
+      '" stroke="rgba(215, 190, 155, 0.5)" stroke-width="2" />' +
+      '<rect x="' +
+      (cx + outerRadius + 40) +
+      '" y="' +
+      (cy - 14) +
+      '" width="28" height="28" rx="5" fill="rgba(200, 219, 224, 0.16)" stroke="rgba(215, 237, 240, 0.34)" />' +
+      '<path d="M ' +
+      (cx + outerRadius + 40) +
+      " " +
+      (cy - 6) +
+      " L " +
+      (cx + outerRadius + 26) +
+      " " +
+      cy +
+      " L " +
+      (cx + outerRadius + 40) +
+      " " +
+      (cy + 6) +
+      '" fill="rgba(200, 219, 224, 0.22)" stroke="rgba(215, 237, 240, 0.3)" />' +
+      '<text class="disk-map-center-subtitle" x="' +
+      (cx + outerRadius + 54) +
+      '" y="' +
+      (cy - 22) +
+      '">Head path</text>' +
       sectors.join("") +
       '<circle cx="' +
       cx +
@@ -838,7 +906,12 @@
       cy +
       '" r="' +
       String(innerRadius - 10) +
-      '" fill="rgba(8, 28, 39, 0.92)" stroke="rgba(185, 227, 242, 0.18)" />' +
+      '" fill="url(#disk-hub-fill)" stroke="rgba(185, 227, 242, 0.18)" />' +
+      '<circle cx="' +
+      (cx + 16) +
+      '" cy="' +
+      (cy - 6) +
+      '" r="6.5" fill="rgba(20, 14, 10, 0.9)" stroke="rgba(228, 197, 154, 0.16)" />' +
       '<path d="' +
       describeArcPath(
         cx,
