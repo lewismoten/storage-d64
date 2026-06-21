@@ -5,6 +5,8 @@
     image: null,
     sourceName: "",
     objectUrl: null,
+    deletedFiles: [],
+    nextDeletedFileId: 1,
   };
 
   const createForm = document.getElementById("create-form");
@@ -23,10 +25,14 @@
   const usageLegend = document.getElementById("usage-legend");
   const directoryCount = document.getElementById("directory-count");
   const fileTableBody = document.getElementById("file-table-body");
+  const deletedFilesPanel = document.getElementById("deleted-files-panel");
+  const deletedCount = document.getElementById("deleted-count");
+  const deletedFilesList = document.getElementById("deleted-files-list");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
     "buildImage",
+    "rebuildImage",
     "readHeader",
     "readFiles",
     "estimateImageUsage",
@@ -73,6 +79,23 @@
     if (!state.objectUrl) return;
     URL.revokeObjectURL(state.objectUrl);
     state.objectUrl = null;
+  };
+
+  const cloneFileRecord = function (file) {
+    if (!file) return null;
+    return {
+      name: file.name,
+      type: file.type,
+      closed: file.closed,
+      locked: file.locked,
+      recordLength: file.recordLength,
+      data:
+        file.data instanceof Uint8Array ? file.data.slice() : new Uint8Array(),
+      unusedTailData:
+        file.unusedTailData instanceof Uint8Array
+          ? file.unusedTailData.slice()
+          : new Uint8Array(),
+    };
   };
 
   const setCurrentImage = function (image, sourceName) {
@@ -179,6 +202,45 @@
       .join("");
   };
 
+  const renderDeletedFiles = function () {
+    const deletedFiles = state.deletedFiles.slice();
+    deletedCount.textContent =
+      deletedFiles.length.toString() +
+      (deletedFiles.length === 1 ? " entry" : " entries");
+
+    if (!deletedFiles.length) {
+      deletedFilesPanel.hidden = true;
+      deletedFilesList.innerHTML = "";
+      return;
+    }
+
+    deletedFilesPanel.hidden = false;
+    deletedFilesList.innerHTML = deletedFiles
+      .map(function (entry) {
+        return (
+          '<article class="deleted-file-card">' +
+          "<div>" +
+          '<div class="deleted-file-name">' +
+          escapeHtml(entry.file.name) +
+          "</div>" +
+          '<div class="deleted-file-meta">' +
+          escapeHtml(String(entry.file.type || "").toUpperCase()) +
+          " · " +
+          escapeHtml(
+            formatNumber((entry.file.data && entry.file.data.length) || 0),
+          ) +
+          " bytes" +
+          "</div>" +
+          "</div>" +
+          '<button type="button" class="restore-button" data-action="restore-file" data-deleted-id="' +
+          String(entry.id) +
+          '">Restore</button>' +
+          "</article>"
+        );
+      })
+      .join("");
+  };
+
   const refreshView = function () {
     if (!state.image) {
       renderDefinitionList(headerSummary, [
@@ -188,9 +250,10 @@
         { label: "Status", value: "Waiting for an image" },
       ]);
       renderUsageChart(null);
+      renderDeletedFiles();
       directoryCount.textContent = "0 entries";
       fileTableBody.innerHTML =
-        '<tr><td colspan="6" class="empty-state">Load or create a disk image to see directory entries.</td></tr>';
+        '<tr><td colspan="7" class="empty-state">Load or create a disk image to see directory entries.</td></tr>';
       setCurrentImage(null, "");
       return;
     }
@@ -281,11 +344,16 @@
     ]);
 
     directoryCount.textContent =
-      files.length.toString() + (files.length === 1 ? " entry" : " entries");
+      files.length.toString() +
+      (files.length === 1 ? " entry" : " entries") +
+      (state.deletedFiles.length
+        ? " · " + state.deletedFiles.length + " deleted"
+        : "");
+    renderDeletedFiles();
 
     if (!files.length) {
       fileTableBody.innerHTML =
-        '<tr><td colspan="6" class="empty-state">This disk has no directory entries.</td></tr>';
+        '<tr><td colspan="7" class="empty-state">This disk has no directory entries.</td></tr>';
       return;
     }
 
@@ -328,13 +396,25 @@
             ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
           }) +
           "</td>" +
+          "<td>" +
+          '<button type="button" class="delete-button" data-action="delete-file" data-name="' +
+          escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Delete " + file.name) +
+          '">Delete</button>' +
+          "</td>" +
           "</tr>"
         );
       })
       .join("");
   };
 
-  const loadImageBytes = function (bytes, sourceName, message) {
+  const loadImageBytes = function (bytes, sourceName, message, options) {
+    const config = options || {};
+    if (config.resetDeletedFiles !== false) {
+      state.deletedFiles = [];
+      state.nextDeletedFileId = 1;
+    }
     setCurrentImage(bytes, sourceName);
     updateDownloadLinkState();
     refreshView();
@@ -420,6 +500,59 @@
     }
   };
 
+  const deleteFile = function (fileName) {
+    if (!state.image) return;
+    try {
+      const files = d64.readFiles(state.image);
+      const file = files.find(function (entry) {
+        return entry.name === fileName;
+      });
+      if (!file) {
+        throw new Error("File not found: " + fileName);
+      }
+      state.deletedFiles.push({
+        id: state.nextDeletedFileId++,
+        file: cloneFileRecord(file),
+      });
+      loadImageBytes(
+        d64.deleteFile(state.image, fileName),
+        state.sourceName || "disk.d64",
+        "Deleted " + fileName + ".",
+        { resetDeletedFiles: false },
+      );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const restoreDeletedFile = function (deletedId) {
+    if (!state.image) return;
+    try {
+      const entryIndex = state.deletedFiles.findIndex(function (entry) {
+        return String(entry.id) === String(deletedId);
+      });
+      if (entryIndex < 0) {
+        throw new Error("Deleted file not found.");
+      }
+      const restored = state.deletedFiles[entryIndex];
+      const files = d64.readFiles(state.image);
+      const rebuilt = d64.rebuildImage(
+        state.image,
+        files.concat([cloneFileRecord(restored.file)]),
+      );
+      if (!rebuilt) {
+        throw new Error("Unable to restore file. Disk may be full.");
+      }
+      state.deletedFiles.splice(entryIndex, 1);
+      setCurrentImage(rebuilt, state.sourceName || "disk.d64");
+      updateDownloadLinkState();
+      refreshView();
+      setStatus("Restored " + restored.file.name + ".");
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const initialize = function () {
     const missing = REQUIRED_API.filter(function (name) {
       return !d64 || typeof d64[name] !== "function";
@@ -452,7 +585,16 @@
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "delete-file") {
+        deleteFile(button.dataset.name);
+        return;
+      }
       updateFileFlag(button.dataset.action, button.dataset.name);
+    });
+    deletedFilesList.addEventListener("click", function (event) {
+      const button = event.target.closest("button[data-action='restore-file']");
+      if (!button) return;
+      restoreDeletedFile(button.dataset.deletedId);
     });
     window.addEventListener("beforeunload", releaseObjectUrl);
 

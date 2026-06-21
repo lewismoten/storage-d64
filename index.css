@@ -493,6 +493,59 @@ tbody tr:hover {
   background: var(--bad);
 }
 
+.delete-button,
+.restore-button {
+  min-height: 34px;
+  width: auto;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.delete-button {
+  color: #fff4f4;
+  background: linear-gradient(180deg, #ff8e90, #d6546c);
+}
+
+.restore-button {
+  color: #04212b;
+  background: linear-gradient(180deg, #8ef3e6, #3fd1c2);
+}
+
+.deleted-panel {
+  margin-top: 16px;
+}
+
+.deleted-files-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.deleted-file-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.deleted-file-name {
+  font-weight: 700;
+}
+
+.deleted-file-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 @media (max-width: 980px) {
   .layout,
   .hero-grid,
@@ -528,5 +581,10 @@ tbody tr:hover {
 
   .meta-list dd {
     text-align: left;
+  }
+
+  .deleted-file-card {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
