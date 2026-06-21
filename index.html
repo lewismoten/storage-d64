@@ -160,6 +160,42 @@
             </article>
           </section>
 
+          <section class="directory-panel disk-map-panel">
+            <div class="section-heading">
+              <h3>Disk Layout</h3>
+              <p id="disk-map-summary">Waiting for an image</p>
+            </div>
+            <div class="disk-map-grid">
+              <div class="disk-map-frame">
+                <div class="disk-map-toolbar">
+                  <div class="disk-map-toolbar-label">Pan and zoom</div>
+                  <div class="disk-map-toolbar-actions">
+                    <button id="disk-map-zoom-out" type="button" disabled>
+                      -
+                    </button>
+                    <button id="disk-map-zoom-reset" type="button" disabled>
+                      Reset
+                    </button>
+                    <button id="disk-map-zoom-in" type="button" disabled>
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div id="disk-map" class="disk-map empty-state">
+                  Load or create a disk image to view tracks and sectors.
+                </div>
+                <div
+                  id="disk-map-tooltip"
+                  class="disk-map-tooltip"
+                  hidden
+                ></div>
+              </div>
+              <div class="disk-map-legend-wrap">
+                <div id="disk-map-legend" class="disk-map-legend"></div>
+              </div>
+            </div>
+          </section>
+
           <section class="directory-panel">
             <div class="section-heading">
               <h3>Directory Files</h3>

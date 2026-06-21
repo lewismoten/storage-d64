@@ -22,6 +22,13 @@
   const usageChartPanel = document.getElementById("usage-chart-panel");
   const usageChart = document.getElementById("usage-chart");
   const usageLegend = document.getElementById("usage-legend");
+  const diskMap = document.getElementById("disk-map");
+  const diskMapTooltip = document.getElementById("disk-map-tooltip");
+  const diskMapLegend = document.getElementById("disk-map-legend");
+  const diskMapSummary = document.getElementById("disk-map-summary");
+  const diskMapZoomIn = document.getElementById("disk-map-zoom-in");
+  const diskMapZoomOut = document.getElementById("disk-map-zoom-out");
+  const diskMapZoomReset = document.getElementById("disk-map-zoom-reset");
   const directoryCount = document.getElementById("directory-count");
   const fileTableBody = document.getElementById("file-table-body");
   const deletedFilesPanel = document.getElementById("deleted-files-panel");
@@ -32,8 +39,12 @@
   const REQUIRED_API = [
     "buildImage",
     "readHeader",
+    "readBam",
     "readFiles",
     "readDeletedEntries",
+    "readDirectoryEntriesFrom",
+    "readFileChain",
+    "readRelativeSideSectors",
     "estimateImageUsage",
     "fileName",
     "unlockFile",
@@ -42,7 +53,37 @@
     "closeFile",
     "scratchFile",
     "undeleteFile",
+    "trackSectorCount",
   ];
+  const DISK_MAP_COLORS = Object.freeze({
+    free: "#183a4e",
+    unknownUsed: "#6c8ea3",
+    header: "#f2a65a",
+    bam: "#ffd166",
+    directory: "#7ed6df",
+    prgUsed: "#00d1b2",
+    prgTail: "#98f5e1",
+    seqUsed: "#4dabf7",
+    seqTail: "#a9dcff",
+    usrUsed: "#c77dff",
+    usrTail: "#e0b8ff",
+    relUsed: "#ff6b6b",
+    relTail: "#ffb3b3",
+    relSide: "#ff9f43",
+    relSideTail: "#ffd3a1",
+    deleted: "#8c98a4",
+    trackStroke: "rgba(255,255,255,0.08)",
+  });
+  const diskMapView = {
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    originOffsetX: 0,
+    originOffsetY: 0,
+  };
 
   const setStatus = function (message, isError) {
     status.textContent = message;
@@ -134,6 +175,91 @@
     );
   };
 
+  const clampDiskMapScale = function (scale) {
+    return Math.max(0.7, Math.min(4, Number(scale) || 1));
+  };
+
+  const getDiskMapLocalPoint = function (clientX, clientY) {
+    const rect = diskMap.getBoundingClientRect();
+    return {
+      x: clientX - (rect.left + rect.width / 2),
+      y: clientY - (rect.top + rect.height / 2),
+    };
+  };
+
+  const applyDiskMapTransform = function () {
+    const svg = diskMap.querySelector("svg");
+    if (!svg) return;
+    svg.style.transform =
+      "translate(" +
+      diskMapView.offsetX +
+      "px, " +
+      diskMapView.offsetY +
+      "px) scale(" +
+      diskMapView.scale +
+      ")";
+    diskMap.classList.toggle("is-pannable", diskMapView.scale > 1.01);
+  };
+
+  const syncDiskMapControls = function () {
+    const hasImage = Boolean(state.image);
+    diskMapZoomIn.disabled = !hasImage;
+    diskMapZoomOut.disabled = !hasImage;
+    diskMapZoomReset.disabled = !hasImage;
+  };
+
+  const resetDiskMapView = function () {
+    diskMapView.scale = 1;
+    diskMapView.offsetX = 0;
+    diskMapView.offsetY = 0;
+    applyDiskMapTransform();
+  };
+
+  const showDiskMapTooltip = function (text, clientX, clientY) {
+    const frameRect = diskMap.parentElement.getBoundingClientRect();
+    diskMapTooltip.hidden = false;
+    diskMapTooltip.textContent = text;
+    diskMapTooltip.style.left =
+      Math.max(
+        10,
+        Math.min(frameRect.width - 190, clientX - frameRect.left + 14),
+      ) + "px";
+    diskMapTooltip.style.top =
+      Math.max(10, clientY - frameRect.top + 14) + "px";
+  };
+
+  const hideDiskMapTooltip = function () {
+    diskMapTooltip.hidden = true;
+    diskMapTooltip.textContent = "";
+  };
+
+  const zoomDiskMapAtPoint = function (factor, clientX, clientY) {
+    const nextScale = clampDiskMapScale(diskMapView.scale * factor);
+    const appliedFactor = nextScale / diskMapView.scale;
+    if (!Number.isFinite(appliedFactor) || appliedFactor === 1) return;
+    const point = getDiskMapLocalPoint(clientX, clientY);
+    diskMapView.offsetX =
+      point.x - appliedFactor * (point.x - diskMapView.offsetX);
+    diskMapView.offsetY =
+      point.y - appliedFactor * (point.y - diskMapView.offsetY);
+    diskMapView.scale = nextScale;
+    applyDiskMapTransform();
+  };
+
+  const zoomDiskMap = function (direction) {
+    const rect = diskMap.getBoundingClientRect();
+    zoomDiskMapAtPoint(
+      direction > 0 ? 1.08 : 1 / 1.08,
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+  };
+
+  const zoomDiskMapByWheel = function (deltaY, clientX, clientY) {
+    const factor = Math.exp(-Math.max(-240, Math.min(240, deltaY)) * 0.0012);
+    zoomDiskMapAtPoint(factor, clientX, clientY);
+  };
+
   const renderUsageChart = function (segments) {
     if (!segments || !segments.length) {
       usageChartPanel.hidden = true;
@@ -188,6 +314,508 @@
         );
       })
       .join("");
+  };
+
+  const polarToCartesian = function (cx, cy, radius, angle) {
+    return {
+      x: cx + radius * Math.cos(angle - Math.PI / 2),
+      y: cy + radius * Math.sin(angle - Math.PI / 2),
+    };
+  };
+
+  const describeArcPath = function (cx, cy, radius, startAngle, endAngle) {
+    const start = polarToCartesian(cx, cy, radius, startAngle);
+    const end = polarToCartesian(cx, cy, radius, endAngle);
+    const largeArc = Math.abs(endAngle - startAngle) > Math.PI ? 1 : 0;
+    const sweep = endAngle > startAngle ? 1 : 0;
+    return [
+      "M",
+      start.x.toFixed(3),
+      start.y.toFixed(3),
+      "A",
+      radius.toFixed(3),
+      radius.toFixed(3),
+      "0",
+      largeArc,
+      sweep,
+      end.x.toFixed(3),
+      end.y.toFixed(3),
+    ].join(" ");
+  };
+
+  const describeArrowHead = function (x, y, angle, size) {
+    const left = {
+      x: x - size * Math.cos(angle - Math.PI / 6),
+      y: y - size * Math.sin(angle - Math.PI / 6),
+    };
+    const right = {
+      x: x - size * Math.cos(angle + Math.PI / 6),
+      y: y - size * Math.sin(angle + Math.PI / 6),
+    };
+    return (
+      "M " +
+      left.x.toFixed(3) +
+      " " +
+      left.y.toFixed(3) +
+      " L " +
+      x.toFixed(3) +
+      " " +
+      y.toFixed(3) +
+      " L " +
+      right.x.toFixed(3) +
+      " " +
+      right.y.toFixed(3)
+    );
+  };
+
+  const describeSectorPath = function (
+    cx,
+    cy,
+    innerRadius,
+    outerRadius,
+    startAngle,
+    endAngle,
+  ) {
+    const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle);
+    const outerEnd = polarToCartesian(cx, cy, outerRadius, endAngle);
+    const innerEnd = polarToCartesian(cx, cy, innerRadius, endAngle);
+    const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    return [
+      "M",
+      outerStart.x.toFixed(3),
+      outerStart.y.toFixed(3),
+      "A",
+      outerRadius.toFixed(3),
+      outerRadius.toFixed(3),
+      "0",
+      largeArc,
+      "1",
+      outerEnd.x.toFixed(3),
+      outerEnd.y.toFixed(3),
+      "L",
+      innerEnd.x.toFixed(3),
+      innerEnd.y.toFixed(3),
+      "A",
+      innerRadius.toFixed(3),
+      innerRadius.toFixed(3),
+      "0",
+      largeArc,
+      "0",
+      innerStart.x.toFixed(3),
+      innerStart.y.toFixed(3),
+      "Z",
+    ].join(" ");
+  };
+
+  const markSector = function (map, track, sector, details) {
+    const key = String(track) + ":" + String(sector);
+    map[key] = Object.assign({ track: track, sector: sector }, details || {});
+  };
+
+  const buildDiskSectorMap = function (image) {
+    const geometry = d64.describeGeometry(image);
+    const bam = d64.readBam(image);
+    const header = d64.readHeader(image);
+    const directory = d64.readDirectoryEntriesFrom(
+      image,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+      { includeDeleted: true },
+    );
+    const sectorMap = {};
+
+    for (let track = 1; track <= geometry.trackCount; track += 1) {
+      const sectorCount = d64.trackSectorCount(track);
+      const trackInfo = bam.tracks[track - 1];
+      for (let sector = 0; sector < sectorCount; sector += 1) {
+        const isFree =
+          trackInfo && Array.isArray(trackInfo.sectorFree)
+            ? trackInfo.sectorFree[sector]
+            : null;
+        markSector(sectorMap, track, sector, {
+          category:
+            isFree === true
+              ? "free"
+              : isFree === false
+                ? "unknownUsed"
+                : "unknownUsed",
+          color:
+            isFree === true
+              ? DISK_MAP_COLORS.free
+              : DISK_MAP_COLORS.unknownUsed,
+          stroke: DISK_MAP_COLORS.trackStroke,
+          label: isFree === true ? "Free sector" : "Used or untracked sector",
+          usedFraction: isFree === true ? 0 : 1,
+        });
+      }
+    }
+
+    markSector(sectorMap, 18, 0, {
+      category: "header",
+      color: DISK_MAP_COLORS.header,
+      stroke: DISK_MAP_COLORS.trackStroke,
+      label: "Disk header and BAM sector",
+      usedFraction: 1,
+    });
+
+    directory.sectors.forEach(function (sectorInfo, index) {
+      if (sectorInfo.track === 18 && sectorInfo.sector === 0) return;
+      markSector(sectorMap, sectorInfo.track, sectorInfo.sector, {
+        category: "directory",
+        color: DISK_MAP_COLORS.directory,
+        stroke: DISK_MAP_COLORS.trackStroke,
+        label: "Directory sector " + String(index + 1),
+        usedFraction: 1,
+      });
+    });
+
+    const activeEntries = directory.entries.filter(function (entry) {
+      return entry.typeByte;
+    });
+    activeEntries.forEach(function (entry) {
+      const type = String(entry.fileType || "prg").toLowerCase();
+      const usedColor =
+        {
+          prg: DISK_MAP_COLORS.prgUsed,
+          seq: DISK_MAP_COLORS.seqUsed,
+          usr: DISK_MAP_COLORS.usrUsed,
+          rel: DISK_MAP_COLORS.relUsed,
+        }[type] || DISK_MAP_COLORS.prgUsed;
+      const tailColor =
+        {
+          prg: DISK_MAP_COLORS.prgTail,
+          seq: DISK_MAP_COLORS.seqTail,
+          usr: DISK_MAP_COLORS.usrTail,
+          rel: DISK_MAP_COLORS.relTail,
+        }[type] || DISK_MAP_COLORS.prgTail;
+      try {
+        const chain = d64.readFileChain(
+          image,
+          entry.startTrack,
+          entry.startSector,
+        );
+        chain.blocks.forEach(function (block, blockIndex) {
+          markSector(sectorMap, block.track, block.sector, {
+            category: type + "Data",
+            color: usedColor,
+            tailColor: tailColor,
+            stroke: DISK_MAP_COLORS.trackStroke,
+            label:
+              entry.name +
+              " (" +
+              type.toUpperCase() +
+              ") block " +
+              String(blockIndex + 1),
+            usedFraction: Math.max(
+              0,
+              Math.min(1, (block.usedBytes || 0) / 254),
+            ),
+            unusedFraction: Math.max(
+              0,
+              Math.min(1, (block.unusedBytes || 0) / 254),
+            ),
+          });
+        });
+        if (type === "rel" && entry.sideSectorTrack) {
+          d64
+            .readRelativeSideSectors(
+              image,
+              entry.sideSectorTrack,
+              entry.sideSectorSector,
+            )
+            .forEach(function (sideSector, sideIndex) {
+              markSector(sectorMap, sideSector.track, sideSector.sector, {
+                category: "relSide",
+                color: DISK_MAP_COLORS.relSide,
+                tailColor: DISK_MAP_COLORS.relSideTail,
+                stroke: DISK_MAP_COLORS.trackStroke,
+                label:
+                  entry.name +
+                  " (REL side sector " +
+                  String(sideIndex + 1) +
+                  ")",
+                usedFraction: 1,
+                unusedFraction: 0,
+              });
+            });
+        }
+      } catch (error) {
+        markSector(sectorMap, entry.startTrack, entry.startSector, {
+          category: "unknownUsed",
+          color: DISK_MAP_COLORS.unknownUsed,
+          stroke: DISK_MAP_COLORS.trackStroke,
+          label:
+            entry.name +
+            " (" +
+            type.toUpperCase() +
+            ") could not be fully traced",
+          usedFraction: 1,
+        });
+      }
+    });
+
+    return {
+      geometry: geometry,
+      sectorMap: sectorMap,
+      directorySectors: directory.sectors.length,
+      activeFiles: activeEntries.length,
+    };
+  };
+
+  const renderDiskMapLegend = function () {
+    diskMapLegend.innerHTML = [
+      {
+        title: "Disk Structure",
+        rows: [
+          ["Header", DISK_MAP_COLORS.header, "Track 18 sector 0 disk header"],
+          [
+            "BAM / Free",
+            DISK_MAP_COLORS.free,
+            "Free sectors according to the BAM",
+          ],
+          ["Directory", DISK_MAP_COLORS.directory, "Directory chain sectors"],
+          [
+            "Used / Unknown",
+            DISK_MAP_COLORS.unknownUsed,
+            "Used sectors not tied to a decoded file",
+          ],
+        ],
+      },
+      {
+        title: "File Types",
+        rows: [
+          [
+            "PRG",
+            DISK_MAP_COLORS.prgUsed,
+            "Dark = used bytes, light = tail bytes",
+          ],
+          [
+            "SEQ",
+            DISK_MAP_COLORS.seqUsed,
+            "Dark = used bytes, light = tail bytes",
+          ],
+          [
+            "USR",
+            DISK_MAP_COLORS.usrUsed,
+            "Dark = used bytes, light = tail bytes",
+          ],
+          ["REL Data", DISK_MAP_COLORS.relUsed, "REL file data sectors"],
+          ["REL Side", DISK_MAP_COLORS.relSide, "REL side-sector chain"],
+        ],
+      },
+    ]
+      .map(function (group) {
+        return (
+          '<section class="disk-map-legend-group"><h4>' +
+          escapeHtml(group.title) +
+          "</h4>" +
+          group.rows
+            .map(function (row) {
+              return (
+                '<div class="disk-map-legend-row">' +
+                '<span class="disk-map-swatch" style="background:' +
+                row[1] +
+                '"></span>' +
+                "<span><strong>" +
+                escapeHtml(row[0]) +
+                "</strong><br />" +
+                escapeHtml(row[2]) +
+                "</span></div>"
+              );
+            })
+            .join("") +
+          "</section>"
+        );
+      })
+      .join("");
+  };
+
+  const renderDiskMap = function (image) {
+    if (!image) {
+      diskMapSummary.textContent = "Waiting for an image";
+      diskMap.innerHTML =
+        "Load or create a disk image to view tracks and sectors.";
+      diskMap.className = "disk-map empty-state";
+      hideDiskMapTooltip();
+      resetDiskMapView();
+      syncDiskMapControls();
+      renderDiskMapLegend();
+      return;
+    }
+
+    const layout = buildDiskSectorMap(image);
+    const geometry = layout.geometry;
+    const outerRadius = 250;
+    const innerRadius = 54;
+    const trackBand = (outerRadius - innerRadius) / geometry.trackCount;
+    const cx = 275;
+    const cy = 300;
+    const sectors = [];
+
+    for (let track = 1; track <= geometry.trackCount; track += 1) {
+      const sectorCount = d64.trackSectorCount(track);
+      const trackOuter = outerRadius - (track - 1) * trackBand;
+      const trackInner = trackOuter - trackBand + 1.1;
+      for (let sector = 0; sector < sectorCount; sector += 1) {
+        const key = String(track) + ":" + String(sector);
+        const info = layout.sectorMap[key];
+        const startAngle =
+          ((sectorCount - sector - 1) / sectorCount) * Math.PI * 2;
+        const endAngle = ((sectorCount - sector) / sectorCount) * Math.PI * 2;
+        const totalFraction =
+          info && typeof info.usedFraction === "number" ? info.usedFraction : 1;
+        const usedEndAngle =
+          startAngle + (endAngle - startAngle) * totalFraction;
+        const basePath = describeSectorPath(
+          cx,
+          cy,
+          trackInner,
+          trackOuter,
+          startAngle,
+          endAngle,
+        );
+        if (info && totalFraction > 0 && totalFraction < 1 && info.tailColor) {
+          sectors.push(
+            '<path d="' +
+              describeSectorPath(
+                cx,
+                cy,
+                trackInner,
+                trackOuter,
+                startAngle,
+                usedEndAngle,
+              ) +
+              '" fill="' +
+              info.color +
+              '" stroke="' +
+              info.stroke +
+              '" stroke-width="0.5" data-tooltip="' +
+              escapeHtml(
+                "T" +
+                  String(track) +
+                  " S" +
+                  String(sector) +
+                  " · " +
+                  info.label +
+                  " · " +
+                  formatNumber(Math.round(totalFraction * 254)) +
+                  " used bytes",
+              ) +
+              '"></path>',
+          );
+          sectors.push(
+            '<path d="' +
+              describeSectorPath(
+                cx,
+                cy,
+                trackInner,
+                trackOuter,
+                usedEndAngle,
+                endAngle,
+              ) +
+              '" fill="' +
+              info.tailColor +
+              '" stroke="' +
+              info.stroke +
+              '" stroke-width="0.5" data-tooltip="' +
+              escapeHtml(
+                "T" +
+                  String(track) +
+                  " S" +
+                  String(sector) +
+                  " · " +
+                  info.label +
+                  " · tail bytes",
+              ) +
+              '"></path>',
+          );
+        } else {
+          sectors.push(
+            '<path d="' +
+              basePath +
+              '" fill="' +
+              (info ? info.color : DISK_MAP_COLORS.unknownUsed) +
+              '" stroke="' +
+              (info ? info.stroke : DISK_MAP_COLORS.trackStroke) +
+              '" stroke-width="0.5" data-tooltip="' +
+              escapeHtml(
+                "T" +
+                  String(track) +
+                  " S" +
+                  String(sector) +
+                  " · " +
+                  (info ? info.label : "Sector"),
+              ) +
+              '"></path>',
+          );
+        }
+      }
+      if (track === 1 || track === 18 || track === geometry.trackCount) {
+        const labelAngle = Math.PI * 1.5;
+        const labelPoint = polarToCartesian(
+          cx,
+          cy,
+          trackInner + trackBand / 2,
+          labelAngle,
+        );
+        sectors.push(
+          '<text class="disk-map-track-label" x="' +
+            labelPoint.x.toFixed(2) +
+            '" y="' +
+            labelPoint.y.toFixed(2) +
+            '">T' +
+            String(track) +
+            "</text>",
+        );
+      }
+    }
+
+    diskMapSummary.textContent =
+      formatNumber(geometry.trackCount) +
+      " tracks · " +
+      formatNumber(geometry.sectorCount) +
+      " sectors · " +
+      formatNumber(layout.activeFiles) +
+      " active files";
+    diskMap.className = "disk-map";
+    diskMap.innerHTML =
+      '<svg viewBox="0 0 760 620" role="img" aria-label="' +
+      escapeHtml(
+        "Disk layout map with " +
+          String(geometry.trackCount) +
+          " tracks and " +
+          String(geometry.sectorCount) +
+          " sectors",
+      ) +
+      '">' +
+      '<defs><marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></marker></defs>' +
+      sectors.join("") +
+      '<circle cx="' +
+      cx +
+      '" cy="' +
+      cy +
+      '" r="' +
+      String(innerRadius - 10) +
+      '" fill="rgba(8, 28, 39, 0.92)" stroke="rgba(185, 227, 242, 0.18)" />' +
+      '<path d="' +
+      describeArcPath(
+        cx,
+        cy,
+        innerRadius - 23,
+        Math.PI * 1.22,
+        Math.PI * 2.68,
+      ) +
+      '" fill="none" stroke="rgba(156, 223, 220, 0.72)" stroke-width="3" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" />' +
+      '<text class="disk-map-center-label" x="' +
+      cx +
+      '" y="' +
+      (cy - 6) +
+      '">D64</text>' +
+      "</svg>";
+    applyDiskMapTransform();
+    syncDiskMapControls();
+    renderDiskMapLegend();
   };
 
   const renderDeletedFiles = function () {
@@ -260,6 +888,7 @@
         { label: "Status", value: "Waiting for an image" },
       ]);
       renderUsageChart(null);
+      renderDiskMap(null);
       renderDeletedFiles();
       directoryCount.textContent = "0 entries";
       fileTableBody.innerHTML =
@@ -353,6 +982,7 @@
         color: "#3f82ff",
       },
     ]);
+    renderDiskMap(state.image);
 
     directoryCount.textContent =
       files.length.toString() +
@@ -556,6 +1186,36 @@
     }
   };
 
+  const startDiskMapDrag = function (event) {
+    if (
+      !state.image ||
+      !diskMap.querySelector("svg") ||
+      diskMapView.scale <= 1.01
+    )
+      return;
+    diskMapView.dragging = true;
+    diskMapView.dragStartX = event.clientX;
+    diskMapView.dragStartY = event.clientY;
+    diskMapView.originOffsetX = diskMapView.offsetX;
+    diskMapView.originOffsetY = diskMapView.offsetY;
+    diskMap.classList.add("is-dragging");
+  };
+
+  const moveDiskMapDrag = function (event) {
+    if (!diskMapView.dragging) return;
+    diskMapView.offsetX =
+      diskMapView.originOffsetX + (event.clientX - diskMapView.dragStartX);
+    diskMapView.offsetY =
+      diskMapView.originOffsetY + (event.clientY - diskMapView.dragStartY);
+    applyDiskMapTransform();
+  };
+
+  const stopDiskMapDrag = function () {
+    if (!diskMapView.dragging) return;
+    diskMapView.dragging = false;
+    diskMap.classList.remove("is-dragging");
+  };
+
   const initialize = function () {
     const missing = REQUIRED_API.filter(function (name) {
       return !d64 || typeof d64[name] !== "function";
@@ -577,6 +1237,47 @@
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);
+    diskMapZoomIn.addEventListener("click", function () {
+      zoomDiskMap(1);
+    });
+    diskMapZoomOut.addEventListener("click", function () {
+      zoomDiskMap(-1);
+    });
+    diskMapZoomReset.addEventListener("click", function () {
+      resetDiskMapView();
+    });
+    diskMap.addEventListener("wheel", function (event) {
+      if (!state.image) return;
+      event.preventDefault();
+      zoomDiskMapByWheel(event.deltaY, event.clientX, event.clientY);
+    });
+    diskMap.addEventListener("mousemove", function (event) {
+      if (diskMapView.dragging) {
+        hideDiskMapTooltip();
+        return;
+      }
+      const target = event.target.closest("[data-tooltip]");
+      if (!target) {
+        hideDiskMapTooltip();
+        return;
+      }
+      showDiskMapTooltip(
+        target.getAttribute("data-tooltip"),
+        event.clientX,
+        event.clientY,
+      );
+    });
+    diskMap.addEventListener("mouseleave", hideDiskMapTooltip);
+    diskMap.addEventListener("mousedown", function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      startDiskMapDrag(event);
+    });
+    window.addEventListener("mousemove", moveDiskMapDrag);
+    window.addEventListener("mouseup", stopDiskMapDrag);
+    diskMap.addEventListener("mouseleave", function () {
+      if (!diskMapView.dragging) return;
+    });
     refreshButton.addEventListener("click", function () {
       try {
         refreshView();
@@ -606,6 +1307,7 @@
       );
     });
     window.addEventListener("beforeunload", releaseObjectUrl);
+    syncDiskMapControls();
 
     refreshView();
     setStatus(
