@@ -12,15 +12,18 @@
   const diskIdInput = document.getElementById("disk-id");
   const diskFormatSelect = document.getElementById("disk-format");
   const imageUpload = document.getElementById("image-upload");
-  const loadButton = document.getElementById("load-button");
   const downloadButton = document.getElementById("download-button");
   const refreshButton = document.getElementById("refresh-button");
   const currentFileName = document.getElementById("current-file-name");
   const status = document.getElementById("status");
   const headerSummary = document.getElementById("header-summary");
   const usageSummary = document.getElementById("usage-summary");
+  const usageChartPanel = document.getElementById("usage-chart-panel");
+  const usageChart = document.getElementById("usage-chart");
+  const usageLegend = document.getElementById("usage-legend");
   const directoryCount = document.getElementById("directory-count");
   const fileTableBody = document.getElementById("file-table-body");
+  const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
     "buildImage",
@@ -28,7 +31,6 @@
     "readFiles",
     "estimateImageUsage",
     "fileName",
-    "diskSignature",
     "unlockFile",
     "lockFile",
     "openFile",
@@ -61,6 +63,10 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  };
+
+  const formatNumber = function (value) {
+    return numberFormatter.format(Math.max(0, Math.round(Number(value) || 0)));
   };
 
   const releaseObjectUrl = function () {
@@ -105,6 +111,62 @@
     );
   };
 
+  const renderUsageChart = function (segments) {
+    if (!segments || !segments.length) {
+      usageChartPanel.hidden = true;
+      usageChart.style.background = "";
+      usageChart.removeAttribute("aria-label");
+      usageLegend.innerHTML = "";
+      return;
+    }
+
+    const total = segments.reduce(function (sum, segment) {
+      return sum + segment.value;
+    }, 0);
+    let offset = 0;
+    const stops = segments
+      .map(function (segment) {
+        const start = total ? (offset / total) * 100 : 0;
+        offset += segment.value;
+        const end = total ? (offset / total) * 100 : 0;
+        return (
+          segment.color + " " + start.toFixed(2) + "% " + end.toFixed(2) + "%"
+        );
+      })
+      .join(", ");
+
+    usageChartPanel.hidden = false;
+    usageChart.style.background =
+      "conic-gradient(" +
+      stops +
+      "), radial-gradient(circle at center, rgba(8, 28, 39, 0.96) 0 54%, transparent 55%)";
+    usageChart.setAttribute(
+      "aria-label",
+      segments
+        .map(function (segment) {
+          return segment.label + ": " + formatNumber(segment.value) + " bytes";
+        })
+        .join(", "),
+    );
+    usageLegend.innerHTML = segments
+      .map(function (segment) {
+        return (
+          '<div class="legend-row">' +
+          '<span class="legend-swatch" style="background:' +
+          segment.color +
+          '"></span>' +
+          "<span>" +
+          escapeHtml(segment.label) +
+          "</span>" +
+          "<strong>" +
+          escapeHtml(formatNumber(segment.value) + " bytes") +
+          "</strong>" +
+          "</div>"
+        );
+      })
+      .join("");
+  };
+
   const refreshView = function () {
     if (!state.image) {
       renderDefinitionList(headerSummary, [
@@ -113,6 +175,7 @@
       renderDefinitionList(usageSummary, [
         { label: "Status", value: "Waiting for an image" },
       ]);
+      renderUsageChart(null);
       directoryCount.textContent = "0 entries";
       fileTableBody.innerHTML =
         '<tr><td colspan="6" class="empty-state">Load or create a disk image to see directory entries.</td></tr>';
@@ -127,40 +190,81 @@
       hasErrorInfo: header.hasErrorInfo,
     });
     const geometry = d64.describeGeometry(state.image);
+    const totalPayloadBytes = files.reduce(function (sum, file) {
+      return sum + ((file.data && file.data.length) || 0);
+    }, 0);
+    const directoryReservedBytes = usage.directorySectors * 256;
+    const allocatedSectorBytes = usage.totalFileSectors * 256;
+    const fileOverheadBytes = Math.max(
+      0,
+      allocatedSectorBytes - totalPayloadBytes,
+    );
+    const freeBytes = Math.max(
+      0,
+      geometry.dataSize - directoryReservedBytes - allocatedSectorBytes,
+    );
 
     renderDefinitionList(headerSummary, [
       { label: "Disk Name", value: toDisplayValue(header.diskName) },
-      { label: "Disk ID", value: toDisplayValue(header.diskId) },
-      { label: "DOS Type", value: toDisplayValue(header.dosType) },
-      { label: "DOS Version", value: toDisplayValue(header.dosVersionName) },
+      {
+        label: "Disk ID / DOS",
+        value:
+          toDisplayValue(header.diskId) +
+          " / " +
+          toDisplayValue(header.dosType),
+      },
       { label: "Format", value: toDisplayValue(header.format) },
-      { label: "Tracks", value: toDisplayValue(header.trackCount) },
-      { label: "Sectors", value: toDisplayValue(header.sectorCount) },
       {
-        label: "Error Info",
-        value: header.hasErrorInfo ? "Appended sector table" : "None",
+        label: "Tracks / Sectors",
+        value:
+          toDisplayValue(header.trackCount) +
+          " / " +
+          toDisplayValue(header.sectorCount),
       },
-      {
-        label: "Disk Signature",
-        value: toDisplayValue(d64.diskSignature(state.image)),
-      },
+      { label: "DOS Version", value: toDisplayValue(header.dosVersionName) },
+      { label: "Error Info", value: header.hasErrorInfo ? "Yes" : "No" },
     ]);
 
     renderDefinitionList(usageSummary, [
-      { label: "Image Size", value: geometry.imageSize + " bytes" },
-      { label: "Data Area", value: geometry.dataSize + " bytes" },
+      {
+        label: "Image / Data",
+        value:
+          formatNumber(geometry.imageSize) +
+          " / " +
+          formatNumber(geometry.dataSize) +
+          " bytes",
+      },
       { label: "File Count", value: String(files.length) },
       {
-        label: "File Sectors",
-        value: String(usage.totalFileSectors),
+        label: "File / Dir Sectors",
+        value:
+          formatNumber(usage.totalFileSectors) +
+          " / " +
+          formatNumber(usage.directorySectors),
+      },
+      { label: "Payload Bytes", value: formatNumber(totalPayloadBytes) },
+      { label: "Free Bytes", value: formatNumber(freeBytes) },
+    ]);
+    renderUsageChart([
+      {
+        label: "File payload",
+        value: totalPayloadBytes,
+        color: "#8ef3e6",
       },
       {
-        label: "Directory Sectors",
-        value: String(usage.directorySectors),
+        label: "File overhead",
+        value: fileOverheadBytes,
+        color: "#ffd36b",
       },
       {
-        label: "Usable File Sectors",
-        value: String(usage.usableFileSectors),
+        label: "Directory reserved",
+        value: directoryReservedBytes,
+        color: "#ff8e90",
+      },
+      {
+        label: "Free space",
+        value: freeBytes,
+        color: "#3f82ff",
       },
     ]);
 
@@ -316,15 +420,14 @@
         true,
       );
       createForm.querySelector("button").disabled = true;
-      loadButton.disabled = true;
       return;
     }
 
     createForm.addEventListener("submit", createDiskImage);
-    loadButton.addEventListener("click", loadSelectedFile);
     imageUpload.addEventListener("change", function () {
       if (imageUpload.files && imageUpload.files[0]) {
-        setStatus("Ready to load " + imageUpload.files[0].name + ".");
+        setStatus("Loading " + imageUpload.files[0].name + "...");
+        loadSelectedFile();
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);

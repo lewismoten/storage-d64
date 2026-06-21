@@ -95,8 +95,6 @@
                 <span>D64 File</span>
                 <input id="image-upload" type="file" accept=".d64" />
               </label>
-
-              <button id="load-button" type="button">Load Selected D64</button>
             </fieldset>
           </div>
 
@@ -150,6 +148,15 @@
                   <dd>Waiting for an image</dd>
                 </div>
               </dl>
+              <div id="usage-chart-panel" class="usage-chart-panel" hidden>
+                <div
+                  id="usage-chart"
+                  class="usage-chart"
+                  aria-label="Disk byte usage chart"
+                  role="img"
+                ></div>
+                <div id="usage-legend" class="usage-legend"></div>
+              </div>
             </article>
           </section>
 
