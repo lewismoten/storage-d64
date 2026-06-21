@@ -5,8 +5,6 @@
     image: null,
     sourceName: "",
     objectUrl: null,
-    deletedFiles: [],
-    nextDeletedFileId: 1,
   };
 
   const createForm = document.getElementById("create-form");
@@ -32,15 +30,17 @@
 
   const REQUIRED_API = [
     "buildImage",
-    "rebuildImage",
     "readHeader",
     "readFiles",
+    "readDeletedEntries",
     "estimateImageUsage",
     "fileName",
     "unlockFile",
     "lockFile",
     "openFile",
     "closeFile",
+    "scratchFile",
+    "undeleteFile",
   ];
 
   const setStatus = function (message, isError) {
@@ -79,23 +79,6 @@
     if (!state.objectUrl) return;
     URL.revokeObjectURL(state.objectUrl);
     state.objectUrl = null;
-  };
-
-  const cloneFileRecord = function (file) {
-    if (!file) return null;
-    return {
-      name: file.name,
-      type: file.type,
-      closed: file.closed,
-      locked: file.locked,
-      recordLength: file.recordLength,
-      data:
-        file.data instanceof Uint8Array ? file.data.slice() : new Uint8Array(),
-      unusedTailData:
-        file.unusedTailData instanceof Uint8Array
-          ? file.unusedTailData.slice()
-          : new Uint8Array(),
-    };
   };
 
   const setCurrentImage = function (image, sourceName) {
@@ -203,7 +186,7 @@
   };
 
   const renderDeletedFiles = function () {
-    const deletedFiles = state.deletedFiles.slice();
+    const deletedFiles = state.image ? d64.readDeletedEntries(state.image) : [];
     deletedCount.textContent =
       deletedFiles.length.toString() +
       (deletedFiles.length === 1 ? " entry" : " entries");
@@ -217,24 +200,37 @@
     deletedFilesPanel.hidden = false;
     deletedFilesList.innerHTML = deletedFiles
       .map(function (entry) {
+        const defaultType = entry.sideSectorTrack ? "rel" : "prg";
         return (
           '<article class="deleted-file-card">' +
           "<div>" +
           '<div class="deleted-file-name">' +
-          escapeHtml(entry.file.name) +
+          escapeHtml(entry.name) +
           "</div>" +
           '<div class="deleted-file-meta">' +
-          escapeHtml(String(entry.file.type || "").toUpperCase()) +
+          "Deleted entry" +
           " · " +
-          escapeHtml(
-            formatNumber((entry.file.data && entry.file.data.length) || 0),
-          ) +
+          escapeHtml(formatNumber((entry.blockCount || 0) * 254)) +
           " bytes" +
           "</div>" +
           "</div>" +
-          '<button type="button" class="restore-button" data-action="restore-file" data-deleted-id="' +
-          String(entry.id) +
+          '<div class="restore-controls">' +
+          '<label class="restore-type-field"><span>Type</span><select data-restore-type="' +
+          String(entry.index) +
+          '">' +
+          '<option value="prg"' +
+          (defaultType === "prg" ? " selected" : "") +
+          ">PRG</option>" +
+          '<option value="seq">SEQ</option>' +
+          '<option value="usr">USR</option>' +
+          '<option value="rel"' +
+          (defaultType === "rel" ? " selected" : "") +
+          ">REL</option>" +
+          "</select></label>" +
+          '<button type="button" class="restore-button" data-action="restore-file" data-entry-index="' +
+          String(entry.index) +
           '">Restore</button>' +
+          "</div>" +
           "</article>"
         );
       })
@@ -260,6 +256,7 @@
 
     const header = d64.readHeader(state.image);
     const files = d64.readFiles(state.image);
+    const deletedEntries = d64.readDeletedEntries(state.image);
     const usage = d64.estimateImageUsage(files, {
       trackCount: header.trackCount,
       hasErrorInfo: header.hasErrorInfo,
@@ -346,9 +343,7 @@
     directoryCount.textContent =
       files.length.toString() +
       (files.length === 1 ? " entry" : " entries") +
-      (state.deletedFiles.length
-        ? " · " + state.deletedFiles.length + " deleted"
-        : "");
+      (deletedEntries.length ? " · " + deletedEntries.length + " deleted" : "");
     renderDeletedFiles();
 
     if (!files.length) {
@@ -409,12 +404,7 @@
       .join("");
   };
 
-  const loadImageBytes = function (bytes, sourceName, message, options) {
-    const config = options || {};
-    if (config.resetDeletedFiles !== false) {
-      state.deletedFiles = [];
-      state.nextDeletedFileId = 1;
-    }
+  const loadImageBytes = function (bytes, sourceName, message) {
     setCurrentImage(bytes, sourceName);
     updateDownloadLinkState();
     refreshView();
@@ -503,51 +493,34 @@
   const deleteFile = function (fileName) {
     if (!state.image) return;
     try {
-      const files = d64.readFiles(state.image);
-      const file = files.find(function (entry) {
-        return entry.name === fileName;
-      });
-      if (!file) {
-        throw new Error("File not found: " + fileName);
-      }
-      state.deletedFiles.push({
-        id: state.nextDeletedFileId++,
-        file: cloneFileRecord(file),
-      });
       loadImageBytes(
-        d64.deleteFile(state.image, fileName),
+        d64.scratchFile(state.image, fileName),
         state.sourceName || "disk.d64",
         "Deleted " + fileName + ".",
-        { resetDeletedFiles: false },
       );
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
   };
 
-  const restoreDeletedFile = function (deletedId) {
+  const restoreDeletedFile = function (entryIndex, restoreType) {
     if (!state.image) return;
     try {
-      const entryIndex = state.deletedFiles.findIndex(function (entry) {
-        return String(entry.id) === String(deletedId);
-      });
-      if (entryIndex < 0) {
-        throw new Error("Deleted file not found.");
-      }
-      const restored = state.deletedFiles[entryIndex];
-      const files = d64.readFiles(state.image);
-      const rebuilt = d64.rebuildImage(
-        state.image,
-        files.concat([cloneFileRecord(restored.file)]),
+      const deletedEntry = d64
+        .readDeletedEntries(state.image)
+        .find(function (entry) {
+          return String(entry.index) === String(entryIndex);
+        });
+      if (!deletedEntry) throw new Error("Deleted file not found.");
+      loadImageBytes(
+        d64.undeleteFile(state.image, deletedEntry, { type: restoreType }),
+        state.sourceName || "disk.d64",
+        "Restored " +
+          deletedEntry.name +
+          " as " +
+          restoreType.toUpperCase() +
+          ".",
       );
-      if (!rebuilt) {
-        throw new Error("Unable to restore file. Disk may be full.");
-      }
-      state.deletedFiles.splice(entryIndex, 1);
-      setCurrentImage(rebuilt, state.sourceName || "disk.d64");
-      updateDownloadLinkState();
-      refreshView();
-      setStatus("Restored " + restored.file.name + ".");
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -594,7 +567,13 @@
     deletedFilesList.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action='restore-file']");
       if (!button) return;
-      restoreDeletedFile(button.dataset.deletedId);
+      const select = deletedFilesList.querySelector(
+        "select[data-restore-type='" + button.dataset.entryIndex + "']",
+      );
+      restoreDeletedFile(
+        button.dataset.entryIndex,
+        select ? select.value : "prg",
+      );
     });
     window.addEventListener("beforeunload", releaseObjectUrl);
 

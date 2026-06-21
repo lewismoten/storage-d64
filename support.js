@@ -736,6 +736,19 @@
     };
   };
 
+  d64.isDeletedDirectoryEntry = function (entry) {
+    if (!entry || entry.typeByte) return false;
+    return Boolean(
+      entry.startTrack ||
+      entry.startSector ||
+      entry.blockCount ||
+      entry.sideSectorTrack ||
+      entry.sideSectorSector ||
+      entry.recordLength ||
+      String(entry.name || "").trim(),
+    );
+  };
+
   d64.readDirectoryEntriesFrom = function (
     image,
     startTrack,
@@ -746,6 +759,7 @@
       image instanceof Uint8Array ? image : new Uint8Array(image || []);
     const geometry = d64.describeGeometry(bytes);
     const config = options || {};
+    const includeDeleted = Boolean(config.includeDeleted);
     const maxEntries = Math.max(
       1,
       Math.floor(Number(config.maxEntries) || 144),
@@ -793,7 +807,9 @@
           },
         );
         index += 1;
-        if (!entry.typeByte) continue;
+        entry.deleted = d64.isDeletedDirectoryEntry(entry);
+        if (!entry.typeByte && !includeDeleted) continue;
+        if (!entry.typeByte && !entry.deleted) continue;
         entries.push(entry);
       }
       if (!block[0]) break;
@@ -825,18 +841,31 @@
   };
 
   d64.readDirectoryEntries = function (image, options) {
-    const config = options || {};
-    const maxEntries = Math.max(
-      1,
-      Math.floor(Number(config.maxEntries) || 144),
-    );
-    const entries = [];
-    for (let index = 0; index < maxEntries; index += 1) {
-      const entry = d64.readDirectoryEntry(image, index);
-      if (!entry.typeByte) break;
-      entries.push(entry);
-    }
-    return entries;
+    const header = d64.readHeader(image);
+    return d64
+      .readDirectoryEntriesFrom(
+        image,
+        header.nextDirectoryTrack,
+        header.nextDirectorySector,
+        options,
+      )
+      .entries.filter(function (entry) {
+        return entry.typeByte;
+      });
+  };
+
+  d64.readDeletedEntries = function (image, options) {
+    const header = d64.readHeader(image);
+    return d64
+      .readDirectoryEntriesFrom(
+        image,
+        header.nextDirectoryTrack,
+        header.nextDirectorySector,
+        Object.assign({}, options || {}, { includeDeleted: true }),
+      )
+      .entries.filter(function (entry) {
+        return entry.deleted === true;
+      });
   };
 
   d64.findDirectoryEntryByName = function (image, name, options) {
@@ -1180,6 +1209,166 @@
         entry: entry,
       };
     });
+  };
+
+  d64.writeDirectoryEntryBytes = function (image, entryOrIndex, entryBytes) {
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const entry =
+      typeof entryOrIndex === "number"
+        ? d64.readDirectoryEntry(bytes, entryOrIndex)
+        : entryOrIndex;
+    if (!entry) {
+      throw new Error("Directory entry not found.");
+    }
+    const normalizedEntryBytes =
+      entryBytes instanceof Uint8Array
+        ? entryBytes
+        : new Uint8Array(entryBytes || []);
+    if (normalizedEntryBytes.length < 32) {
+      throw new Error("Directory entry must be 32 bytes.");
+    }
+    bytes.set(
+      normalizedEntryBytes.subarray(0, 32),
+      d64.trackOffset(entry.track, entry.sector) + entry.slot * 32,
+    );
+    return bytes;
+  };
+
+  d64.writeBamFreeMap = function (image, freeMap, options) {
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const header = d64.readHeader(bytes);
+    const bamSector = d64.createBamSector(
+      freeMap,
+      Object.assign({}, header, options || {}),
+    );
+    bytes.set(bamSector, d64.trackOffset(DIRECTORY_TRACK, BAM_SECTOR));
+    return bytes;
+  };
+
+  d64.collectFileSectorRefs = function (image, entry, options) {
+    if (!entry || !entry.startTrack) return [];
+    const refs = [];
+    const addRef = function (track, sector) {
+      refs.push({
+        track: Math.max(0, Math.floor(Number(track) || 0)),
+        sector: Math.max(0, Math.floor(Number(sector) || 0)),
+      });
+    };
+    const file = d64.readFile(image, entry, options);
+    if (file && Array.isArray(file.blocks)) {
+      file.blocks.forEach(function (block) {
+        addRef(block.track, block.sector);
+      });
+    }
+    const typeName =
+      options && options.restoredType
+        ? d64.decodeDirectoryEntryType(
+            d64.encodeDirectoryEntryType(options.restoredType),
+          ).fileType
+        : entry.fileType;
+    if (typeName === "rel" && entry.sideSectorTrack) {
+      d64
+        .readRelativeSideSectors(
+          image,
+          entry.sideSectorTrack,
+          entry.sideSectorSector,
+        )
+        .forEach(function (sideSector) {
+          addRef(sideSector.track, sideSector.sector);
+        });
+    }
+    return refs;
+  };
+
+  d64.updateFreeMapSectors = function (freeMap, sectors, isFree) {
+    const map = freeMap;
+    (Array.isArray(sectors) ? sectors : []).forEach(function (ref) {
+      const track = Math.max(0, Math.floor(Number(ref.track) || 0));
+      const sector = Math.max(0, Math.floor(Number(ref.sector) || 0));
+      if (!map[track] || map[track][sector] == null) return;
+      map[track][sector] = Boolean(isFree);
+    });
+    return map;
+  };
+
+  d64.scratchFile = function (image, entryOrName, options) {
+    const entry =
+      typeof entryOrName === "string"
+        ? d64.findDirectoryEntryByName(image, entryOrName, options)
+        : entryOrName || null;
+    if (!entry) {
+      throw new Error("File not found: " + String(entryOrName || ""));
+    }
+    const freeMap = d64.readFreeMap(image);
+    const sectorRefs = d64.collectFileSectorRefs(image, entry, options);
+    d64.updateFreeMapSectors(freeMap, sectorRefs, true);
+    const entryBytes = entry.raw.slice();
+    entryBytes[2] = 0x00;
+    const withDeletedEntry = d64.writeDirectoryEntryBytes(
+      image,
+      entry,
+      entryBytes,
+    );
+    return d64.writeBamFreeMap(withDeletedEntry, freeMap);
+  };
+
+  d64.undeleteFile = function (image, deletedEntryOrName, restoreOptions) {
+    const options = restoreOptions || {};
+    const deletedEntries = d64.readDeletedEntries(image, options);
+    const entry =
+      typeof deletedEntryOrName === "string"
+        ? deletedEntries.find(function (candidate) {
+            return (
+              String(candidate.name || "")
+                .trim()
+                .toUpperCase() ===
+              String(deletedEntryOrName || "")
+                .trim()
+                .toUpperCase()
+            );
+          }) || null
+        : deletedEntryOrName || null;
+    if (!entry || !entry.deleted) {
+      throw new Error(
+        "Deleted file not found: " + String(deletedEntryOrName || ""),
+      );
+    }
+    const restoredType = String(options.type || "")
+      .trim()
+      .toLowerCase();
+    if (!restoredType || restoredType === "del") {
+      throw new Error("A restore file type must be chosen.");
+    }
+    const freeMap = d64.readFreeMap(image);
+    const sectorRefs = d64.collectFileSectorRefs(image, entry, {
+      restoredType: restoredType,
+    });
+    for (let index = 0; index < sectorRefs.length; index += 1) {
+      const ref = sectorRefs[index];
+      if (freeMap[ref.track] && freeMap[ref.track][ref.sector] === false) {
+        throw new Error(
+          "Cannot undelete because sector " +
+            String(ref.track) +
+            ":" +
+            String(ref.sector) +
+            " is already in use.",
+        );
+      }
+    }
+    d64.updateFreeMapSectors(freeMap, sectorRefs, false);
+    const entryBytes = entry.raw.slice();
+    entryBytes[2] = d64.encodeDirectoryEntryType(restoredType, {
+      closed: options.closed !== false,
+      locked: Boolean(options.locked),
+    });
+    const withRestoredEntry = d64.writeDirectoryEntryBytes(
+      image,
+      entry,
+      entryBytes,
+    );
+    return d64.writeBamFreeMap(withRestoredEntry, freeMap);
   };
 
   d64.inspectImage = function (image, options) {
