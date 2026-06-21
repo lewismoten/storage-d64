@@ -6,6 +6,8 @@
     sourceName: "",
     objectUrl: null,
     deletedTypeHints: {},
+    diskLayout: null,
+    selectedSectorKey: "",
   };
 
   const createForm = document.getElementById("create-form");
@@ -99,11 +101,13 @@
     offsetX: 0,
     offsetY: 0,
     dragging: false,
+    dragMoved: false,
     dragStartX: 0,
     dragStartY: 0,
     originOffsetX: 0,
     originOffsetY: 0,
     hoveredSectorElement: null,
+    selectedSectorElement: null,
   };
 
   const setStatus = function (message, isError) {
@@ -289,6 +293,32 @@
     }
   };
 
+  const setSelectedDiskMapSectorElement = function (element) {
+    if (diskMapView.selectedSectorElement === element) return;
+    if (diskMapView.selectedSectorElement) {
+      diskMapView.selectedSectorElement.classList.remove("is-selected");
+    }
+    diskMapView.selectedSectorElement = element || null;
+    if (diskMapView.selectedSectorElement) {
+      diskMapView.selectedSectorElement.classList.add("is-selected");
+    }
+  };
+
+  const applySelectedDiskMapSector = function () {
+    if (!state.selectedSectorKey) {
+      setSelectedDiskMapSectorElement(null);
+      return;
+    }
+    setSelectedDiskMapSectorElement(
+      diskMap.querySelector('[data-key="' + state.selectedSectorKey + '"]'),
+    );
+  };
+
+  const clearSelectedDiskMapSector = function () {
+    state.selectedSectorKey = "";
+    setSelectedDiskMapSectorElement(null);
+  };
+
   const zoomDiskMapAtPoint = function (factor, clientX, clientY) {
     const nextScale = clampDiskMapScale(diskMapView.scale * factor);
     const appliedFactor = nextScale / diskMapView.scale;
@@ -462,6 +492,57 @@
       innerStart.y.toFixed(3),
       "Z",
     ].join(" ");
+  };
+
+  const toHexByte = function (value) {
+    return Math.max(0, Math.min(255, Number(value) || 0))
+      .toString(16)
+      .toUpperCase()
+      .padStart(2, "0");
+  };
+
+  const toHexWord = function (value) {
+    return Math.max(0, Number(value) || 0)
+      .toString(16)
+      .toUpperCase()
+      .padStart(4, "0");
+  };
+
+  const toPrintableSectorChar = function (value) {
+    const byte = Number(value) || 0;
+    if (byte >= 32 && byte <= 126) return String.fromCharCode(byte);
+    return ".";
+  };
+
+  const renderSectorHexDump = function (bytes) {
+    const rows = [];
+    for (let offset = 0; offset < bytes.length; offset += 16) {
+      const chunk = bytes.subarray(offset, offset + 16);
+      rows.push(
+        '<div class="sector-hex-row">' +
+          '<span class="sector-hex-offset">' +
+          toHexWord(offset) +
+          "</span>" +
+          '<span class="sector-hex-bytes">' +
+          Array.from(chunk)
+            .map(function (value) {
+              return toHexByte(value);
+            })
+            .join(" ") +
+          "</span>" +
+          '<span class="sector-hex-ascii">' +
+          escapeHtml(
+            Array.from(chunk)
+              .map(function (value) {
+                return toPrintableSectorChar(value);
+              })
+              .join(""),
+          ) +
+          "</span>" +
+          "</div>",
+      );
+    }
+    return rows.join("");
   };
 
   const markSector = function (map, track, sector, details) {
@@ -710,8 +791,140 @@
       .join("");
   };
 
+  const renderDiskMapInspector = function () {
+    if (!state.image || !state.selectedSectorKey || !state.diskLayout) {
+      renderDiskMapLegend();
+      return;
+    }
+
+    const parts = state.selectedSectorKey.split(":");
+    const track = Math.max(1, Math.floor(Number(parts[0]) || 0));
+    const sector = Math.max(0, Math.floor(Number(parts[1]) || 0));
+    const key = String(track) + ":" + String(sector);
+    const info = state.diskLayout.sectorMap[key];
+    const sectorBytes = d64.readSector(state.image, track, sector);
+    const offset = d64.trackOffset(track, sector);
+    const sectorIndex = d64.sectorIndex(track, sector, state.image);
+    const rows = [
+      ["Purpose", info ? info.label : "Sector data"],
+      [
+        "Offset",
+        "0x" + toHexWord(offset) + " (" + formatNumber(offset) + " bytes)",
+      ],
+      [
+        "Sector Index",
+        sectorIndex >= 0
+          ? formatNumber(sectorIndex) +
+            " / " +
+            formatNumber(state.diskLayout.geometry.sectorCount - 1)
+          : "n/a",
+      ],
+      [
+        "Link Bytes",
+        "T" +
+          String(sectorBytes[0]).padStart(2, "0") +
+          " / S" +
+          String(sectorBytes[1]).padStart(2, "0"),
+      ],
+    ];
+
+    if (track === 18 && sector === 0) {
+      const header = d64.readHeader(state.image);
+      const bam = d64.readBam(state.image);
+      const freeBlocks = bam.tracks.reduce(function (sum, trackInfo) {
+        return sum + Math.max(0, Number(trackInfo.freeCount) || 0);
+      }, 0);
+      rows.push(
+        ["Disk Name", toDisplayValue(header.diskName)],
+        ["Disk ID", toDisplayValue(header.diskId)],
+        ["DOS Type", toDisplayValue(header.dosType)],
+        ["DOS Version", toDisplayValue(header.dosVersionName)],
+        [
+          "Directory Start",
+          "T" +
+            String(header.nextDirectoryTrack).padStart(2, "0") +
+            " / S" +
+            String(header.nextDirectorySector).padStart(2, "0"),
+        ],
+        ["BAM Free Blocks", formatNumber(freeBlocks)],
+      );
+    } else if (track === 18) {
+      const header = d64.readHeader(state.image);
+      const directory = d64.readDirectoryEntriesFrom(
+        state.image,
+        header.nextDirectoryTrack,
+        header.nextDirectorySector,
+        { includeDeleted: true },
+      );
+      const sectorEntries = directory.entries.filter(function (entry) {
+        return entry.track === track && entry.sector === sector;
+      });
+      rows.push(
+        ["Reserved Track", "Directory / BAM track"],
+        [
+          "Directory Slots",
+          formatNumber(
+            sectorEntries.filter(function (entry) {
+              return entry.typeByte;
+            }).length,
+          ) +
+            " active, " +
+            formatNumber(
+              sectorEntries.filter(function (entry) {
+                return entry.deleted;
+              }).length,
+            ) +
+            " deleted",
+        ],
+      );
+    } else if (info && /Data|relSide/.test(String(info.category || ""))) {
+      rows.push([
+        "Data Use",
+        typeof info.usedFraction === "number"
+          ? formatNumber(Math.round(info.usedFraction * 254)) +
+            " of 254 payload bytes"
+          : "Sector payload",
+      ]);
+    }
+
+    diskMapLegend.innerHTML =
+      '<section class="sector-inspector">' +
+      '<div class="sector-inspector-head">' +
+      "<div>" +
+      "<h4>Track " +
+      String(track) +
+      " Sector " +
+      String(sector) +
+      "</h4>" +
+      "<p>Click another sector to inspect it.</p>" +
+      "</div>" +
+      '<button type="button" class="sector-inspector-close" data-action="show-legend">Show Legend</button>' +
+      "</div>" +
+      '<dl class="sector-inspector-meta">' +
+      rows
+        .map(function (row) {
+          return (
+            "<div><dt>" +
+            escapeHtml(row[0]) +
+            "</dt><dd>" +
+            escapeHtml(row[1]) +
+            "</dd></div>"
+          );
+        })
+        .join("") +
+      "</dl>" +
+      '<div class="sector-inspector-dump">' +
+      '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view</span></div>' +
+      '<div class="sector-hex-viewer">' +
+      renderSectorHexDump(sectorBytes) +
+      "</div>" +
+      "</div>" +
+      "</section>";
+  };
+
   const renderDiskMap = function (image) {
     if (!image) {
+      state.diskLayout = null;
       diskMapSummary.textContent = "Waiting for an image";
       diskMap.innerHTML =
         "Load or create a disk image to view tracks and sectors.";
@@ -726,6 +939,7 @@
     }
 
     const layout = buildDiskSectorMap(image);
+    state.diskLayout = layout;
     const geometry = layout.geometry;
     const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
     const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
@@ -786,6 +1000,8 @@
               String(track) +
               '" data-sector="' +
               String(sector) +
+              '" data-key="' +
+              key +
               '" fill="' +
               info.color +
               '" stroke="' +
@@ -818,6 +1034,8 @@
               String(track) +
               '" data-sector="' +
               String(sector) +
+              '" data-key="' +
+              key +
               '" fill="' +
               info.tailColor +
               '" stroke="' +
@@ -842,6 +1060,8 @@
               String(track) +
               '" data-sector="' +
               String(sector) +
+              '" data-key="' +
+              key +
               '" fill="' +
               (info ? info.color : DISK_MAP_COLORS.unknownUsed) +
               '" stroke="' +
@@ -1011,8 +1231,9 @@
       '">D64</text>' +
       "</svg>";
     applyDiskMapTransform();
+    applySelectedDiskMapSector();
     syncDiskMapControls();
-    renderDiskMapLegend();
+    renderDiskMapInspector();
   };
 
   const renderDeletedFiles = function () {
@@ -1392,6 +1613,7 @@
     )
       return;
     diskMapView.dragging = true;
+    diskMapView.dragMoved = false;
     diskMapView.dragStartX = event.clientX;
     diskMapView.dragStartY = event.clientY;
     diskMapView.originOffsetX = diskMapView.offsetX;
@@ -1401,6 +1623,12 @@
 
   const moveDiskMapDrag = function (event) {
     if (!diskMapView.dragging) return;
+    if (
+      Math.abs(event.clientX - diskMapView.dragStartX) > 3 ||
+      Math.abs(event.clientY - diskMapView.dragStartY) > 3
+    ) {
+      diskMapView.dragMoved = true;
+    }
     diskMapView.offsetX =
       diskMapView.originOffsetX + (event.clientX - diskMapView.dragStartX);
     diskMapView.offsetY =
@@ -1476,6 +1704,22 @@
       hideDiskMapPointer();
       hideDiskMapTooltip();
     });
+    diskMap.addEventListener("click", function (event) {
+      if (!state.image) return;
+      if (diskMapView.dragMoved) {
+        diskMapView.dragMoved = false;
+        return;
+      }
+      const target = event.target.closest("[data-key]");
+      if (!target) {
+        clearSelectedDiskMapSector();
+        renderDiskMapLegend();
+        return;
+      }
+      state.selectedSectorKey = target.dataset.key || "";
+      applySelectedDiskMapSector();
+      renderDiskMapInspector();
+    });
     diskMap.addEventListener("mousedown", function (event) {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -1513,6 +1757,12 @@
         button.dataset.entryIndex,
         select ? select.value : "prg",
       );
+    });
+    diskMapLegend.addEventListener("click", function (event) {
+      const button = event.target.closest('[data-action="show-legend"]');
+      if (!button) return;
+      clearSelectedDiskMapSector();
+      renderDiskMapLegend();
     });
     window.addEventListener("beforeunload", releaseObjectUrl);
     syncDiskMapControls();

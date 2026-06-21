@@ -491,6 +491,12 @@ button:disabled {
   stroke-width: 1.2 !important;
 }
 
+.disk-map-sector.is-selected {
+  filter: brightness(1.08);
+  stroke: rgba(255, 219, 140, 0.95) !important;
+  stroke-width: 1.3 !important;
+}
+
 .disk-map.is-dragging {
   cursor: grabbing;
 }
@@ -559,6 +565,133 @@ button:disabled {
 .disk-map-legend {
   display: grid;
   gap: 10px;
+}
+
+.sector-inspector {
+  display: grid;
+  gap: 12px;
+}
+
+.sector-inspector-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sector-inspector-head h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--accent-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sector-inspector-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sector-inspector-close {
+  min-height: 34px;
+  width: auto;
+  padding: 8px 12px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 999px;
+  background: rgba(8, 28, 39, 0.86);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.sector-inspector-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.sector-inspector-meta div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sector-inspector-meta dt {
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sector-inspector-meta dd {
+  margin: 0;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.sector-inspector-dump {
+  padding: 12px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sector-inspector-dump-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sector-inspector-dump-head strong {
+  color: var(--accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sector-hex-viewer {
+  display: grid;
+  gap: 4px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(6, 20, 30, 0.72);
+}
+
+.sector-hex-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 88px;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.sector-hex-offset {
+  color: #ffd36b;
+}
+
+.sector-hex-bytes {
+  color: #eaf7ff;
+  word-break: break-all;
+}
+
+.sector-hex-ascii {
+  color: var(--muted);
+  letter-spacing: 0.08em;
 }
 
 .disk-map-legend-group {
