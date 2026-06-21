@@ -515,34 +515,242 @@
   };
 
   const renderSectorHexDump = function (bytes) {
+    return renderSectorHexDumpWithOptions(bytes, {});
+  };
+
+  const renderSectorHexDumpWithOptions = function (bytes, options) {
+    const config = options || {};
+    const dimStart = Number.isFinite(config.dimStart)
+      ? Math.max(0, Math.floor(config.dimStart))
+      : null;
     const rows = [];
     for (let offset = 0; offset < bytes.length; offset += 16) {
       const chunk = bytes.subarray(offset, offset + 16);
+      const hexMarkup = Array.from(chunk)
+        .map(function (value, index) {
+          const absoluteIndex = offset + index;
+          const classes = ["sector-hex-byte"];
+          if (absoluteIndex === 0 || absoluteIndex === 1) {
+            classes.push("is-link");
+          }
+          if (dimStart != null && absoluteIndex >= dimStart) {
+            classes.push("is-dim");
+          }
+          return (
+            '<span class="' +
+            classes.join(" ") +
+            '">' +
+            toHexByte(value) +
+            "</span>"
+          );
+        })
+        .join(" ");
+      const asciiMarkup = Array.from(chunk)
+        .map(function (value, index) {
+          const absoluteIndex = offset + index;
+          const classes = ["sector-ascii-char"];
+          if (absoluteIndex === 0 || absoluteIndex === 1) {
+            classes.push("is-link");
+          }
+          if (dimStart != null && absoluteIndex >= dimStart) {
+            classes.push("is-dim");
+          }
+          return (
+            '<span class="' +
+            classes.join(" ") +
+            '">' +
+            escapeHtml(toPrintableSectorChar(value)) +
+            "</span>"
+          );
+        })
+        .join("");
       rows.push(
         '<div class="sector-hex-row">' +
           '<span class="sector-hex-offset">' +
           toHexWord(offset) +
           "</span>" +
           '<span class="sector-hex-bytes">' +
-          Array.from(chunk)
-            .map(function (value) {
-              return toHexByte(value);
-            })
-            .join(" ") +
+          hexMarkup +
           "</span>" +
           '<span class="sector-hex-ascii">' +
-          escapeHtml(
-            Array.from(chunk)
-              .map(function (value) {
-                return toPrintableSectorChar(value);
-              })
-              .join(""),
-          ) +
+          asciiMarkup +
           "</span>" +
           "</div>",
       );
     }
     return rows.join("");
+  };
+
+  const getSectorUsedPayloadBytes = function (sectorBytes, info) {
+    if (!info || !/Data|relSide/.test(String(info.category || ""))) {
+      return null;
+    }
+    const nextTrack = sectorBytes[0];
+    const nextSector = sectorBytes[1];
+    if (nextTrack === 0) {
+      return Math.max(0, Math.min(254, nextSector - 1));
+    }
+    return 254;
+  };
+
+  const getSectorTailDimStart = function (sectorBytes, info) {
+    const usedPayloadBytes = getSectorUsedPayloadBytes(sectorBytes, info);
+    if (usedPayloadBytes == null || usedPayloadBytes >= 254) {
+      return null;
+    }
+    return 2 + usedPayloadBytes;
+  };
+
+  const isValidSectorAddress = function (track, sector, source) {
+    const geometry = d64.describeGeometry(source || state.image);
+    const normalizedTrack = Math.floor(Number(track) || 0);
+    const normalizedSector = Math.floor(Number(sector) || 0);
+    return (
+      normalizedTrack >= 1 &&
+      normalizedTrack <= geometry.trackCount &&
+      normalizedSector >= 0 &&
+      normalizedSector < d64.trackSectorCount(normalizedTrack)
+    );
+  };
+
+  const selectDiskMapSector = function (track, sector) {
+    if (!isValidSectorAddress(track, sector, state.image)) return;
+    state.selectedSectorKey = String(track) + ":" + String(sector);
+    applySelectedDiskMapSector();
+    renderDiskMapInspector();
+  };
+
+  const renderSectorJumpButton = function (track, sector, label) {
+    return (
+      '<button type="button" class="sector-link-button" data-action="jump-sector" data-track="' +
+      String(track) +
+      '" data-sector="' +
+      String(sector) +
+      '">' +
+      escapeHtml(label) +
+      "</button>"
+    );
+  };
+
+  const renderPhysicalSectorLegend = function (
+    track,
+    sector,
+    sectorBytes,
+    info,
+    logicalDiskIdBytes,
+  ) {
+    const id1 = logicalDiskIdBytes[0];
+    const id2 = logicalDiskIdBytes[1];
+    const headerChecksum = track ^ sector ^ id1 ^ id2;
+    const usedPayloadBytes = getSectorUsedPayloadBytes(sectorBytes, info);
+    const unusedPayloadBytes =
+      usedPayloadBytes == null ? null : Math.max(0, 254 - usedPayloadBytes);
+    const shorthand = [
+      {
+        label: "SYNC",
+        value: "...",
+        source: "expected",
+        note: "GCR sync marks on physical disk",
+      },
+      {
+        label: "HDR",
+        value: "08",
+        source: "expected",
+        note: "Decoded sector-header mark",
+      },
+      {
+        label: "CHK",
+        value: toHexByte(headerChecksum),
+        source: "inferred",
+        note: "Header checksum inferred from T/S + disk ID",
+      },
+      {
+        label: "SEC",
+        value: toHexByte(sector),
+        source: "inferred",
+        note: "Sector number",
+      },
+      {
+        label: "TRK",
+        value: toHexByte(track),
+        source: "inferred",
+        note: "Track number",
+      },
+      {
+        label: "ID1",
+        value: toHexByte(id1),
+        source: "inferred",
+        note: "Disk ID byte 1 from T18/S0",
+      },
+      {
+        label: "ID2",
+        value: toHexByte(id2),
+        source: "inferred",
+        note: "Disk ID byte 2 from T18/S0",
+      },
+      {
+        label: "DATA",
+        value: "07",
+        source: "expected",
+        note: "Decoded data-header mark",
+      },
+      {
+        label: "LINK",
+        value: toHexByte(sectorBytes[0]) + " " + toHexByte(sectorBytes[1]),
+        source: "stored",
+        note: "First two bytes in the .d64 sector",
+      },
+      {
+        label: "PAY",
+        value:
+          usedPayloadBytes == null
+            ? "254B"
+            : formatNumber(usedPayloadBytes) + "B",
+        source: usedPayloadBytes == null ? "stored" : "inferred",
+        note:
+          usedPayloadBytes == null
+            ? "256-byte logical block view"
+            : "Logical payload bytes used",
+      },
+    ];
+    if (unusedPayloadBytes) {
+      shorthand.push({
+        label: "TAIL",
+        value: formatNumber(unusedPayloadBytes) + "B",
+        source: "stored",
+        note: "Bytes preserved in sector but beyond logical payload",
+      });
+    }
+    return (
+      '<div class="sector-physical">' +
+      '<div class="sector-physical-head"><strong>Physical Sector Model</strong><span>Decoded shorthand of what a 1541 sector would carry on disk</span></div>' +
+      '<div class="sector-physical-strip">' +
+      shorthand
+        .map(function (part) {
+          return (
+            '<div class="sector-physical-chip is-' +
+            part.source +
+            '" title="' +
+            escapeHtml(part.note) +
+            '">' +
+            '<span class="sector-physical-chip-label">' +
+            escapeHtml(part.label) +
+            "</span>" +
+            '<span class="sector-physical-chip-value">' +
+            escapeHtml(part.value) +
+            "</span>" +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<div class="sector-physical-legend">' +
+      '<span><i class="sector-physical-dot is-stored"></i>Stored in .d64</span>' +
+      '<span><i class="sector-physical-dot is-inferred"></i>Inferred from logical DOS data</span>' +
+      '<span><i class="sector-physical-dot is-expected"></i>Expected on physical disk but not stored in .d64</span>' +
+      "</div>" +
+      "</div>"
+    );
   };
 
   const markSector = function (map, track, sector, details) {
@@ -812,34 +1020,62 @@
         d64.headerOffsets.diskIdStart,
         d64.headerOffsets.diskIdStart + 2,
       );
+    const nextTrack = sectorBytes[0];
+    const nextSector = sectorBytes[1];
+    const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
     const rows = [
-      ["Purpose", info ? info.label : "Sector data"],
-      [
-        "Offset",
-        "0x" + toHexWord(offset) + " (" + formatNumber(offset) + " bytes)",
-      ],
-      [
-        "Sector Index",
-        sectorIndex >= 0
-          ? formatNumber(sectorIndex) +
-            " / " +
-            formatNumber(state.diskLayout.geometry.sectorCount - 1)
-          : "n/a",
-      ],
-      [
-        "Link Bytes",
-        "T" +
-          String(sectorBytes[0]).padStart(2, "0") +
-          " / S" +
-          String(sectorBytes[1]).padStart(2, "0"),
-      ],
-      [
-        "Logical Disk ID",
-        toHexByte(logicalDiskIdBytes[0]) +
+      {
+        label: "Purpose",
+        value: info ? info.label : "Sector data",
+      },
+      {
+        label: "Offset",
+        value:
+          "0x" + toHexWord(offset) + " (" + formatNumber(offset) + " bytes)",
+      },
+      {
+        label: "Sector Index",
+        value:
+          sectorIndex >= 0
+            ? formatNumber(sectorIndex) +
+              " / " +
+              formatNumber(state.diskLayout.geometry.sectorCount - 1)
+            : "n/a",
+      },
+      {
+        label: "Link Bytes",
+        html: hasNextSectorLink
+          ? '<div class="sector-link-row"><span class="sector-link-raw">' +
+            escapeHtml(
+              toHexByte(nextTrack) + " " + toHexByte(nextSector) + " ->",
+            ) +
+            "</span>" +
+            renderSectorJumpButton(
+              nextTrack,
+              nextSector,
+              "T" +
+                String(nextTrack).padStart(2, "0") +
+                " S" +
+                String(nextSector).padStart(2, "0"),
+            ) +
+            "</div>"
+          : escapeHtml(
+              nextTrack === 0
+                ? toHexByte(nextTrack) +
+                    " " +
+                    toHexByte(nextSector) +
+                    " (final block marker / used-byte count)"
+                : toHexByte(nextTrack) + " " + toHexByte(nextSector),
+            ),
+      },
+      {
+        label: "Logical Disk ID",
+        value:
+          toHexByte(logicalDiskIdBytes[0]) +
           " " +
           toHexByte(logicalDiskIdBytes[1]) +
           " (inferred from T18/S0 header)",
-      ],
+      },
     ];
 
     if (track === 18 && sector === 0) {
@@ -848,18 +1084,30 @@
         return sum + Math.max(0, Number(trackInfo.freeCount) || 0);
       }, 0);
       rows.push(
-        ["Disk Name", toDisplayValue(logicalHeader.diskName)],
-        ["Disk ID", toDisplayValue(logicalHeader.diskId)],
-        ["DOS Type", toDisplayValue(logicalHeader.dosType)],
-        ["DOS Version", toDisplayValue(logicalHeader.dosVersionName)],
-        [
-          "Directory Start",
-          "T" +
-            String(logicalHeader.nextDirectoryTrack).padStart(2, "0") +
-            " / S" +
-            String(logicalHeader.nextDirectorySector).padStart(2, "0"),
-        ],
-        ["BAM Free Blocks", formatNumber(freeBlocks)],
+        { label: "Disk Name", value: toDisplayValue(logicalHeader.diskName) },
+        { label: "Disk ID", value: toDisplayValue(logicalHeader.diskId) },
+        { label: "DOS Type", value: toDisplayValue(logicalHeader.dosType) },
+        {
+          label: "DOS Version",
+          value: toDisplayValue(logicalHeader.dosVersionName),
+        },
+        {
+          label: "Directory Start",
+          html:
+            '<div class="sector-link-row"><span class="sector-link-raw">' +
+            "Start at" +
+            "</span>" +
+            renderSectorJumpButton(
+              logicalHeader.nextDirectoryTrack,
+              logicalHeader.nextDirectorySector,
+              "T" +
+                String(logicalHeader.nextDirectoryTrack).padStart(2, "0") +
+                " S" +
+                String(logicalHeader.nextDirectorySector).padStart(2, "0"),
+            ) +
+            "</div>",
+        },
+        { label: "BAM Free Blocks", value: formatNumber(freeBlocks) },
       );
     } else if (track === 18) {
       const directory = d64.readDirectoryEntriesFrom(
@@ -872,14 +1120,15 @@
         return entry.track === track && entry.sector === sector;
       });
       rows.push(
-        ["Reserved Track", "Directory / BAM track"],
-        [
-          "Directory Slots",
-          formatNumber(
-            sectorEntries.filter(function (entry) {
-              return entry.typeByte;
-            }).length,
-          ) +
+        { label: "Reserved Track", value: "Directory / BAM track" },
+        {
+          label: "Directory Slots",
+          value:
+            formatNumber(
+              sectorEntries.filter(function (entry) {
+                return entry.typeByte;
+              }).length,
+            ) +
             " active, " +
             formatNumber(
               sectorEntries.filter(function (entry) {
@@ -887,17 +1136,19 @@
               }).length,
             ) +
             " deleted",
-        ],
+        },
       );
     } else if (info && /Data|relSide/.test(String(info.category || ""))) {
-      rows.push([
-        "Data Use",
-        typeof info.usedFraction === "number"
-          ? formatNumber(Math.round(info.usedFraction * 254)) +
-            " of 254 payload bytes"
-          : "Sector payload",
-      ]);
+      rows.push({
+        label: "Data Use",
+        value:
+          typeof info.usedFraction === "number"
+            ? formatNumber(Math.round(info.usedFraction * 254)) +
+              " of 254 payload bytes"
+            : "Sector payload",
+      });
     }
+    const tailDimStart = getSectorTailDimStart(sectorBytes, info);
 
     diskMapLegend.innerHTML =
       '<section class="sector-inspector">' +
@@ -917,19 +1168,30 @@
         .map(function (row) {
           return (
             "<div><dt>" +
-            escapeHtml(row[0]) +
+            escapeHtml(row.label) +
             "</dt><dd>" +
-            escapeHtml(row[1]) +
+            (row.html || escapeHtml(row.value || "")) +
             "</dd></div>"
           );
         })
         .join("") +
       "</dl>" +
       '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID shown here is inferred from the logical DOS header at T18/S0.</p>' +
+      renderPhysicalSectorLegend(
+        track,
+        sector,
+        sectorBytes,
+        info,
+        logicalDiskIdBytes,
+      ) +
       '<div class="sector-inspector-dump">' +
-      '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view</span></div>' +
+      '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view' +
+      (tailDimStart != null
+        ? " · dimmed tail bytes are beyond used payload"
+        : "") +
+      "</span></div>" +
       '<div class="sector-hex-viewer">' +
-      renderSectorHexDump(sectorBytes) +
+      renderSectorHexDumpWithOptions(sectorBytes, { dimStart: tailDimStart }) +
       "</div>" +
       "</div>" +
       "</section>";
@@ -1729,9 +1991,7 @@
         renderDiskMapLegend();
         return;
       }
-      state.selectedSectorKey = target.dataset.key || "";
-      applySelectedDiskMapSector();
-      renderDiskMapInspector();
+      selectDiskMapSector(target.dataset.track, target.dataset.sector);
     });
     diskMap.addEventListener("mousedown", function (event) {
       if (event.button !== 0) return;
@@ -1772,6 +2032,14 @@
       );
     });
     diskMapLegend.addEventListener("click", function (event) {
+      const jumpButton = event.target.closest('[data-action="jump-sector"]');
+      if (jumpButton) {
+        selectDiskMapSector(
+          jumpButton.dataset.track,
+          jumpButton.dataset.sector,
+        );
+        return;
+      }
       const button = event.target.closest('[data-action="show-legend"]');
       if (!button) return;
       clearSelectedDiskMapSector();

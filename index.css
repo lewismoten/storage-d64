@@ -573,8 +573,8 @@ button:disabled {
 }
 
 .sector-inspector-head {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
   padding: 12px;
@@ -616,8 +616,8 @@ button:disabled {
 
 .sector-inspector-meta div {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   padding: 10px 12px;
   border: 1px solid rgba(185, 227, 242, 0.1);
   border-radius: 12px;
@@ -635,7 +635,40 @@ button:disabled {
 .sector-inspector-meta dd {
   margin: 0;
   color: var(--ink);
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.sector-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.sector-link-raw {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.sector-link-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 28px;
+  width: auto;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 999px;
+  background: rgba(63, 209, 194, 0.12);
+  color: var(--accent-strong);
+  box-shadow: none;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
 }
 
 .sector-inspector-note {
@@ -644,6 +677,105 @@ button:disabled {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.45;
+}
+
+.sector-physical {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sector-physical-head {
+  display: grid;
+  gap: 4px;
+}
+
+.sector-physical-head strong {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sector-physical-head span,
+.sector-physical-legend {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.sector-physical-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sector-physical-chip {
+  display: grid;
+  gap: 2px;
+  min-width: 70px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sector-physical-chip.is-stored {
+  background: rgba(63, 209, 194, 0.14);
+}
+
+.sector-physical-chip.is-inferred {
+  background: rgba(255, 211, 107, 0.14);
+}
+
+.sector-physical-chip.is-expected {
+  background: rgba(169, 192, 207, 0.12);
+}
+
+.sector-physical-chip-label {
+  color: var(--paper-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sector-physical-chip-value {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.sector-physical-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sector-physical-legend span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sector-physical-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sector-physical-dot.is-stored {
+  background: rgba(63, 209, 194, 0.68);
+}
+
+.sector-physical-dot.is-inferred {
+  background: rgba(255, 211, 107, 0.68);
+}
+
+.sector-physical-dot.is-expected {
+  background: rgba(169, 192, 207, 0.48);
 }
 
 .sector-inspector-dump {
@@ -700,6 +832,16 @@ button:disabled {
 .sector-hex-ascii {
   color: var(--muted);
   letter-spacing: 0.08em;
+}
+
+.sector-hex-byte.is-link,
+.sector-ascii-char.is-link {
+  color: #8ef3e6;
+}
+
+.sector-hex-byte.is-dim,
+.sector-ascii-char.is-dim {
+  opacity: 0.34;
 }
 
 .disk-map-legend-group {
