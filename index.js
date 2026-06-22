@@ -36,6 +36,8 @@
   const diskMapTooltip = document.getElementById("disk-map-tooltip");
   const diskDropHint = document.getElementById("disk-drop-hint");
   const diskMapLegend = document.getElementById("disk-map-legend");
+  const diskMapInspector = document.getElementById("disk-map-inspector");
+  const diskMapPhysical = document.getElementById("disk-map-physical");
   const diskMapSummary = document.getElementById("disk-map-summary");
   const diskMapCoverToggle = document.getElementById("disk-map-cover-toggle");
   const diskMapZoomIn = document.getElementById("disk-map-zoom-in");
@@ -1347,37 +1349,95 @@
         note: "Bytes preserved in sector but beyond logical payload",
       });
     }
+    const preamble = shorthand.slice(0, 8);
+    const linkPart = shorthand[8];
+    const payloadPart = shorthand[9];
+    const tailPart = shorthand[10] || null;
+    const usedBytes =
+      usedPayloadBytes == null
+        ? 254
+        : Math.max(0, Math.min(254, usedPayloadBytes));
+    const tailBytes = unusedPayloadBytes == null ? 0 : unusedPayloadBytes;
+    const usedStartPercent = Math.max(18, Math.min(58, (usedBytes / 254) * 58));
+    const usedEndPercent = Math.max(
+      10,
+      Math.min(24, (Math.max(0, usedBytes - 96) / 158) * 24),
+    );
+    const tailPercent = Math.max(8, Math.min(24, (tailBytes / 254) * 24));
+
+    const renderMiniSegment = function (part) {
+      return (
+        '<span class="sector-physical-mini is-' +
+        part.source +
+        '" title="' +
+        escapeHtml(
+          part.title ? part.note + " (" + part.title + ")" : part.note,
+        ) +
+        '">' +
+        "<strong>" +
+        escapeHtml(part.label) +
+        "</strong>" +
+        "<span>" +
+        escapeHtml(part.value) +
+        "</span></span>"
+      );
+    };
+
     return (
-      '<div class="sector-physical">' +
-      '<div class="sector-physical-head"><strong>Physical Sector Model</strong><span>Decoded shorthand of what a 1541 sector would carry on disk</span></div>' +
-      '<div class="sector-physical-strip">' +
-      shorthand
-        .map(function (part) {
-          return (
-            '<div class="sector-physical-chip is-' +
-            part.source +
-            '" title="' +
-            escapeHtml(
-              part.title ? part.note + " (" + part.title + ")" : part.note,
-            ) +
-            '">' +
-            '<span class="sector-physical-chip-label">' +
-            escapeHtml(part.label) +
-            "</span>" +
-            '<span class="sector-physical-chip-value">' +
-            escapeHtml(part.value) +
-            "</span>" +
-            "</div>"
-          );
-        })
-        .join("") +
+      '<section class="sector-physical">' +
+      '<div class="sector-physical-head"><strong>Physical Sector Model</strong><span>Approximate 1541 on-disk layout inferred from this logical sector.</span></div>' +
+      '<div class="sector-physical-preamble">' +
+      preamble.map(renderMiniSegment).join("") +
+      "</div>" +
+      '<div class="sector-physical-bar-wrap">' +
+      '<div class="sector-physical-bar" aria-hidden="true">' +
+      '<span class="sector-physical-bar-segment is-stored is-link" style="width:14%" title="' +
+      escapeHtml(linkPart.note) +
+      '">LINK</span>' +
+      '<span class="sector-physical-bar-segment is-stored is-payload-start" style="width:' +
+      usedStartPercent.toFixed(1) +
+      '%"></span>' +
+      '<span class="sector-physical-bar-break" title="Payload continues across the omitted middle span">...</span>' +
+      '<span class="sector-physical-bar-segment is-stored is-payload-end" style="width:' +
+      usedEndPercent.toFixed(1) +
+      '%"></span>' +
+      (tailPart
+        ? '<span class="sector-physical-bar-segment is-tail" style="width:' +
+          tailPercent.toFixed(1) +
+          '%"></span>'
+        : "") +
+      "</div>" +
+      '<div class="sector-physical-bar-labels">' +
+      '<span title="' +
+      escapeHtml(linkPart.note) +
+      '">LINK ' +
+      escapeHtml(linkPart.value) +
+      "</span>" +
+      '<span title="' +
+      escapeHtml(
+        payloadPart.note +
+          " (" +
+          (payloadPart.title || formatExactBytes(254)) +
+          ")",
+      ) +
+      '">PAY ' +
+      escapeHtml(payloadPart.value) +
+      "</span>" +
+      (tailPart
+        ? '<span title="' +
+          escapeHtml(tailPart.note + " (" + (tailPart.title || "") + ")") +
+          '">TAIL ' +
+          escapeHtml(tailPart.value) +
+          "</span>"
+        : "") +
+      "</div>" +
       "</div>" +
       '<div class="sector-physical-legend">' +
-      '<span><i class="sector-physical-dot is-stored"></i>Stored in .d64</span>' +
-      '<span><i class="sector-physical-dot is-inferred"></i>Inferred from logical DOS data</span>' +
-      '<span><i class="sector-physical-dot is-expected"></i>Expected on physical disk but not stored in .d64</span>' +
+      '<span><i class="sector-physical-dot is-stored"></i>Stored</span>' +
+      '<span><i class="sector-physical-dot is-inferred"></i>Inferred</span>' +
+      '<span><i class="sector-physical-dot is-expected"></i>Expected only</span>' +
       "</div>" +
-      "</div>"
+      "</section>"
     );
   };
 
@@ -1733,7 +1793,10 @@
 
   const renderDiskMapInspector = function () {
     if (!state.image || !state.selectedSectorKey || !state.diskLayout) {
-      renderDiskMapLegend();
+      diskMapInspector.hidden = true;
+      diskMapInspector.innerHTML = "";
+      diskMapPhysical.hidden = true;
+      diskMapPhysical.innerHTML = "";
       return;
     }
 
@@ -1880,8 +1943,17 @@
       });
     }
     const tailDimStart = getSectorTailDimStart(sectorBytes, info);
+    diskMapPhysical.hidden = false;
+    diskMapPhysical.innerHTML = renderPhysicalSectorLegend(
+      track,
+      sector,
+      sectorBytes,
+      info,
+      logicalDiskIdBytes,
+    );
 
-    diskMapLegend.innerHTML =
+    diskMapInspector.hidden = false;
+    diskMapInspector.innerHTML =
       '<section class="sector-inspector">' +
       '<div class="sector-inspector-head">' +
       "<div>" +
@@ -1907,14 +1979,7 @@
         })
         .join("") +
       "</dl>" +
-      '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID shown here is inferred from the logical DOS header at T18/S0.</p>' +
-      renderPhysicalSectorLegend(
-        track,
-        sector,
-        sectorBytes,
-        info,
-        logicalDiskIdBytes,
-      ) +
+      '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID is inferred from the logical DOS header at T18/S0.</p>' +
       '<div class="sector-inspector-dump">' +
       '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view' +
       (tailDimStart != null
@@ -1941,6 +2006,7 @@
       resetDiskMapView();
       syncDiskMapControls();
       renderDiskMapLegend();
+      renderDiskMapInspector();
       return;
     }
 
@@ -3373,7 +3439,7 @@
       const target = event.target.closest("[data-key]");
       if (!target) {
         clearSelectedDiskMapSector();
-        renderDiskMapLegend();
+        renderDiskMapInspector();
         return;
       }
       selectDiskMapSector(target.dataset.track, target.dataset.sector);
@@ -3455,7 +3521,7 @@
       const button = event.target.closest('[data-action="show-legend"]');
       if (!button) return;
       clearSelectedDiskMapSector();
-      renderDiskMapLegend();
+      renderDiskMapInspector();
     });
     window.addEventListener("beforeunload", releaseObjectUrl);
     syncDiskMapControls();
