@@ -10,6 +10,7 @@
     selectedSectorKey: "",
     diskCoverVisible: false,
     heatMapVisible: false,
+    hexViewContext: null,
   };
 
   const createForm = document.getElementById("create-form");
@@ -2351,6 +2352,7 @@
   };
 
   const closeSectorDataDialog = function () {
+    state.hexViewContext = null;
     if (typeof sectorDataDialog.close === "function") {
       sectorDataDialog.close();
     } else {
@@ -2368,12 +2370,93 @@
     });
   };
 
+  const buildFileByteOffsetMap = function (fileRecord) {
+    const offsets = [];
+    const blocks =
+      fileRecord && Array.isArray(fileRecord.blocks) ? fileRecord.blocks : [];
+    blocks.forEach(function (block) {
+      const usedBytes = Math.max(
+        0,
+        Math.min(254, Number(block.usedBytes) || 0),
+      );
+      const sectorOffset = d64.trackOffset(block.track, block.sector) + 2;
+      for (let index = 0; index < usedBytes; index += 1) {
+        offsets.push(sectorOffset + index);
+      }
+    });
+    return offsets;
+  };
+
   const closeSectorByteDialog = function () {
     if (typeof sectorByteDialog.close === "function") {
       sectorByteDialog.close();
     } else {
       sectorByteDialog.removeAttribute("open");
     }
+  };
+
+  const openFileDataDialog = function (fileName) {
+    if (!state.image) return;
+    const file = d64.readFile(state.image, fileName);
+    if (!file) {
+      setStatus("File not found: " + fileName, true);
+      return;
+    }
+    const displayName =
+      file.entry && file.entry.name ? file.entry.name : String(fileName);
+    state.hexViewContext = {
+      mode: "file",
+      fileName: displayName,
+      byteOffsets: buildFileByteOffsetMap(file),
+    };
+    sectorDataDialogName.textContent = displayName + " bytes";
+    sectorDataDialogBody.dataset.mode = "file";
+    sectorDataDialogBody.dataset.fileName = displayName;
+    sectorDataDialogBody.innerHTML =
+      '<p class="sector-data-dialog-note">Payload bytes only. Link bytes and REL side sectors are not shown here.</p>' +
+      '<div class="sector-hex-viewer">' +
+      renderSectorHexDumpWithOptions(file.payload || new Uint8Array(0), {}) +
+      "</div>";
+    if (typeof sectorDataDialog.showModal === "function") {
+      sectorDataDialog.showModal();
+    } else {
+      sectorDataDialog.setAttribute("open", "open");
+    }
+  };
+
+  const openImageByteDialog = function (config) {
+    const options = config || {};
+    const absoluteOffset = Math.max(
+      0,
+      Math.floor(Number(options.absoluteOffset) || 0),
+    );
+    if (!state.image || absoluteOffset >= state.image.length) return;
+    sectorByteDialog.dataset.absoluteOffset = String(absoluteOffset);
+    sectorByteDialog.dataset.mode = String(options.mode || "");
+    sectorByteDialog.dataset.fileName = String(options.fileName || "");
+    sectorByteDialog.dataset.track = String(options.track || "");
+    sectorByteDialog.dataset.sector = String(options.sector || "");
+    sectorByteDialog.dataset.byteIndex = String(options.byteIndex || "0");
+    sectorByteTrack.value = String(options.track || "");
+    sectorByteSector.value = String(options.sector || "");
+    sectorByteIndex.value = String(options.byteIndex || "0");
+    sectorByteDialogName.textContent = String(options.title || "Edit Byte");
+    sectorByteDialogMeta.textContent = String(
+      options.meta ||
+        "Absolute offset " +
+          toHexWord(absoluteOffset) +
+          " (" +
+          numberFormatter.format(absoluteOffset) +
+          " bytes)",
+    );
+    sectorByteValue.value = toHexByte(state.image[absoluteOffset]);
+    if (typeof sectorByteDialog.showModal === "function") {
+      sectorByteDialog.showModal();
+    } else {
+      sectorByteDialog.setAttribute("open", "open");
+    }
+    sectorByteValue.focus();
+    sectorByteValue.select();
   };
 
   const openSectorDataDialog = function (track, sector) {
@@ -2394,6 +2477,12 @@
       String(normalizedTrack) +
       " Sector " +
       String(normalizedSector);
+    state.hexViewContext = {
+      mode: "sector",
+      track: normalizedTrack,
+      sector: normalizedSector,
+    };
+    sectorDataDialogBody.dataset.mode = "sector";
     sectorDataDialogBody.dataset.track = String(normalizedTrack);
     sectorDataDialogBody.dataset.sector = String(normalizedSector);
     sectorDataDialogBody.innerHTML =
@@ -2417,45 +2506,45 @@
     const normalizedTrack = Math.max(1, Math.floor(Number(track) || 0));
     const normalizedSector = Math.max(0, Math.floor(Number(sector) || 0));
     const normalizedIndex = Math.max(0, Math.min(255, Number(byteIndex) || 0));
-    const sectorBytes = d64.readSector(
-      state.image,
-      normalizedTrack,
-      normalizedSector,
-    );
     const absoluteOffset =
       d64.trackOffset(normalizedTrack, normalizedSector) + normalizedIndex;
-    sectorByteTrack.value = String(normalizedTrack);
-    sectorByteSector.value = String(normalizedSector);
-    sectorByteIndex.value = String(normalizedIndex);
-    sectorByteDialogName.textContent =
-      "Track " +
-      String(normalizedTrack) +
-      " Sector " +
-      String(normalizedSector) +
-      " Byte " +
-      toHexByte(normalizedIndex);
-    sectorByteDialogMeta.textContent =
-      "Absolute offset " +
-      toHexWord(absoluteOffset) +
-      " (" +
-      numberFormatter.format(absoluteOffset) +
-      " bytes)";
-    sectorByteValue.value = toHexByte(sectorBytes[normalizedIndex]);
-    if (typeof sectorByteDialog.showModal === "function") {
-      sectorByteDialog.showModal();
-    } else {
-      sectorByteDialog.setAttribute("open", "open");
-    }
-    sectorByteValue.focus();
-    sectorByteValue.select();
+    openImageByteDialog({
+      absoluteOffset: absoluteOffset,
+      mode: "sector",
+      track: normalizedTrack,
+      sector: normalizedSector,
+      byteIndex: normalizedIndex,
+      title:
+        "Track " +
+        String(normalizedTrack) +
+        " Sector " +
+        String(normalizedSector) +
+        " Byte " +
+        toHexByte(normalizedIndex),
+      meta:
+        "Absolute offset " +
+        toHexWord(absoluteOffset) +
+        " (" +
+        numberFormatter.format(absoluteOffset) +
+        " bytes)",
+    });
   };
 
   const saveSectorByteDialog = function (event) {
     event.preventDefault();
     if (!state.image) return;
-    const track = Number(sectorByteTrack.value);
-    const sector = Number(sectorByteSector.value);
-    const byteIndex = Number(sectorByteIndex.value);
+    const track = Number(
+      sectorByteDialog.dataset.track || sectorByteTrack.value,
+    );
+    const sector = Number(
+      sectorByteDialog.dataset.sector || sectorByteSector.value,
+    );
+    const byteIndex = Number(
+      sectorByteDialog.dataset.byteIndex || sectorByteIndex.value,
+    );
+    const absoluteOffset = Number(
+      sectorByteDialog.dataset.absoluteOffset || -1,
+    );
     const nextValueText = String(sectorByteValue.value || "")
       .trim()
       .toUpperCase();
@@ -2465,7 +2554,7 @@
       return;
     }
     sectorByteValue.setCustomValidity("");
-    const absoluteOffset = d64.trackOffset(track, sector) + byteIndex;
+    if (!Number.isFinite(absoluteOffset) || absoluteOffset < 0) return;
     const nextImage = state.image.slice();
     nextImage[absoluteOffset] = parseInt(nextValueText, 16);
     loadImageBytes(
@@ -2482,8 +2571,15 @@
         ".",
       { resetDeletedTypeHints: false },
     );
-    selectDiskMapSector(track, sector);
-    openSectorDataDialog(track, sector);
+    if (
+      sectorByteDialog.dataset.mode === "file" &&
+      sectorByteDialog.dataset.fileName
+    ) {
+      openFileDataDialog(sectorByteDialog.dataset.fileName);
+    } else {
+      selectDiskMapSector(track, sector);
+      openSectorDataDialog(track, sector);
+    }
     closeSectorByteDialog();
   };
 
@@ -3448,7 +3544,13 @@
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
           "</td>" +
           "<td>" +
+          '<button type="button" class="file-type-button" data-action="edit-bytes" data-name="' +
+          escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Edit bytes for " + file.name) +
+          '">' +
           formatByteHtml((file.data && file.data.length) || 0) +
+          "</button>" +
           "</td>" +
           "<td>" +
           flagMarkup(file.closed, {
@@ -4047,6 +4149,10 @@
         openFileTypeDialog(button.dataset.name);
         return;
       }
+      if (button.dataset.action === "edit-bytes") {
+        openFileDataDialog(button.dataset.name);
+        return;
+      }
       if (button.dataset.action === "delete-file") {
         deleteFile(button.dataset.name);
         return;
@@ -4096,10 +4202,38 @@
     sectorDataDialogBody.addEventListener("click", function (event) {
       const target = event.target.closest("[data-byte-index]");
       if (!target) return;
+      const byteIndex = Math.max(
+        0,
+        Math.floor(Number(target.dataset.byteIndex) || 0),
+      );
+      if (
+        state.hexViewContext &&
+        state.hexViewContext.mode === "file" &&
+        Array.isArray(state.hexViewContext.byteOffsets)
+      ) {
+        const absoluteOffset = state.hexViewContext.byteOffsets[byteIndex];
+        if (!Number.isFinite(Number(absoluteOffset))) return;
+        openImageByteDialog({
+          absoluteOffset: absoluteOffset,
+          mode: "file",
+          fileName: state.hexViewContext.fileName || "",
+          byteIndex: byteIndex,
+          title:
+            (state.hexViewContext.fileName || "File") +
+            " Byte " +
+            toHexWord(byteIndex),
+          meta:
+            "File byte offset " +
+            toHexWord(byteIndex) +
+            " · absolute offset " +
+            toHexWord(absoluteOffset),
+        });
+        return;
+      }
       const track = sectorDataDialogBody.dataset.track;
       const sector = sectorDataDialogBody.dataset.sector;
       if (!track || !sector) return;
-      openSectorByteDialog(track, sector, target.dataset.byteIndex);
+      openSectorByteDialog(track, sector, byteIndex);
     });
     sectorDataDialogBody.addEventListener("mouseout", function (event) {
       const target = event.target.closest("[data-byte-index]");
