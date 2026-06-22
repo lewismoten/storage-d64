@@ -1690,6 +1690,8 @@
   };
 
   d64.createDirectorySector = function (entries, sectorIndex, totalSectors) {
+    const sectorOrder =
+      arguments.length > 3 && Array.isArray(arguments[3]) ? arguments[3] : null;
     const sector = new Uint8Array(256);
     const entriesPerSector = 8;
     for (let entryIndex = 0; entryIndex < entriesPerSector; entryIndex += 1) {
@@ -1699,12 +1701,82 @@
     }
     if (sectorIndex < totalSectors - 1) {
       sector[0] = 18;
-      sector[1] = sectorIndex + 2;
+      sector[1] =
+        sectorOrder && Number.isFinite(Number(sectorOrder[sectorIndex + 1]))
+          ? Math.floor(Number(sectorOrder[sectorIndex + 1]))
+          : sectorIndex + 2;
     } else {
       sector[0] = 0;
       sector[1] = 255;
     }
     return sector;
+  };
+
+  d64.findNextDirectoryInterleaveSector = function (
+    currentSector,
+    usedSectors,
+  ) {
+    const track18SectorCount = d64.trackSectorCount(DIRECTORY_TRACK);
+    const used = {};
+    (Array.isArray(usedSectors) ? usedSectors : []).forEach(function (sector) {
+      const normalizedSector = Math.max(0, Math.floor(Number(sector) || 0));
+      used[normalizedSector] = true;
+    });
+    let candidate =
+      (Math.max(0, Math.floor(Number(currentSector) || 0)) + 3) %
+      track18SectorCount;
+    for (let attempts = 0; attempts < track18SectorCount; attempts += 1) {
+      if (candidate !== BAM_SECTOR && !used[candidate]) {
+        return candidate;
+      }
+      candidate = (candidate + 1) % track18SectorCount;
+    }
+    return null;
+  };
+
+  d64.buildDirectorySectorOrder = function (totalSectors, options) {
+    const count = Math.max(
+      1,
+      Math.min(18, Math.floor(Number(totalSectors) || 0)),
+    );
+    const config = options || {};
+    const mode = d64.normalizeAllocationMode(config.allocationMode);
+    const order = [1];
+    if (count <= 1) return order;
+    if (mode === "fragmented") {
+      const remaining = [];
+      for (let sector = 2; sector <= 18; sector += 1) {
+        remaining.push(sector);
+      }
+      let stride = Math.max(2, Math.floor(Number(config.fragmentStride) || 5));
+      while (
+        remaining.length > 1 &&
+        d64.greatestCommonDivisor(stride, remaining.length) !== 1
+      ) {
+        stride += 1;
+      }
+      let cursor =
+        Math.max(0, Math.floor(Number(config.fragmentCursor) || 0)) %
+        remaining.length;
+      const used = new Array(remaining.length).fill(false);
+      while (order.length < count) {
+        if (!used[cursor]) {
+          used[cursor] = true;
+          order.push(remaining[cursor]);
+        }
+        cursor = (cursor + stride) % remaining.length;
+      }
+      return order;
+    }
+    while (order.length < count) {
+      const nextSector = d64.findNextDirectoryInterleaveSector(
+        order[order.length - 1],
+        order,
+      );
+      if (!Number.isFinite(Number(nextSector))) break;
+      order.push(nextSector);
+    }
+    return order;
   };
 
   d64.createDirectoryEntry = function (
@@ -2193,9 +2265,6 @@
       freeMap[track] = new Array(sectorCount).fill(true);
     }
     const track18Count = d64.trackSectorCount(18);
-    for (let sector = 0; sector < track18Count; sector += 1) {
-      freeMap[18][sector] = false;
-    }
     for (const allocationTrack in allocation.map) {
       if (
         !Object.prototype.hasOwnProperty.call(allocation.map, allocationTrack)
@@ -2204,15 +2273,24 @@
       const trackIndex = Number(allocationTrack);
       freeMap[trackIndex] = allocation.map[trackIndex].slice();
     }
-    for (let sector = dirSectors + 1; sector < track18Count; sector += 1) {
-      freeMap[18][sector] = true;
-    }
+    const directorySectorOrder = Array.isArray(allocation.directorySectorOrder)
+      ? allocation.directorySectorOrder.slice(0, dirSectors)
+      : d64.buildDirectorySectorOrder(dirSectors, options || image);
+    freeMap[18] = new Array(track18Count).fill(true);
+    freeMap[18][0] = false;
+    directorySectorOrder.forEach(function (sector) {
+      if (sector >= 1 && sector < track18Count) {
+        freeMap[18][sector] = false;
+      }
+    });
     const bamSector = d64.createBamSector(freeMap, diskName);
     image.set(bamSector, d64.trackOffset(18, 0));
     for (let index = 0; index < dirSectors; index += 1) {
+      const targetSector = directorySectorOrder[index];
+      if (!Number.isFinite(Number(targetSector))) continue;
       image.set(
         allocation.directorySectors[index],
-        d64.trackOffset(18, 1 + index),
+        d64.trackOffset(18, targetSector),
       );
     }
   };
@@ -2298,9 +2376,18 @@
       Math.ceil(directoryEntries.length / entriesPerDirectorySector),
     );
     if (dirSectors > d64.trackSectorCount(18) - 1) return null;
+    allocation.directorySectorOrder = d64.buildDirectorySectorOrder(
+      dirSectors,
+      config,
+    );
     for (let i = 0; i < dirSectors; i += 1) {
       allocation.directorySectors.push(
-        d64.createDirectorySector(directoryEntries, i, dirSectors),
+        d64.createDirectorySector(
+          directoryEntries,
+          i,
+          dirSectors,
+          allocation.directorySectorOrder,
+        ),
       );
     }
     d64.finalizeImage(image, allocation, dirSectors, diskInfo, geometry);
@@ -2436,9 +2523,18 @@
     const dirSectors = Math.max(1, Math.ceil(directoryEntries.length / 8));
     if (dirSectors > d64.trackSectorCount(18) - 1) return null;
     allocation.directorySectors = [];
+    allocation.directorySectorOrder = d64.buildDirectorySectorOrder(
+      dirSectors,
+      config,
+    );
     for (let index = 0; index < dirSectors; index += 1) {
       allocation.directorySectors.push(
-        d64.createDirectorySector(directoryEntries, index, dirSectors),
+        d64.createDirectorySector(
+          directoryEntries,
+          index,
+          dirSectors,
+          allocation.directorySectorOrder,
+        ),
       );
     }
     d64.finalizeImage(nextImage, allocation, dirSectors, config, config);

@@ -1409,6 +1409,66 @@
     };
   };
 
+  const estimateDirectoryLinkMetrics = function (
+    currentSector,
+    nextTrack,
+    nextSector,
+    usedSectors,
+  ) {
+    if (Math.floor(Number(nextTrack) || 0) !== 18) {
+      return null;
+    }
+    if (!isValidSectorAddress(nextTrack, nextSector, state.image)) {
+      return null;
+    }
+    const normalizedCurrentSector = Math.max(
+      1,
+      Math.floor(Number(currentSector) || 0),
+    );
+    const idealNextSector = d64.findNextDirectoryInterleaveSector(
+      normalizedCurrentSector,
+      usedSectors,
+    );
+    if (!Number.isFinite(Number(idealNextSector))) {
+      return null;
+    }
+    const trackSectorCount = d64.trackSectorCount(18);
+    const idealDistance =
+      (idealNextSector - normalizedCurrentSector + trackSectorCount) %
+      trackSectorCount;
+    const actualDistance =
+      (Math.floor(Number(nextSector) || 0) -
+        normalizedCurrentSector +
+        trackSectorCount) %
+      trackSectorCount;
+    const extraDistance =
+      (actualDistance - idealDistance + trackSectorCount) % trackSectorCount;
+    const rotationMsPerRevolution = 200;
+    const totalMs =
+      (actualDistance / trackSectorCount) * rotationMsPerRevolution;
+    const bestMs = (idealDistance / trackSectorCount) * rotationMsPerRevolution;
+    const worstMs =
+      bestMs +
+      ((trackSectorCount - 1) / trackSectorCount) * rotationMsPerRevolution;
+    const score = Math.max(
+      0,
+      Math.min(
+        100,
+        ((trackSectorCount - 1 - extraDistance) / (trackSectorCount - 1)) * 100,
+      ),
+    );
+    return {
+      predictedSector: idealNextSector,
+      rotationalDistance: actualDistance,
+      totalMs: totalMs,
+      bestMs: bestMs,
+      worstMs: worstMs,
+      score: score,
+      extraDistance: extraDistance,
+      model: "directory",
+    };
+  };
+
   const renderPhysicalSectorLegend = function (
     track,
     sector,
@@ -1512,9 +1572,12 @@
     const nextTrack = sectorBytes[0];
     const nextSector = sectorBytes[1];
     const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
-    const linkMetrics = hasNextSectorLink
-      ? estimateSectorLinkMetrics(track, sector, nextTrack, nextSector)
-      : null;
+    const linkMetrics =
+      info && info.linkMetrics
+        ? info.linkMetrics
+        : hasNextSectorLink
+          ? estimateSectorLinkMetrics(track, sector, nextTrack, nextSector)
+          : null;
 
     const renderMiniSegment = function (part) {
       return (
@@ -1587,7 +1650,9 @@
         '<div class="sector-physical-timing">' +
         '<span class="sector-physical-chip is-inferred" title="' +
         escapeHtml(
-          "Estimated delay before the drive can start reading the linked sector. Based on ~300 RPM rotation and ~3 ms per track head step.",
+          linkMetrics.model === "directory"
+            ? "Estimated directory follow-up delay on track 18. Directory sectors treat interleave 3 as the ideal next placement."
+            : "Estimated delay before the drive can start reading the linked sector. Based on ~300 RPM rotation and ~3 ms per track head step.",
         ) +
         '">' +
         "<strong>Next Read</strong><span>" +
@@ -1595,13 +1660,21 @@
         " ms</span></span>" +
         '<span class="sector-physical-chip is-expected" title="' +
         escapeHtml(
-          "Predicted arrival window lands near sector " +
-            String(linkMetrics.predictedSector) +
-            ". Rotational wait is " +
-            linkMetrics.rotationalDistance +
-            " sector" +
-            (linkMetrics.rotationalDistance === 1 ? "" : "s") +
-            ".",
+          linkMetrics.model === "directory"
+            ? "Ideal directory interleave target is sector " +
+                String(linkMetrics.predictedSector) +
+                ". Actual follow-up waits " +
+                linkMetrics.rotationalDistance +
+                " physical sector" +
+                (linkMetrics.rotationalDistance === 1 ? "" : "s") +
+                "."
+            : "Predicted arrival window lands near sector " +
+                String(linkMetrics.predictedSector) +
+                ". Rotational wait is " +
+                linkMetrics.rotationalDistance +
+                " sector" +
+                (linkMetrics.rotationalDistance === 1 ? "" : "s") +
+                ".",
         ) +
         '">' +
         "<strong>Window</strong><span>S" +
@@ -1611,7 +1684,9 @@
         "</span></span>" +
         '<span class="sector-physical-chip is-stored" title="' +
         escapeHtml(
-          "Optimization score for this link. 100% is the best reachable next sector without overshooting the estimated arrival window; 0% is nearly a full extra rotation.",
+          linkMetrics.model === "directory"
+            ? "Read optimization score for this directory link. 100% matches the preferred interleave-3 follow-up placement on track 18."
+            : "Optimization score for this link. 100% is the best reachable next sector without overshooting the estimated arrival window; 0% is nearly a full extra rotation.",
         ) +
         '">' +
         "<strong>Score</strong><span>" +
@@ -1753,6 +1828,7 @@
         stroke: DISK_MAP_COLORS.trackStroke,
         label: "Directory sector " + String(index + 1),
         usedFraction: 1,
+        directoryIndex: index,
       });
     });
 
@@ -1931,6 +2007,30 @@
       if (!metrics) return;
       sectorInfo.linkMetrics = metrics;
       sectorInfo.heatColor = scoreToHeatColor(metrics.score);
+    });
+
+    const visitedDirectorySectors = [];
+    directory.sectors.forEach(function (sectorInfo) {
+      if (sectorInfo.track !== 18 || sectorInfo.sector === 0) {
+        return;
+      }
+      const key = String(sectorInfo.track) + ":" + String(sectorInfo.sector);
+      const currentSectorInfo = sectorMap[key];
+      if (!currentSectorInfo || sectorInfo.nextTrack === 0) {
+        visitedDirectorySectors.push(sectorInfo.sector);
+        return;
+      }
+      const metrics = estimateDirectoryLinkMetrics(
+        sectorInfo.sector,
+        sectorInfo.nextTrack,
+        sectorInfo.nextSector,
+        visitedDirectorySectors.concat([sectorInfo.sector]),
+      );
+      if (metrics) {
+        currentSectorInfo.linkMetrics = metrics;
+        currentSectorInfo.heatColor = scoreToHeatColor(metrics.score);
+      }
+      visitedDirectorySectors.push(sectorInfo.sector);
     });
 
     const scoredSectors = Object.values(sectorMap).filter(
