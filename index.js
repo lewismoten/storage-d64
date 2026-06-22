@@ -79,11 +79,12 @@
     seqTail: "#a9dcff",
     usrUsed: "#c77dff",
     usrTail: "#e0b8ff",
-    relUsed: "#ff6b6b",
-    relTail: "#ffb3b3",
+    relUsed: "#f59f00",
+    relTail: "#ffd37a",
     relSide: "#ff9f43",
     relSideTail: "#ffd3a1",
-    deleted: "#8c98a4",
+    deleted: "#e03131",
+    deletedTail: "#ff8787",
     trackStroke: "rgba(255,255,255,0.08)",
   });
   const SHELL_COLOR_PRESETS = Object.freeze([
@@ -1288,6 +1289,7 @@
     const activeEntries = directory.entries.filter(function (entry) {
       return entry.typeByte;
     });
+    const deletedEntries = d64.readDeletedEntries(image);
     activeEntries.forEach(function (entry) {
       const type = String(entry.fileType || "prg").toLowerCase();
       const usedColor =
@@ -1370,6 +1372,70 @@
       }
     });
 
+    deletedEntries.forEach(function (entry) {
+      const deletedType = inferDeletedEntryType(entry);
+      try {
+        const chain = d64.readFileChain(
+          image,
+          entry.startTrack,
+          entry.startSector,
+        );
+        chain.blocks.forEach(function (block, blockIndex) {
+          markSector(sectorMap, block.track, block.sector, {
+            category: "deletedData",
+            color: DISK_MAP_COLORS.deleted,
+            tailColor: DISK_MAP_COLORS.deletedTail,
+            stroke: DISK_MAP_COLORS.trackStroke,
+            label:
+              entry.name +
+              " (deleted " +
+              deletedType.toUpperCase() +
+              ") block " +
+              String(blockIndex + 1),
+            usedFraction: Math.max(
+              0,
+              Math.min(1, (block.usedBytes || 0) / 254),
+            ),
+            unusedFraction: Math.max(
+              0,
+              Math.min(1, (block.unusedBytes || 0) / 254),
+            ),
+          });
+        });
+        if (deletedType === "rel" && entry.sideSectorTrack) {
+          d64
+            .readRelativeSideSectors(
+              image,
+              entry.sideSectorTrack,
+              entry.sideSectorSector,
+            )
+            .forEach(function (sideSector, sideIndex) {
+              markSector(sectorMap, sideSector.track, sideSector.sector, {
+                category: "deletedRelSide",
+                color: DISK_MAP_COLORS.deleted,
+                tailColor: DISK_MAP_COLORS.deletedTail,
+                stroke: DISK_MAP_COLORS.trackStroke,
+                label:
+                  entry.name +
+                  " (deleted REL side sector " +
+                  String(sideIndex + 1) +
+                  ")",
+                usedFraction: 1,
+                unusedFraction: 0,
+              });
+            });
+        }
+      } catch (error) {
+        markSector(sectorMap, entry.startTrack, entry.startSector, {
+          category: "deletedData",
+          color: DISK_MAP_COLORS.deleted,
+          stroke: DISK_MAP_COLORS.trackStroke,
+          label: entry.name + " (deleted) could not be fully traced",
+          usedFraction: 1,
+        });
+      }
+    });
+
     return {
       geometry: geometry,
       sectorMap: sectorMap,
@@ -1420,8 +1486,17 @@
             DISK_MAP_COLORS.usrUsed,
             "Dark = used bytes, light = tail bytes",
           ],
-          ["REL Data", DISK_MAP_COLORS.relUsed, "REL file data sectors"],
+          [
+            "REL Data",
+            DISK_MAP_COLORS.relUsed,
+            "Dark = used bytes, light = tail bytes",
+          ],
           ["REL Side", DISK_MAP_COLORS.relSide, "REL side-sector chain"],
+          [
+            "Deleted",
+            DISK_MAP_COLORS.deleted,
+            "Deleted file chains and deleted REL side sectors",
+          ],
         ],
       },
     ]
