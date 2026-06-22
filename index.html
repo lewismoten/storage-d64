@@ -174,7 +174,7 @@
               <p id="disk-map-summary">Waiting for an image</p>
             </div>
             <div class="disk-map-grid">
-              <div class="disk-map-frame">
+              <div id="disk-map-frame" class="disk-map-frame">
                 <div class="disk-map-toolbar">
                   <div class="disk-map-toolbar-label">Pan and zoom</div>
                   <div class="disk-map-toolbar-actions">
@@ -205,6 +205,9 @@
                   class="disk-map-tooltip"
                   hidden
                 ></div>
+                <div id="disk-drop-hint" class="disk-drop-hint" hidden>
+                  Drop host files here to add them to this disk image
+                </div>
               </div>
               <div class="disk-map-legend-wrap">
                 <div id="disk-map-legend" class="disk-map-legend"></div>

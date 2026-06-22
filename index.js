@@ -27,9 +27,11 @@
   const usageChartPanel = document.getElementById("usage-chart-panel");
   const usageChart = document.getElementById("usage-chart");
   const usageLegend = document.getElementById("usage-legend");
+  const diskMapFrame = document.getElementById("disk-map-frame");
   const diskMap = document.getElementById("disk-map");
   const diskMapPointer = document.getElementById("disk-map-pointer");
   const diskMapTooltip = document.getElementById("disk-map-tooltip");
+  const diskDropHint = document.getElementById("disk-drop-hint");
   const diskMapLegend = document.getElementById("disk-map-legend");
   const diskMapSummary = document.getElementById("disk-map-summary");
   const diskMapCoverToggle = document.getElementById("disk-map-cover-toggle");
@@ -62,6 +64,7 @@
     "undeleteFile",
     "fragmentImage",
     "defragmentImage",
+    "addFile",
     "trackSectorCount",
   ];
   const DISK_MAP_COLORS = Object.freeze({
@@ -273,6 +276,39 @@
 
   const formatNumber = function (value) {
     return numberFormatter.format(Math.max(0, Math.round(Number(value) || 0)));
+  };
+
+  const inferDroppedFileType = function (name) {
+    const extension = String(name || "")
+      .trim()
+      .toLowerCase()
+      .match(/\.([^.]+)$/);
+    const ext = extension ? extension[1] : "";
+    if (["prg", "p00", "bas"].includes(ext)) return "prg";
+    if (["usr", "u00"].includes(ext)) return "usr";
+    if (["rel", "r00"].includes(ext)) return "rel";
+    if (["seq", "s00"].includes(ext)) return "seq";
+    return "seq";
+  };
+
+  const normalizeDroppedFileName = function (name) {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return "UNTITLED";
+    return trimmed.replace(/\.[^.]+$/, "").trim() || trimmed;
+  };
+
+  const toggleDiskDropTarget = function (isActive) {
+    diskMapFrame.classList.toggle("is-file-drop-target", Boolean(isActive));
+    diskDropHint.hidden = !isActive;
+  };
+
+  const isFileDragEvent = function (event) {
+    const types =
+      event &&
+      event.dataTransfer &&
+      event.dataTransfer.types &&
+      Array.from(event.dataTransfer.types);
+    return Boolean(types && types.includes("Files"));
   };
 
   const releaseObjectUrl = function () {
@@ -2859,6 +2895,44 @@
     }
   };
 
+  const addHostFilesToImage = async function (fileList) {
+    if (!state.image) {
+      setStatus(
+        "Load or create a disk image before dropping files into it.",
+        true,
+      );
+      return;
+    }
+    const files = Array.from(fileList || []).filter(function (file) {
+      return file && typeof file.arrayBuffer === "function";
+    });
+    if (!files.length) return;
+    let nextImage = state.image;
+    for (let index = 0; index < files.length; index += 1) {
+      const hostFile = files[index];
+      const bytes = new Uint8Array(await hostFile.arrayBuffer());
+      nextImage = d64.addFile(nextImage, {
+        name: normalizeDroppedFileName(hostFile.name),
+        type: inferDroppedFileType(hostFile.name),
+        data: bytes,
+      });
+      if (!nextImage) {
+        throw new Error(
+          "Unable to add " + hostFile.name + " to the disk image.",
+        );
+      }
+    }
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      "Added " +
+        files.length +
+        " host file" +
+        (files.length === 1 ? "" : "s") +
+        " to the disk image.",
+    );
+  };
+
   const startDiskMapDrag = function (event) {
     if (
       !state.image ||
@@ -2914,6 +2988,36 @@
       if (imageUpload.files && imageUpload.files[0]) {
         setStatus("Loading " + imageUpload.files[0].name + "...");
         loadSelectedFile();
+      }
+    });
+    diskMapFrame.addEventListener("dragenter", function (event) {
+      if (!isFileDragEvent(event)) return;
+      event.preventDefault();
+      toggleDiskDropTarget(true);
+    });
+    diskMapFrame.addEventListener("dragover", function (event) {
+      if (!isFileDragEvent(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = state.image ? "copy" : "none";
+      }
+      toggleDiskDropTarget(true);
+    });
+    diskMapFrame.addEventListener("dragleave", function (event) {
+      if (!event.relatedTarget || !diskMapFrame.contains(event.relatedTarget)) {
+        toggleDiskDropTarget(false);
+      }
+    });
+    diskMapFrame.addEventListener("drop", async function (event) {
+      if (!isFileDragEvent(event)) return;
+      event.preventDefault();
+      toggleDiskDropTarget(false);
+      try {
+        await addHostFilesToImage(
+          event.dataTransfer && event.dataTransfer.files,
+        );
+      } catch (error) {
+        setStatus(error.message || String(error), true);
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);
