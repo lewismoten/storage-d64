@@ -1130,6 +1130,10 @@ button:disabled {
   border-radius: 6px;
 }
 
+.sector-hex-row-no-offset {
+  grid-template-columns: 0 max-content 16ch;
+}
+
 .sector-hex-row:nth-child(odd) {
   background: rgba(255, 255, 255, 0.025);
 }
@@ -1178,6 +1182,14 @@ button:disabled {
 .sector-hex-byte.is-link,
 .sector-ascii-char.is-link {
   color: #8ef3e6;
+}
+
+.sector-hex-byte.is-invalid,
+.sector-ascii-char.is-invalid {
+  color: #ff8e90;
+  background: rgba(255, 142, 144, 0.14);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 142, 144, 0.2);
 }
 
 .sector-hex-byte[data-byte-index],
@@ -1584,6 +1596,12 @@ tbody tr.is-drop-target {
 
 .doctor-issue-items li + li {
   margin-top: 4px;
+}
+
+.doctor-issue-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
 }
 
 .deleted-panel {
