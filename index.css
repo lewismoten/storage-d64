@@ -1132,6 +1132,7 @@ button:disabled {
 
 .sector-hex-row-no-offset {
   grid-template-columns: 0 max-content 16ch;
+  gap: 8px;
 }
 
 .sector-hex-row:nth-child(odd) {

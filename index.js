@@ -1260,9 +1260,11 @@
         }, {})
       : {};
     const rows = [
-      '<div class="sector-hex-row sector-hex-header">' +
+      '<div class="sector-hex-row sector-hex-header' +
+        (showOffsets ? "" : " sector-hex-row-no-offset") +
+        '">' +
         '<span class="sector-hex-offset">' +
-        (showOffsets ? "" : "&nbsp;") +
+        (showOffsets ? "" : "") +
         "</span>" +
         '<span class="sector-hex-bytes">' +
         Array.from({ length: 16 }, function (_, index) {
@@ -2499,13 +2501,40 @@
         return state.image[absoluteOffset];
       }),
     );
-    const invalidByteIndexes = Array.isArray(options.invalidByteIndexes)
+    let invalidByteIndexes = Array.isArray(options.invalidByteIndexes)
       ? options.invalidByteIndexes
       : [];
+    if (options.rangeKind === "disk-name") {
+      invalidByteIndexes = absoluteOffsets.reduce(function (
+        result,
+        absoluteOffset,
+        index,
+      ) {
+        const value = state.image[absoluteOffset];
+        if (value === 0x00 || value === 0xa0 || value === 0x20) {
+          return result;
+        }
+        const char = String.fromCharCode(value & 0xff);
+        if (!/^[A-Z0-9 ._-]$/.test(char)) {
+          result.push(index);
+        }
+        return result;
+      }, []);
+    }
     state.hexViewContext = {
       mode: "absolute-range",
       title: String(options.title || "Byte Range"),
       absoluteOffsets: absoluteOffsets,
+      rangeConfig: {
+        title: String(options.title || "Byte Range"),
+        note: options.note ? String(options.note) : "",
+        dialogTitle: String(
+          options.dialogTitle || options.title || "Byte Range",
+        ),
+        showOffsets: options.showOffsets !== false,
+        highlightLinkBytes: options.highlightLinkBytes !== false,
+        rangeKind: String(options.rangeKind || ""),
+      },
     };
     sectorDataDialogTitle.textContent = String(
       options.dialogTitle || options.title || "Byte Range",
@@ -2672,10 +2701,10 @@
       Array.isArray(state.hexViewContext.absoluteOffsets)
         ? state.hexViewContext.absoluteOffsets.slice()
         : null;
-    const rangeTitle =
+    const rangeConfig =
       state.hexViewContext && state.hexViewContext.mode === "absolute-range"
-        ? state.hexViewContext.title || "Byte Range"
-        : "";
+        ? state.hexViewContext.rangeConfig || {}
+        : {};
     loadImageBytes(
       nextImage,
       state.sourceName || "disk.d64",
@@ -2696,10 +2725,11 @@
     ) {
       openFileDataDialog(sectorByteDialog.dataset.fileName);
     } else if (rangeOffsets && rangeOffsets.length) {
-      openImageRangeDialog({
-        title: rangeTitle,
-        absoluteOffsets: rangeOffsets,
-      });
+      openImageRangeDialog(
+        Object.assign({}, rangeConfig, {
+          absoluteOffsets: rangeOffsets,
+        }),
+      );
     } else {
       selectDiskMapSector(track, sector);
       openSectorDataDialog(track, sector);
@@ -4558,22 +4588,13 @@
         closeDoctorDialog();
         const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
         const length = d64.headerOffsets.diskNameLength;
-        const invalidByteIndexes = [];
-        for (let index = 0; index < length; index += 1) {
-          const value = state.image[start + index];
-          if (value === 0x00 || value === 0xa0 || value === 0x20) continue;
-          const char = String.fromCharCode(value & 0xff);
-          if (!/^[A-Z0-9 ._-]$/.test(char)) {
-            invalidByteIndexes.push(index);
-          }
-        }
         openImageRangeDialog({
           title: "Disk Name Bytes",
           note: "Only the 16 bytes that make up the disk name field are shown.",
           dialogTitle: "Disk Name",
           showOffsets: false,
           highlightLinkBytes: false,
-          invalidByteIndexes: invalidByteIndexes,
+          rangeKind: "disk-name",
           absoluteOffsets: Array.from({ length: length }, function (_, index) {
             return start + index;
           }),
