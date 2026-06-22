@@ -906,6 +906,7 @@ button:disabled {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  padding: 0;
 }
 
 .sector-physical-bar-segment.is-link {
@@ -922,6 +923,10 @@ button:disabled {
 
 .sector-physical-bar-segment.is-tail {
   background: rgba(152, 245, 225, 0.9);
+}
+
+button.sector-physical-bar-segment {
+  cursor: pointer;
 }
 
 .sector-physical-bar-break {
@@ -949,6 +954,23 @@ button:disabled {
   display: inline-flex;
   gap: 6px;
   align-items: center;
+}
+
+.sector-physical-bar-label {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sector-data-dialog-body {
+  display: grid;
 }
 
 .sector-physical-chip {
@@ -1043,19 +1065,24 @@ button:disabled {
   display: grid;
   gap: 4px;
   max-height: 420px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   padding: 10px;
   border-radius: 12px;
   background: rgba(6, 20, 30, 0.72);
+  font-family:
+    "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono",
+    monospace;
 }
 
 .sector-hex-row {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 88px;
+  grid-template-columns: 56px 1fr 136px;
   gap: 12px;
   align-items: baseline;
   font-size: 0.75rem;
   line-height: 1.45;
+  min-width: 860px;
 }
 
 .sector-hex-offset {
@@ -1064,12 +1091,13 @@ button:disabled {
 
 .sector-hex-bytes {
   color: #eaf7ff;
-  word-break: break-all;
+  white-space: nowrap;
 }
 
 .sector-hex-ascii {
   color: var(--muted);
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .sector-hex-byte.is-link,
@@ -1264,6 +1292,11 @@ tbody tr:hover {
   display: grid;
   gap: 16px;
   padding: 20px;
+}
+
+.file-type-dialog.sector-data-dialog {
+  width: min(1100px, calc(100vw - 28px));
+  max-width: 1100px;
 }
 
 .dialog-actions {

@@ -66,6 +66,14 @@
   const fileNameTarget = document.getElementById("file-name-target");
   const fileNameInput = document.getElementById("file-name-input");
   const fileNameCancel = document.getElementById("file-name-cancel");
+  const sectorDataDialog = document.getElementById("sector-data-dialog");
+  const sectorDataDialogName = document.getElementById(
+    "sector-data-dialog-name",
+  );
+  const sectorDataDialogBody = document.getElementById(
+    "sector-data-dialog-body",
+  );
+  const sectorDataClose = document.getElementById("sector-data-close");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
@@ -1394,13 +1402,21 @@
       '<span class="sector-physical-bar-segment is-stored is-link" style="width:14%" title="' +
       escapeHtml(linkPart.note) +
       '">LINK</span>' +
-      '<span class="sector-physical-bar-segment is-stored is-payload-start" style="width:' +
+      '<button type="button" class="sector-physical-bar-segment is-stored is-payload-start" data-action="open-sector-data" data-track="' +
+      String(track) +
+      '" data-sector="' +
+      String(sector) +
+      '" style="width:' +
       usedStartPercent.toFixed(1) +
-      '%"></span>' +
+      '%" title="Open sector data"></button>' +
       '<span class="sector-physical-bar-break" title="Payload continues across the omitted middle span">...</span>' +
-      '<span class="sector-physical-bar-segment is-stored is-payload-end" style="width:' +
+      '<button type="button" class="sector-physical-bar-segment is-stored is-payload-end" data-action="open-sector-data" data-track="' +
+      String(track) +
+      '" data-sector="' +
+      String(sector) +
+      '" style="width:' +
       usedEndPercent.toFixed(1) +
-      '%"></span>' +
+      '%" title="Open sector data"></button>' +
       (tailPart
         ? '<span class="sector-physical-bar-segment is-tail" style="width:' +
           tailPercent.toFixed(1) +
@@ -1413,16 +1429,20 @@
       '">LINK ' +
       escapeHtml(linkPart.value) +
       "</span>" +
-      '<span title="' +
+      '<button type="button" class="sector-physical-bar-label" data-action="open-sector-data" data-track="' +
+      String(track) +
+      '" data-sector="' +
+      String(sector) +
+      '" title="' +
       escapeHtml(
         payloadPart.note +
           " (" +
           (payloadPart.title || formatExactBytes(254)) +
           ")",
       ) +
-      '">PAY ' +
+      '">SECTOR DATA ' +
       escapeHtml(payloadPart.value) +
-      "</span>" +
+      "</button>" +
       (tailPart
         ? '<span title="' +
           escapeHtml(tailPart.note + " (" + (tailPart.title || "") + ")") +
@@ -1942,7 +1962,6 @@
             : "Sector payload",
       });
     }
-    const tailDimStart = getSectorTailDimStart(sectorBytes, info);
     diskMapPhysical.hidden = false;
     diskMapPhysical.innerHTML = renderPhysicalSectorLegend(
       track,
@@ -1980,6 +1999,36 @@
         .join("") +
       "</dl>" +
       '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID is inferred from the logical DOS header at T18/S0.</p>' +
+      "</section>";
+  };
+
+  const closeSectorDataDialog = function () {
+    if (typeof sectorDataDialog.close === "function") {
+      sectorDataDialog.close();
+    } else {
+      sectorDataDialog.removeAttribute("open");
+    }
+  };
+
+  const openSectorDataDialog = function (track, sector) {
+    if (!state.image || !isValidSectorAddress(track, sector, state.image))
+      return;
+    const normalizedTrack = Math.max(1, Math.floor(Number(track) || 0));
+    const normalizedSector = Math.max(0, Math.floor(Number(sector) || 0));
+    const key = String(normalizedTrack) + ":" + String(normalizedSector);
+    const info = state.diskLayout && state.diskLayout.sectorMap[key];
+    const sectorBytes = d64.readSector(
+      state.image,
+      normalizedTrack,
+      normalizedSector,
+    );
+    const tailDimStart = getSectorTailDimStart(sectorBytes, info);
+    sectorDataDialogName.textContent =
+      "Track " +
+      String(normalizedTrack) +
+      " Sector " +
+      String(normalizedSector);
+    sectorDataDialogBody.innerHTML =
       '<div class="sector-inspector-dump">' +
       '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view' +
       (tailDimStart != null
@@ -1989,8 +2038,12 @@
       '<div class="sector-hex-viewer">' +
       renderSectorHexDumpWithOptions(sectorBytes, { dimStart: tailDimStart }) +
       "</div>" +
-      "</div>" +
-      "</section>";
+      "</div>";
+    if (typeof sectorDataDialog.showModal === "function") {
+      sectorDataDialog.showModal();
+    } else {
+      sectorDataDialog.setAttribute("open", "open");
+    }
   };
 
   const renderDiskMap = function (image) {
@@ -3508,6 +3561,12 @@
         select ? select.value : "prg",
       );
     });
+    diskMapInspector.addEventListener("click", function (event) {
+      const button = event.target.closest('[data-action="show-legend"]');
+      if (!button) return;
+      clearSelectedDiskMapSector();
+      renderDiskMapInspector();
+    });
     diskMapLegend.addEventListener("click", function (event) {
       const jumpButton = event.target.closest('[data-action="jump-sector"]');
       if (jumpButton) {
@@ -3516,13 +3575,14 @@
           jumpButton.dataset.sector,
           { centerView: true },
         );
-        return;
       }
-      const button = event.target.closest('[data-action="show-legend"]');
-      if (!button) return;
-      clearSelectedDiskMapSector();
-      renderDiskMapInspector();
     });
+    diskMapPhysical.addEventListener("click", function (event) {
+      const button = event.target.closest('[data-action="open-sector-data"]');
+      if (!button) return;
+      openSectorDataDialog(button.dataset.track, button.dataset.sector);
+    });
+    sectorDataClose.addEventListener("click", closeSectorDataDialog);
     window.addEventListener("beforeunload", releaseObjectUrl);
     syncDiskMapControls();
 
