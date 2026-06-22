@@ -23,6 +23,7 @@
   const diskFormatSelect = document.getElementById("disk-format");
   const imageUpload = document.getElementById("image-upload");
   const downloadButton = document.getElementById("download-button");
+  const validateButton = document.getElementById("validate-button");
   const fragmentButton = document.getElementById("fragment-button");
   const defragmentButton = document.getElementById("defragment-button");
   const heatmapButton = document.getElementById("heatmap-button");
@@ -113,6 +114,7 @@
     "scratchFile",
     "undeleteFile",
     "destroyDeletedFile",
+    "validateImage",
     "fragmentImage",
     "defragmentImage",
     "addFile",
@@ -487,6 +489,7 @@
     state.sourceName = sourceName || "";
     currentFileName.textContent = state.sourceName || "Unsaved image";
     downloadButton.disabled = !state.image;
+    validateButton.disabled = !state.image;
     fragmentButton.disabled = !state.image;
     defragmentButton.disabled = !state.image;
     heatmapButton.disabled = !state.image;
@@ -3689,6 +3692,20 @@
     setStatus("Downloaded current D64 image.");
   };
 
+  const validateCurrentImage = function () {
+    if (!state.image) return;
+    try {
+      loadImageBytes(
+        d64.validateImage(state.image),
+        state.sourceName || "disk.d64",
+        "Validated disk image and rebuilt the BAM from closed file chains.",
+        { resetDeletedTypeHints: false },
+      );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const downloadDiskFile = function (fileName) {
     if (!state.image) return;
     const file = d64.readFiles(state.image).find(function (entry) {
@@ -4093,6 +4110,7 @@
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);
+    validateButton.addEventListener("click", validateCurrentImage);
     fragmentButton.addEventListener("click", function () {
       rebuildDiskLayout("fragmented");
     });

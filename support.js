@@ -1653,6 +1653,64 @@
     return d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry);
   };
 
+  d64.validateImage = function (image, options) {
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const header = d64.readHeader(bytes);
+    const geometry = d64.describeGeometry(bytes);
+    const config = options || {};
+    const freeMap = {};
+    for (let track = 1; track <= geometry.trackCount; track += 1) {
+      const sectorCount = d64.trackSectorCount(track);
+      freeMap[track] = new Array(sectorCount).fill(true);
+    }
+
+    const markUsed = function (refs) {
+      (Array.isArray(refs) ? refs : []).forEach(function (ref) {
+        const track = Math.max(0, Math.floor(Number(ref.track) || 0));
+        const sector = Math.max(0, Math.floor(Number(ref.sector) || 0));
+        if (!freeMap[track] || freeMap[track][sector] == null) return;
+        freeMap[track][sector] = false;
+      });
+    };
+
+    const directory = d64.readDirectoryEntriesFrom(
+      bytes,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+      Object.assign({}, config, { includeDeleted: true }),
+    );
+
+    markUsed([{ track: DIRECTORY_TRACK, sector: BAM_SECTOR }]);
+    markUsed(directory.sectors);
+
+    let nextImage = bytes;
+    directory.entries.forEach(function (entry) {
+      if (!entry || entry.deleted === true) return;
+      if (entry.closed === false) {
+        const entryBytes = entry.raw.slice();
+        entryBytes[2] = 0x00;
+        nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
+        return;
+      }
+      try {
+        const refs = d64.collectFileSectorRefs(nextImage, entry, config);
+        markUsed(refs);
+      } catch (error) {
+        // Ignore invalid chains during BAM rebuild; unreachable sectors become free.
+      }
+    });
+
+    return d64.writeBamFreeMap(nextImage, freeMap, {
+      diskName: header.diskName,
+      diskId: header.diskId,
+      dosType: header.dosType,
+      dosVersion: header.dosVersionByte,
+      format: header.format,
+      trackCount: header.trackCount,
+    });
+  };
+
   d64.inspectImage = function (image, options) {
     return {
       header: d64.readHeader(image),
