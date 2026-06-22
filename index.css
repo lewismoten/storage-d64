@@ -1085,7 +1085,7 @@ button.sector-physical-bar-segment {
 
 .sector-hex-row {
   display: grid;
-  grid-template-columns: 30px max-content max-content;
+  grid-template-columns: 30px max-content 16ch;
   gap: 8px;
   align-items: baseline;
   font-size: 0.75rem;
@@ -1102,6 +1102,27 @@ button.sector-physical-bar-segment {
   background: rgba(255, 255, 255, 0.055);
 }
 
+.sector-hex-header {
+  background: transparent !important;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(185, 227, 242, 0.12);
+  border-radius: 0;
+}
+
+.sector-hex-header .sector-hex-byte,
+.sector-hex-header .sector-hex-ascii {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sector-hex-header .sector-hex-ascii {
+  display: block;
+  text-align: center;
+}
+
 .sector-hex-offset {
   color: #ffd36b;
 }
@@ -1115,6 +1136,7 @@ button.sector-physical-bar-segment {
   color: var(--muted);
   letter-spacing: 0.08em;
   white-space: nowrap;
+  justify-self: stretch;
 }
 
 .sector-hex-byte.is-link,

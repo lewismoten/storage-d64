@@ -1152,7 +1152,23 @@
     const dimStart = Number.isFinite(config.dimStart)
       ? Math.max(0, Math.floor(config.dimStart))
       : null;
-    const rows = [];
+    const rows = [
+      '<div class="sector-hex-row sector-hex-header">' +
+        '<span class="sector-hex-offset"></span>' +
+        '<span class="sector-hex-bytes">' +
+        Array.from({ length: 16 }, function (_, index) {
+          return (
+            (index === 0 ? "&nbsp;" : "") +
+            '<span class="sector-hex-byte">' +
+            index.toString(16).toUpperCase() +
+            "</span>" +
+            (index < 15 ? "&nbsp;&nbsp;" : "")
+          );
+        }).join("") +
+        "</span>" +
+        '<span class="sector-hex-ascii">ASCII</span>' +
+        "</div>",
+    ];
     for (let offset = 0; offset < bytes.length; offset += 16) {
       const chunk = bytes.subarray(offset, offset + 16);
       const hexMarkup = Array.from(chunk)
@@ -1175,7 +1191,7 @@
             "</span>"
           );
         })
-        .join(" ");
+        .join("&nbsp;");
       const asciiMarkup = Array.from(chunk)
         .map(function (value, index) {
           const absoluteIndex = offset + index;
