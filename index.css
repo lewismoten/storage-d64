@@ -1090,6 +1090,16 @@ button.sector-physical-bar-segment {
   align-items: baseline;
   font-size: 0.75rem;
   line-height: 1.45;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.sector-hex-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.sector-hex-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .sector-hex-offset {
@@ -1115,6 +1125,13 @@ button.sector-physical-bar-segment {
 .sector-hex-byte.is-dim,
 .sector-ascii-char.is-dim {
   opacity: 0.34;
+}
+
+.sector-hex-byte.is-hover,
+.sector-ascii-char.is-hover {
+  background: rgba(142, 243, 230, 0.18);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(142, 243, 230, 0.28);
 }
 
 .disk-map-legend-group {

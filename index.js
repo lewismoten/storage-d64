@@ -1168,6 +1168,8 @@
           return (
             '<span class="' +
             classes.join(" ") +
+            '" data-byte-index="' +
+            String(absoluteIndex) +
             '">' +
             toHexByte(value) +
             "</span>"
@@ -1187,6 +1189,8 @@
           return (
             '<span class="' +
             classes.join(" ") +
+            '" data-byte-index="' +
+            String(absoluteIndex) +
             '">' +
             escapeHtml(toPrintableSectorChar(value)) +
             "</span>"
@@ -2008,6 +2012,16 @@
     } else {
       sectorDataDialog.removeAttribute("open");
     }
+  };
+
+  const setSectorDataHoverIndex = function (byteIndex) {
+    const nodes = sectorDataDialogBody.querySelectorAll("[data-byte-index]");
+    nodes.forEach(function (node) {
+      node.classList.toggle(
+        "is-hover",
+        byteIndex !== "" && node.dataset.byteIndex === byteIndex,
+      );
+    });
   };
 
   const openSectorDataDialog = function (track, sector) {
@@ -3577,6 +3591,32 @@
       const button = event.target.closest('[data-action="open-sector-data"]');
       if (!button) return;
       openSectorDataDialog(button.dataset.track, button.dataset.sector);
+    });
+    sectorDataDialogBody.addEventListener("mouseover", function (event) {
+      const target = event.target.closest("[data-byte-index]");
+      if (!target) return;
+      setSectorDataHoverIndex(target.dataset.byteIndex || "");
+    });
+    sectorDataDialogBody.addEventListener("mouseout", function (event) {
+      const target = event.target.closest("[data-byte-index]");
+      if (!target) return;
+      const related = event.relatedTarget;
+      if (
+        related &&
+        target.closest(".sector-data-dialog-body")?.contains(related)
+      ) {
+        const nextTarget =
+          related.nodeType === 1 &&
+          related.closest &&
+          related.closest("[data-byte-index]");
+        if (
+          nextTarget &&
+          nextTarget.dataset.byteIndex === target.dataset.byteIndex
+        ) {
+          return;
+        }
+      }
+      setSectorDataHoverIndex("");
     });
     sectorDataClose.addEventListener("click", closeSectorDataDialog);
     window.addEventListener("beforeunload", releaseObjectUrl);
