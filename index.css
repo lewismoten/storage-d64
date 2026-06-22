@@ -1567,6 +1567,11 @@ tbody tr.is-drop-target {
   padding-right: 4px;
 }
 
+.doctor-report-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .doctor-empty {
   padding: 14px 16px;
   border: 1px solid rgba(143, 226, 158, 0.18);

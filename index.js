@@ -132,6 +132,7 @@
     "scratchFile",
     "undeleteFile",
     "destroyDeletedFile",
+    "repairBlockCounts",
     "diagnoseImage",
     "validateImage",
     "fragmentImage",
@@ -4207,6 +4208,9 @@
       escapeHtml(String(total)) +
       "</strong><span>Total</span></div>" +
       "</div>";
+    const blockCountIssues = diagnosis.issues.filter(function (issue) {
+      return issue.code === "directory-block-count-mismatch";
+    });
     if (!total) {
       doctorReportBody.innerHTML =
         '<div class="doctor-empty">No structural problems were detected.</div>';
@@ -4222,42 +4226,61 @@
           "</div>"
         );
       }
+      if (issue.code === "directory-block-count-mismatch") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-block-counts" data-entry-index="' +
+          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
+          '">' +
+          "Repair" +
+          "</button>" +
+          "</div>"
+        );
+      }
       return "";
     };
-    doctorReportBody.innerHTML = diagnosis.issues
-      .map(function (issue) {
-        const items = Array.isArray(issue.items)
-          ? issue.items
-              .map(function (item) {
-                return "<li>" + escapeHtml(String(item || "")) + "</li>";
-              })
-              .join("")
-          : "";
-        return (
-          '<article class="doctor-issue doctor-issue-' +
-          escapeHtml(issue.level || "informational") +
-          '">' +
-          '<div class="doctor-issue-heading">' +
-          '<span class="doctor-level doctor-level-' +
-          escapeHtml(issue.level || "informational") +
-          '">' +
-          escapeHtml(String(issue.level || "informational")) +
-          "</span>" +
-          "<h4>" +
-          escapeHtml(issue.message || "Issue detected") +
-          "</h4>" +
-          "</div>" +
-          (issue.details
-            ? '<p class="doctor-issue-details">' +
-              escapeHtml(String(issue.details)) +
-              "</p>"
-            : "") +
-          (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
-          renderDoctorAction(issue) +
-          "</article>"
-        );
-      })
-      .join("");
+    doctorReportBody.innerHTML =
+      (blockCountIssues.length
+        ? '<div class="doctor-report-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-block-counts-all">' +
+          "Repair All Block Counts" +
+          "</button>" +
+          "</div>"
+        : "") +
+      diagnosis.issues
+        .map(function (issue) {
+          const items = Array.isArray(issue.items)
+            ? issue.items
+                .map(function (item) {
+                  return "<li>" + escapeHtml(String(item || "")) + "</li>";
+                })
+                .join("")
+            : "";
+          return (
+            '<article class="doctor-issue doctor-issue-' +
+            escapeHtml(issue.level || "informational") +
+            '">' +
+            '<div class="doctor-issue-heading">' +
+            '<span class="doctor-level doctor-level-' +
+            escapeHtml(issue.level || "informational") +
+            '">' +
+            escapeHtml(String(issue.level || "informational")) +
+            "</span>" +
+            "<h4>" +
+            escapeHtml(issue.message || "Issue detected") +
+            "</h4>" +
+            "</div>" +
+            (issue.details
+              ? '<p class="doctor-issue-details">' +
+                escapeHtml(String(issue.details)) +
+                "</p>"
+              : "") +
+            (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
+            renderDoctorAction(issue) +
+            "</article>"
+          );
+        })
+        .join("");
   };
 
   const runDoctorDiagnosis = function () {
@@ -4281,6 +4304,47 @@
           ? "Doctor completed a read-only diagnosis."
           : "Doctor found no structural problems.",
       );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const refreshDoctorReport = function (imageOverride) {
+    const image = imageOverride || state.image;
+    if (!image) return;
+    const report = d64.diagnoseImage(image);
+    doctorDialogName.textContent =
+      (state.sourceName || "Unsaved image") +
+      " · " +
+      String(report.summary.total || 0) +
+      " issue" +
+      (Number(report.summary.total || 0) === 1 ? "" : "s");
+    renderDoctorReport(report);
+  };
+
+  const repairMismatchedBlockCounts = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const result =
+        entryIndex == null
+          ? d64.repairBlockCounts(state.image)
+          : d64.repairBlockCounts(state.image, Number(entryIndex));
+      if (!result || !result.image) {
+        throw new Error("Unable to repair directory block counts.");
+      }
+      loadImageBytes(
+        result.image,
+        state.sourceName || "disk.d64",
+        result.repairedCount
+          ? "Repaired " +
+              String(result.repairedCount) +
+              " mismatched block count" +
+              (result.repairedCount === 1 ? "" : "s") +
+              "."
+          : "No mismatched block counts needed repair.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReport(result.image);
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4890,6 +4954,14 @@
             return start + index;
           }),
         });
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-block-counts") {
+        repairMismatchedBlockCounts(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-block-counts-all") {
+        repairMismatchedBlockCounts();
       }
     });
     fileTableBody.addEventListener("click", function (event) {

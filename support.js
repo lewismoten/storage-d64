@@ -1663,6 +1663,62 @@
     return d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry);
   };
 
+  d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {
+    const target =
+      typeof entryOrOptions === "string" ||
+      typeof entryOrOptions === "number" ||
+      (entryOrOptions &&
+        typeof entryOrOptions === "object" &&
+        Object.prototype.hasOwnProperty.call(entryOrOptions, "index"))
+        ? entryOrOptions
+        : null;
+    const config = target ? maybeOptions || {} : entryOrOptions || {};
+    let nextImage =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const entries = d64.readDirectoryEntries(nextImage, config);
+    let repairedCount = 0;
+    entries.forEach(function (entry) {
+      if (!entry || entry.deleted || !entry.startTrack) return;
+      if (target != null) {
+        if (typeof target === "string" && entry.name !== target) return;
+        if (
+          typeof target === "number" &&
+          Number(entry.index) !== Math.floor(Number(target) || 0)
+        ) {
+          return;
+        }
+        if (
+          target &&
+          typeof target === "object" &&
+          Number(entry.index) !== Math.floor(Number(target.index) || 0)
+        ) {
+          return;
+        }
+      }
+      try {
+        const chain = d64.readFileChain(
+          nextImage,
+          entry.startTrack,
+          entry.startSector,
+        );
+        const expectedCount = chain.blocks.length;
+        const currentCount = Math.max(0, Number(entry.blockCount) || 0);
+        if (currentCount === expectedCount) return;
+        const entryBytes = entry.raw.slice();
+        entryBytes[28] = expectedCount & 0xff;
+        entryBytes[29] = (expectedCount >> 8) & 0xff;
+        nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
+        repairedCount += 1;
+      } catch (error) {
+        // Leave invalid chains untouched; this repair only fixes counts for readable chains.
+      }
+    });
+    return {
+      image: nextImage,
+      repairedCount: repairedCount,
+    };
+  };
+
   d64.diagnoseImage = function (image, options) {
     const bytes =
       image instanceof Uint8Array ? image : new Uint8Array(image || []);
@@ -2448,6 +2504,8 @@
           labelPrefix +
             " has a block count that does not match its sector chain.",
           {
+            fileName: entry.name,
+            entryIndex: entry.index,
             details:
               "Directory says " +
               String(entry.blockCount) +

@@ -883,6 +883,25 @@ Notes:
   mismatches, orphaned allocated blocks, nonzero slack bytes, and optional D64
   error-byte observations.
 
+### `repairBlockCounts(image, options)`
+
+Repairs directory block-count fields for active files whose readable sector
+chains do not match the stored count.
+
+Parameters:
+
+- `image: Uint8Array | ArrayBuffer | number[]`
+- `options?: object`
+
+Returns:
+
+- `{ image, repairedCount }`
+
+Notes:
+
+- Only entries with successfully readable chains are patched.
+- Broken or unreadable chains are left unchanged.
+
 ### `rebuildImage(image, files, options)`
 
 Rebuilds a standard D64 image from an existing image plus a replacement file list.
