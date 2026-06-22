@@ -566,7 +566,7 @@ button:disabled {
 
 .disk-map-heatmap-summary {
   position: absolute;
-  top: 58px;
+  top: 92px;
   left: 18px;
   z-index: 3;
   padding: 7px 11px;
