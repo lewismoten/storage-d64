@@ -8,6 +8,7 @@
     deletedTypeHints: {},
     diskLayout: null,
     selectedSectorKey: "",
+    diskCoverVisible: false,
   };
 
   const createForm = document.getElementById("create-form");
@@ -29,6 +30,7 @@
   const diskMapTooltip = document.getElementById("disk-map-tooltip");
   const diskMapLegend = document.getElementById("disk-map-legend");
   const diskMapSummary = document.getElementById("disk-map-summary");
+  const diskMapCoverToggle = document.getElementById("disk-map-cover-toggle");
   const diskMapZoomIn = document.getElementById("disk-map-zoom-in");
   const diskMapZoomOut = document.getElementById("disk-map-zoom-out");
   const diskMapZoomReset = document.getElementById("disk-map-zoom-reset");
@@ -342,6 +344,17 @@
     return presets[0];
   };
 
+  const randomUnitFromHash = function (hash) {
+    return (hash >>> 0) / 0xffffffff;
+  };
+
+  const inferDeletedEntryType = function (entry) {
+    const hintedType = state.deletedTypeHints[entry.index];
+    if (hintedType) return hintedType;
+    if (entry.sideSectorTrack) return "rel";
+    return "prg";
+  };
+
   const buildLabelLayout = function (diskName, diskId, shellPreset) {
     const key =
       String(diskName || "")
@@ -465,6 +478,103 @@
     return base;
   };
 
+  const buildCoverLayout = function (diskName, diskId) {
+    const key =
+      String(diskName || "")
+        .trim()
+        .toUpperCase() +
+      "|" +
+      String(diskId || "")
+        .trim()
+        .toUpperCase();
+    const styleHash = hashDiskName(key + "|COVER");
+    const tiltHash = hashDiskName(key + "|COVER_TILT");
+    const styles = [
+      {
+        id: "cream-red",
+        fill: "#eee4cd",
+        stroke: "#c8b58d",
+        accent: "#b03b38",
+        text: "#2f2b28",
+        motif: "band",
+      },
+      {
+        id: "blue-white",
+        fill: "#2f5f9a",
+        stroke: "#183a67",
+        accent: "#f5f7fb",
+        text: "#f3f8ff",
+        motif: "panel",
+      },
+      {
+        id: "black-grid",
+        fill: "#1f2329",
+        stroke: "#090b0e",
+        accent: "#f0f2f5",
+        text: "#fafcff",
+        motif: "grid",
+      },
+      {
+        id: "tan-typed",
+        fill: "#d8c3a0",
+        stroke: "#ae9470",
+        accent: "#7d4a2d",
+        text: "#3d2f22",
+        motif: "typed",
+      },
+      {
+        id: "magenta-label",
+        fill: "#be4d82",
+        stroke: "#8b2f5c",
+        accent: "#f7e7ef",
+        text: "#fff7fb",
+        motif: "block",
+      },
+      {
+        id: "white-dotmatrix",
+        fill: "#f2f0e7",
+        stroke: "#cbc6b6",
+        accent: "#d96c3f",
+        text: "#2f3134",
+        motif: "dot",
+      },
+    ];
+    const style =
+      styles[
+        Math.floor(randomUnitFromHash(styleHash) * styles.length) %
+          styles.length
+      ];
+    return {
+      style: style,
+      tilt: (randomUnitFromHash(tiltHash) * 2 - 1) * 1.6,
+    };
+  };
+
+  const collectCoverPrograms = function (image) {
+    const header = d64.readHeader(image);
+    const entries = d64.readDirectoryEntriesFrom(
+      image,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+      { includeDeleted: true },
+    ).entries;
+    return entries
+      .map(function (entry) {
+        const type = entry.typeByte
+          ? String(entry.fileType || "").toLowerCase()
+          : inferDeletedEntryType(entry);
+        return {
+          name: entry.name,
+          deleted: entry.deleted === true,
+          type: type,
+          index: entry.index,
+        };
+      })
+      .filter(function (entry) {
+        return entry.type === "prg" && String(entry.name || "").trim();
+      });
+  };
+
   const flagMarkup = function (value, labels) {
     const className = value ? labels.trueClass : labels.falseClass;
     const text = value ? labels.trueText : labels.falseText;
@@ -519,6 +629,10 @@
 
   const syncDiskMapControls = function () {
     const hasImage = Boolean(state.image);
+    diskMapCoverToggle.disabled = !hasImage;
+    diskMapCoverToggle.textContent = state.diskCoverVisible
+      ? "Show Media"
+      : "Show Cover";
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
     diskMapZoomReset.disabled = !hasImage;
@@ -1555,6 +1669,11 @@
       diskHeader.diskId,
       shellPreset,
     );
+    const coverLayout = buildCoverLayout(
+      diskHeader.diskName,
+      diskHeader.diskId,
+    );
+    const coverPrograms = collectCoverPrograms(image).slice(0, 8);
     const geometry = layout.geometry;
     const platterRadius = DISK_MAP_PHYSICAL.platterRadius;
     const mechanismOuterRadius = DISK_MAP_PHYSICAL.mechanismOuterRadius;
@@ -1586,6 +1705,28 @@
     const shellRadius = DISK_MAP_PHYSICAL.shellRadius;
     const centeredX = shellX + shellWidth * 0.5;
     const centeredY = shellY + shellHeight * 0.5;
+    const dustCoverX = shellX - 12;
+    const dustCoverY = shellY - 8;
+    const dustCoverWidth = shellWidth + 24;
+    const dustCoverHeight = shellHeight + 20;
+    const dustSleeveTop = Math.min(
+      shellY + 112,
+      Math.max(shellY + 82, labelLayout.y + labelLayout.height + 6),
+    );
+    const dustSleeveInset = 6;
+    const dustSleeveX = shellX + dustSleeveInset;
+    const dustSleeveY = dustSleeveTop;
+    const dustSleeveWidth = shellWidth - dustSleeveInset * 2;
+    const dustSleeveHeight = shellY + shellHeight - dustSleeveTop - 8;
+    const exposedTabHeight = dustSleeveY - shellY + 8;
+    const coverBackX = shellX - 14;
+    const coverBackY = dustSleeveY - 20;
+    const coverBackWidth = shellWidth + 28;
+    const coverBackHeight = shellY + shellHeight - coverBackY + 18;
+    const coverFrontX = shellX - 4;
+    const coverFrontY = dustSleeveY;
+    const coverFrontWidth = shellWidth + 8;
+    const coverFrontHeight = shellY + shellHeight - coverFrontY + 14;
     const shellCutoutFill = "#b9c8d2";
     const writeNotchX = shellX + shellWidth - 10;
     const writeNotchY = shellY + 118;
@@ -1599,6 +1740,23 @@
         String(firstPrgFile.name || "").replace(/"/g, "") +
         '",8,1  RUN'
       : "No PRG auto-run hint available";
+    const coverProgramLines = coverPrograms
+      .map(function (entry, index) {
+        return (
+          '<text x="' +
+          (coverFrontX + 18).toFixed(2) +
+          '" y="' +
+          (coverFrontY + 58 + index * 22).toFixed(2) +
+          '" class="disk-map-cover-program' +
+          (entry.deleted ? " is-deleted" : "") +
+          '" style="fill:' +
+          coverLayout.style.text +
+          '">' +
+          escapeHtml(entry.name) +
+          "</text>"
+        );
+      })
+      .join("");
     const sectors = [];
 
     for (let track = 1; track <= geometry.trackCount; track += 1) {
@@ -1806,17 +1964,42 @@
       '<filter id="disk-spin-glow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="rgba(8, 28, 39, 0.78)" flood-opacity="1" /></filter>' +
       '<marker id="disk-spin-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="rgba(215, 250, 247, 0.96)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></marker>' +
       "</defs>" +
-      '<rect x="' +
-      shellX +
-      '" y="' +
-      shellY +
-      '" width="' +
-      shellWidth +
-      '" height="' +
-      shellHeight +
-      '" rx="' +
-      shellRadius +
-      '" fill="url(#disk-shell-fill)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" />' +
+      (state.diskCoverVisible
+        ? '<rect x="' +
+          coverBackX.toFixed(2) +
+          '" y="' +
+          coverBackY.toFixed(2) +
+          '" width="' +
+          coverBackWidth.toFixed(2) +
+          '" height="' +
+          coverBackHeight.toFixed(2) +
+          '" rx="18" fill="' +
+          coverLayout.style.accent +
+          '" stroke="' +
+          coverLayout.style.stroke +
+          '" stroke-width="1.2" />' +
+          '<rect x="' +
+          shellX +
+          '" y="' +
+          shellY +
+          '" width="' +
+          shellWidth +
+          '" height="' +
+          exposedTabHeight.toFixed(2) +
+          '" rx="' +
+          shellRadius +
+          '" fill="url(#disk-shell-fill)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" />'
+        : '<rect x="' +
+          shellX +
+          '" y="' +
+          shellY +
+          '" width="' +
+          shellWidth +
+          '" height="' +
+          shellHeight +
+          '" rx="' +
+          shellRadius +
+          '" fill="url(#disk-shell-fill)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" />') +
       (labelLayout.secondaryLabel
         ? '<rect x="' +
           labelLayout.secondaryLabel.x.toFixed(2) +
@@ -1920,108 +2103,239 @@
       'px">Disk: ' +
       escapeHtml(diskNumberLabel) +
       "</text>" +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      String(platterRadius + 5) +
-      '" fill="url(#disk-platter-fill)" stroke="rgba(40, 28, 18, 0.44)" stroke-width="1.4" />' +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      mechanismOuterRadius.toFixed(2) +
-      '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      mechanismInnerRadius.toFixed(2) +
-      '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
-      sectors.join("") +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      DISK_MAP_PHYSICAL.spindleOutlineRadius.toFixed(2) +
-      '" fill="url(#disk-inner-ring-fill)" stroke="rgba(42, 48, 54, 0.66)" stroke-width="1.3" />' +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      (DISK_MAP_PHYSICAL.spindleOutlineRadius - 5).toFixed(2) +
-      '" fill="none" stroke="rgba(154, 172, 188, 0.18)" stroke-width="1.1" />' +
-      '<rect x="' +
-      headWindowX.toFixed(2) +
-      '" y="' +
-      headWindowY.toFixed(2) +
-      '" width="' +
-      DISK_MAP_PHYSICAL.headWindowWidth.toFixed(2) +
-      '" height="' +
-      DISK_MAP_PHYSICAL.headWindowHeight.toFixed(2) +
-      '" rx="' +
-      DISK_MAP_PHYSICAL.headWindowRadius.toFixed(2) +
-      '" fill="none" stroke="rgba(42, 48, 54, 0.74)" stroke-width="1.4" />' +
-      '<circle cx="' +
-      indexHolePoint.x.toFixed(2) +
-      '" cy="' +
-      indexHolePoint.y.toFixed(2) +
-      '" r="' +
-      DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
-      '" fill="' +
-      shellCutoutFill +
-      '" stroke="rgba(42, 48, 54, 0.7)" stroke-width="0.9" />' +
-      '<circle cx="' +
-      indexHolePoint.x.toFixed(2) +
-      '" cy="' +
-      indexHolePoint.y.toFixed(2) +
-      '" r="' +
-      (DISK_MAP_PHYSICAL.indexHoleSize + 6).toFixed(2) +
-      '" fill="none" stroke="rgba(42, 48, 54, 0.54)" stroke-width="1.1" />' +
-      '<circle cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      DISK_MAP_PHYSICAL.spindleHoleRadius.toFixed(2) +
-      '" fill="' +
-      shellCutoutFill +
-      '" />' +
-      '<path d="' +
-      describeArcPath(
-        cx,
-        cy,
-        Math.max(DISK_MAP_PHYSICAL.spindleHoleRadius - 8, 24),
-        Math.PI * 1.22,
-        Math.PI * 2.68,
-      ) +
-      '" fill="none" stroke="rgba(190, 244, 240, 0.96)" stroke-width="2.7" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" filter="url(#disk-spin-glow)" />' +
-      '<rect x="' +
-      writeNotchX +
-      '" y="' +
-      writeNotchY +
-      '" width="14" height="42" rx="2" fill="' +
-      shellCutoutFill +
-      '" />' +
-      '<circle cx="' +
-      (shellX + shellWidth * 0.46).toFixed(2) +
-      '" cy="' +
-      (shellY + shellHeight).toFixed(2) +
-      '" r="6.4" fill="' +
-      shellCutoutFill +
-      '" />' +
-      '<circle cx="' +
-      (shellX + shellWidth * 0.54).toFixed(2) +
-      '" cy="' +
-      (shellY + shellHeight).toFixed(2) +
-      '" r="6.4" fill="' +
-      shellCutoutFill +
-      '" />' +
+      (state.diskCoverVisible
+        ? ""
+        : '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          String(platterRadius + 5) +
+          '" fill="url(#disk-platter-fill)" stroke="rgba(40, 28, 18, 0.44)" stroke-width="1.4" />' +
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          mechanismOuterRadius.toFixed(2) +
+          '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          mechanismInnerRadius.toFixed(2) +
+          '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
+          sectors.join("") +
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          DISK_MAP_PHYSICAL.spindleOutlineRadius.toFixed(2) +
+          '" fill="url(#disk-inner-ring-fill)" stroke="rgba(42, 48, 54, 0.66)" stroke-width="1.3" />' +
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          (DISK_MAP_PHYSICAL.spindleOutlineRadius - 5).toFixed(2) +
+          '" fill="none" stroke="rgba(154, 172, 188, 0.18)" stroke-width="1.1" />' +
+          '<rect x="' +
+          headWindowX.toFixed(2) +
+          '" y="' +
+          headWindowY.toFixed(2) +
+          '" width="' +
+          DISK_MAP_PHYSICAL.headWindowWidth.toFixed(2) +
+          '" height="' +
+          DISK_MAP_PHYSICAL.headWindowHeight.toFixed(2) +
+          '" rx="' +
+          DISK_MAP_PHYSICAL.headWindowRadius.toFixed(2) +
+          '" fill="none" stroke="rgba(42, 48, 54, 0.74)" stroke-width="1.4" />' +
+          '<circle cx="' +
+          indexHolePoint.x.toFixed(2) +
+          '" cy="' +
+          indexHolePoint.y.toFixed(2) +
+          '" r="' +
+          DISK_MAP_PHYSICAL.indexHoleSize.toFixed(2) +
+          '" fill="' +
+          shellCutoutFill +
+          '" stroke="rgba(42, 48, 54, 0.7)" stroke-width="0.9" />' +
+          '<circle cx="' +
+          indexHolePoint.x.toFixed(2) +
+          '" cy="' +
+          indexHolePoint.y.toFixed(2) +
+          '" r="' +
+          (DISK_MAP_PHYSICAL.indexHoleSize + 6).toFixed(2) +
+          '" fill="none" stroke="rgba(42, 48, 54, 0.54)" stroke-width="1.1" />' +
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          DISK_MAP_PHYSICAL.spindleHoleRadius.toFixed(2) +
+          '" fill="' +
+          shellCutoutFill +
+          '" />' +
+          '<path d="' +
+          describeArcPath(
+            cx,
+            cy,
+            Math.max(DISK_MAP_PHYSICAL.spindleHoleRadius - 8, 24),
+            Math.PI * 1.22,
+            Math.PI * 2.68,
+          ) +
+          '" fill="none" stroke="rgba(190, 244, 240, 0.96)" stroke-width="2.7" stroke-linecap="round" marker-end="url(#disk-spin-arrow)" filter="url(#disk-spin-glow)" />' +
+          '<rect x="' +
+          writeNotchX +
+          '" y="' +
+          writeNotchY +
+          '" width="14" height="42" rx="2" fill="' +
+          shellCutoutFill +
+          '" />' +
+          '<circle cx="' +
+          (shellX + shellWidth * 0.46).toFixed(2) +
+          '" cy="' +
+          (shellY + shellHeight).toFixed(2) +
+          '" r="6.4" fill="' +
+          shellCutoutFill +
+          '" />' +
+          '<circle cx="' +
+          (shellX + shellWidth * 0.54).toFixed(2) +
+          '" cy="' +
+          (shellY + shellHeight).toFixed(2) +
+          '" r="6.4" fill="' +
+          shellCutoutFill +
+          '" />') +
+      (state.diskCoverVisible
+        ? '<rect x="' +
+          coverFrontX.toFixed(2) +
+          '" y="' +
+          coverFrontY.toFixed(2) +
+          '" width="' +
+          coverFrontWidth.toFixed(2) +
+          '" height="' +
+          coverFrontHeight.toFixed(2) +
+          '" rx="16" fill="' +
+          coverLayout.style.fill +
+          '" stroke="' +
+          coverLayout.style.stroke +
+          '" stroke-width="1.1" />' +
+          '<rect x="' +
+          (coverFrontX + 4).toFixed(2) +
+          '" y="' +
+          (coverFrontY + 4).toFixed(2) +
+          '" width="' +
+          (coverFrontWidth - 8).toFixed(2) +
+          '" height="9" rx="4.5" fill="rgba(0,0,0,0.08)" />' +
+          '<path d="M ' +
+          (coverFrontX + 12).toFixed(2) +
+          " " +
+          (coverFrontY + 10).toFixed(2) +
+          " H " +
+          (coverFrontX + coverFrontWidth - 12).toFixed(2) +
+          '" stroke="rgba(0,0,0,0.18)" stroke-width="3.2" stroke-linecap="round" />' +
+          '<path d="M ' +
+          (coverFrontX + 14).toFixed(2) +
+          " " +
+          (coverFrontY + 8).toFixed(2) +
+          " H " +
+          (coverFrontX + coverFrontWidth - 14).toFixed(2) +
+          '" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="round" />' +
+          (coverLayout.style.motif === "band"
+            ? '<rect x="' +
+              coverFrontX.toFixed(2) +
+              '" y="' +
+              coverFrontY.toFixed(2) +
+              '" width="' +
+              coverFrontWidth.toFixed(2) +
+              '" height="28" fill="' +
+              coverLayout.style.accent +
+              '" />'
+            : coverLayout.style.motif === "panel"
+              ? '<rect x="' +
+                (coverFrontX + 16).toFixed(2) +
+                '" y="' +
+                (coverFrontY + 14).toFixed(2) +
+                '" width="' +
+                (coverFrontWidth - 32).toFixed(2) +
+                '" height="52" fill="#f0efe8" stroke="#dad7cc" />'
+              : coverLayout.style.motif === "grid"
+                ? '<path d="M ' +
+                  coverFrontX.toFixed(2) +
+                  " " +
+                  (coverFrontY + 22).toFixed(2) +
+                  " H " +
+                  (coverFrontX + coverFrontWidth).toFixed(2) +
+                  " M " +
+                  coverFrontX.toFixed(2) +
+                  " " +
+                  (coverFrontY + 46).toFixed(2) +
+                  " H " +
+                  (coverFrontX + coverFrontWidth).toFixed(2) +
+                  '" stroke="#d3d7de" stroke-width="1" />'
+                : coverLayout.style.motif === "typed"
+                  ? '<rect x="' +
+                    (coverFrontX + 14).toFixed(2) +
+                    '" y="' +
+                    (coverFrontY + 14).toFixed(2) +
+                    '" width="' +
+                    (coverFrontWidth - 28).toFixed(2) +
+                    '" height="48" fill="#efe9db" />'
+                  : coverLayout.style.motif === "block"
+                    ? '<rect x="' +
+                      (coverFrontX + 14).toFixed(2) +
+                      '" y="' +
+                      (coverFrontY + 14).toFixed(2) +
+                      '" width="78" height="' +
+                      (coverFrontHeight - 28).toFixed(2) +
+                      '" fill="#f3edf2" />'
+                    : '<path d="M ' +
+                      (coverFrontX + 18).toFixed(2) +
+                      " " +
+                      (coverFrontY + 28).toFixed(2) +
+                      " H " +
+                      (coverFrontX + coverFrontWidth - 18).toFixed(2) +
+                      '" stroke="#8a867d" stroke-width="1" stroke-dasharray="1.5 3" />') +
+          '<text x="' +
+          (coverFrontX + 18).toFixed(2) +
+          '" y="' +
+          (coverFrontY + 30).toFixed(2) +
+          '" class="disk-map-cover-title" style="fill:' +
+          coverLayout.style.text +
+          '">' +
+          escapeHtml(diskNameLabel) +
+          "</text>" +
+          coverProgramLines +
+          '<path d="M ' +
+          (coverFrontX + 16).toFixed(2) +
+          " " +
+          (coverFrontY + coverFrontHeight - 14).toFixed(2) +
+          " H " +
+          (coverFrontX + coverFrontWidth - 16).toFixed(2) +
+          '" stroke="rgba(0,0,0,0.1)" stroke-width="1.1" stroke-linecap="round" />' +
+          '<path d="M ' +
+          (coverFrontX + coverFrontWidth - 8).toFixed(2) +
+          " " +
+          (coverFrontY + 46).toFixed(2) +
+          " L " +
+          (coverFrontX + coverFrontWidth + 8).toFixed(2) +
+          " " +
+          (coverFrontY + 46).toFixed(2) +
+          " L " +
+          (coverFrontX + coverFrontWidth + 8).toFixed(2) +
+          " " +
+          (coverFrontY + coverFrontHeight - 44).toFixed(2) +
+          " L " +
+          (coverFrontX + coverFrontWidth - 8).toFixed(2) +
+          " " +
+          (coverFrontY + coverFrontHeight - 44).toFixed(2) +
+          '" fill="' +
+          coverLayout.style.stroke +
+          '" stroke="' +
+          coverLayout.style.stroke +
+          '" stroke-width="0.9" />'
+        : "") +
       "</svg>";
     applyDiskMapTransform();
     applySelectedDiskMapSector();
@@ -2459,6 +2773,11 @@
     downloadButton.addEventListener("click", downloadCurrentImage);
     diskMapZoomIn.addEventListener("click", function () {
       zoomDiskMap(1);
+    });
+    diskMapCoverToggle.addEventListener("click", function () {
+      if (!state.image) return;
+      state.diskCoverVisible = !state.diskCoverVisible;
+      renderDiskMap(state.image);
     });
     diskMapZoomOut.addEventListener("click", function () {
       zoomDiskMap(-1);

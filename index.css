@@ -550,6 +550,23 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.disk-map-cover-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.disk-map-cover-program {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.disk-map-cover-program.is-deleted {
+  text-decoration: line-through;
+  opacity: 0.68;
+}
+
 .disk-map-track-label {
   font-size: 7px;
   fill: rgba(223, 250, 255, 0.82);
