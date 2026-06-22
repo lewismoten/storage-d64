@@ -43,6 +43,18 @@
   const deletedFilesPanel = document.getElementById("deleted-files-panel");
   const deletedCount = document.getElementById("deleted-count");
   const deletedFilesList = document.getElementById("deleted-files-list");
+  const fileTypeDialog = document.getElementById("file-type-dialog");
+  const fileTypeForm = document.getElementById("file-type-form");
+  const fileTypeDialogName = document.getElementById("file-type-dialog-name");
+  const fileTypeTarget = document.getElementById("file-type-target");
+  const fileTypeSelect = document.getElementById("file-type-select");
+  const fileRecordLengthField = document.getElementById(
+    "file-record-length-field",
+  );
+  const fileRecordLengthInput = document.getElementById(
+    "file-record-length-input",
+  );
+  const fileTypeCancel = document.getElementById("file-type-cancel");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
@@ -300,6 +312,11 @@
   const toggleDiskDropTarget = function (isActive) {
     diskMapFrame.classList.toggle("is-file-drop-target", Boolean(isActive));
     diskDropHint.hidden = !isActive;
+  };
+
+  const syncFileTypeDialog = function () {
+    const isRel = fileTypeSelect.value === "rel";
+    fileRecordLengthField.hidden = !isRel;
   };
 
   const isFileDragEvent = function (event) {
@@ -2684,7 +2701,13 @@
           escapeHtml(file.name) +
           "</td>" +
           "<td>" +
+          '<button type="button" class="file-type-button" data-action="edit-type" data-name="' +
+          escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Edit file type for " + file.name) +
+          '">' +
           escapeHtml(String(file.type || "").toUpperCase()) +
+          "</button>" +
           "</td>" +
           "<td>" +
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
@@ -2862,6 +2885,64 @@
         { resetDeletedTypeHints: false },
       );
       delete state.deletedTypeHints[deletedEntry.index];
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const openFileTypeDialog = function (fileName) {
+    if (!state.image) return;
+    const file = d64.readFiles(state.image).find(function (entry) {
+      return entry.name === fileName;
+    });
+    if (!file) {
+      setStatus("File not found: " + fileName, true);
+      return;
+    }
+    fileTypeTarget.value = file.name;
+    fileTypeDialogName.textContent = file.name;
+    fileTypeSelect.value = String(file.type || "prg").toLowerCase();
+    fileRecordLengthInput.value = String(
+      Math.max(1, Math.min(254, Number(file.recordLength) || 32)),
+    );
+    syncFileTypeDialog();
+    if (typeof fileTypeDialog.showModal === "function") {
+      fileTypeDialog.showModal();
+    } else {
+      fileTypeDialog.setAttribute("open", "open");
+    }
+  };
+
+  const closeFileTypeDialog = function () {
+    if (typeof fileTypeDialog.close === "function") {
+      fileTypeDialog.close();
+    } else {
+      fileTypeDialog.removeAttribute("open");
+    }
+  };
+
+  const saveFileTypeDialog = function (event) {
+    event.preventDefault();
+    if (!state.image) return;
+    const fileName = fileTypeTarget.value;
+    const nextType = fileTypeSelect.value;
+    const updates = {
+      type: nextType,
+    };
+    if (nextType === "rel") {
+      updates.recordLength = Math.max(
+        1,
+        Math.min(254, Number(fileRecordLengthInput.value) || 32),
+      );
+    }
+    try {
+      const nextImage = d64.updateFile(state.image, fileName, updates);
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Updated file type for " + fileName + ".",
+      );
+      closeFileTypeDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -3105,9 +3186,18 @@
         setStatus(error.message || String(error), true);
       }
     });
+    fileTypeSelect.addEventListener("change", syncFileTypeDialog);
+    fileTypeForm.addEventListener("submit", saveFileTypeDialog);
+    fileTypeCancel.addEventListener("click", function () {
+      closeFileTypeDialog();
+    });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "edit-type") {
+        openFileTypeDialog(button.dataset.name);
+        return;
+      }
       if (button.dataset.action === "delete-file") {
         deleteFile(button.dataset.name);
         return;
