@@ -183,6 +183,7 @@ The lab lets you:
 - list active and deleted directory entries
 - rename files, change file types, and toggle file lock and open/closed flags
 - delete, restore, fragment, and defragment files and whole images
+- run a read-only Doctor diagnosis that reports structural issues and recoverable conditions
 - drag host files into the image and export individual files back out
 - inspect the disk layout, sector usage, directory track, and file placement
 - open sector and file byte data in a hex/printable viewer and edit bytes in place

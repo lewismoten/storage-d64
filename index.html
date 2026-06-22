@@ -87,6 +87,9 @@
             <fieldset class="field-group">
               <legend>Utilities</legend>
               <div class="action-row action-row-secondary">
+                <button id="doctor-button" type="button" disabled>
+                  Doctor
+                </button>
                 <button id="validate-button" type="button" disabled>
                   Validate
                 </button>
@@ -372,6 +375,20 @@
                 <button id="sector-byte-save" type="submit">Save</button>
               </div>
             </form>
+          </dialog>
+
+          <dialog id="doctor-dialog" class="file-type-dialog doctor-dialog">
+            <div class="file-type-form">
+              <div class="section-heading">
+                <h3>Doctor Report</h3>
+                <p id="doctor-dialog-name">Read-only disk diagnosis</p>
+              </div>
+              <div id="doctor-summary" class="doctor-summary"></div>
+              <div id="doctor-report-body" class="doctor-report-body"></div>
+              <div class="dialog-actions">
+                <button id="doctor-close" type="button">Close</button>
+              </div>
+            </div>
           </dialog>
         </section>
       </section>

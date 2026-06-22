@@ -559,28 +559,38 @@
       },
     );
     const hasReadableIdentity = Boolean(diskName || diskId || dosType);
+    const hasExpectedDosType = dosType === d64.dosTypes.dos2a;
     const directoryPointerLooksValid =
       nextDirectoryTrack === 0 ||
       (nextDirectoryTrack <= MAX_TRACK_COUNT &&
         nextDirectorySector <
           d64.trackSectorCount(Math.max(1, nextDirectoryTrack)));
+    const hasHeaderSignal =
+      hasRecognizedDosVersion ||
+      hasReadableIdentity ||
+      hasExpectedDosType ||
+      nonZeroTrackEntries >= 6;
     let confidence = 0;
     if (validTrackEntries >= 24) confidence += 3;
     else if (validTrackEntries >= 12) confidence += 2;
     else if (validTrackEntries >= 6) confidence += 1;
     if (hasRecognizedDosVersion) confidence += 2;
     if (hasReadableIdentity) confidence += 1;
+    if (hasExpectedDosType) confidence += 1;
     if (directoryPointerLooksValid) confidence += 1;
     if (nonZeroTrackEntries >= 20) confidence += 1;
     if (invalidTrackEntries > 10) confidence -= 2;
     if (config.requireScore && confidence < config.requireScore) return null;
     return {
       confidence: confidence,
-      looksLikeBam: confidence >= 3 && validTrackEntries >= 6,
+      looksLikeBam:
+        hasHeaderSignal && confidence >= 4 && validTrackEntries >= 6,
       validTrackEntries: validTrackEntries,
       invalidTrackEntries: invalidTrackEntries,
       nonZeroTrackEntries: nonZeroTrackEntries,
       hasRecognizedDosVersion: hasRecognizedDosVersion,
+      hasExpectedDosType: hasExpectedDosType,
+      hasHeaderSignal: hasHeaderSignal,
       dosVersionByte: dosVersionByte,
       nextDirectoryTrack: nextDirectoryTrack,
       nextDirectorySector: nextDirectorySector,
@@ -1651,6 +1661,1013 @@
     });
     const clearedEntry = new Uint8Array(32);
     return d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry);
+  };
+
+  d64.diagnoseImage = function (image, options) {
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const config = options || {};
+    const knownGeometries = [
+      { trackCount: 35, hasErrorInfo: false },
+      { trackCount: 35, hasErrorInfo: true },
+      { trackCount: 40, hasErrorInfo: false },
+      { trackCount: 40, hasErrorInfo: true },
+      { trackCount: 42, hasErrorInfo: false },
+      { trackCount: 42, hasErrorInfo: true },
+    ];
+    const exactGeometry =
+      knownGeometries.find(function (candidate) {
+        return (
+          d64.imageSizeForGeometry(
+            candidate.trackCount,
+            candidate.hasErrorInfo,
+          ) === bytes.length
+        );
+      }) || null;
+    const geometry = exactGeometry
+      ? d64.describeGeometry(exactGeometry)
+      : d64.describeGeometry(bytes);
+    const report = {
+      actualSize: bytes.length,
+      geometry: {
+        format: geometry.format,
+        trackCount: geometry.trackCount,
+        sectorCount: geometry.sectorCount,
+        dataSize: geometry.dataSize,
+        imageSize: geometry.imageSize,
+        hasErrorInfo: geometry.hasErrorInfo,
+        exactSizeMatch: Boolean(exactGeometry),
+      },
+      issues: [],
+      summary: {
+        informational: 0,
+        warning: 0,
+        repairable: 0,
+        total: 0,
+      },
+    };
+
+    const addIssue = function (level, code, message, details) {
+      const normalizedLevel =
+        level === "repairable" || level === "warning" ? level : "informational";
+      const issue = {
+        level: normalizedLevel,
+        code: String(code || "").trim() || "issue",
+        message: String(message || "").trim() || "Issue detected.",
+      };
+      if (details && typeof details === "object") {
+        Object.keys(details).forEach(function (key) {
+          if (details[key] == null) return;
+          issue[key] = details[key];
+        });
+      }
+      report.issues.push(issue);
+      report.summary[normalizedLevel] += 1;
+      report.summary.total += 1;
+      return issue;
+    };
+
+    const makeKey = function (track, sector) {
+      return String(track) + ":" + String(sector);
+    };
+
+    const formatTs = function (track, sector) {
+      return "T" + String(track) + " S" + String(sector);
+    };
+
+    const formatTsList = function (refs) {
+      return (Array.isArray(refs) ? refs : []).map(function (ref) {
+        return formatTs(ref.track, ref.sector);
+      });
+    };
+
+    const listUnique = function (values) {
+      const seen = {};
+      const result = [];
+      (Array.isArray(values) ? values : []).forEach(function (value) {
+        const key = String(value);
+        if (seen[key]) return;
+        seen[key] = true;
+        result.push(String(value));
+      });
+      return result;
+    };
+
+    const readSectorSafe = function (track, sector) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      if (
+        safeTrack < 1 ||
+        safeTrack > geometry.trackCount ||
+        safeSector < 0 ||
+        safeSector >= d64.trackSectorCount(safeTrack)
+      ) {
+        return null;
+      }
+      const offset = d64.trackOffset(safeTrack, safeSector);
+      if (offset >= bytes.length) {
+        return null;
+      }
+      return bytes.subarray(
+        offset,
+        Math.min(offset + SECTOR_SIZE, bytes.length),
+      );
+    };
+
+    const isValidPointer = function (track, sector, allowZeroTrack) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      if (allowZeroTrack && safeTrack === 0) return true;
+      if (safeTrack < 1 || safeTrack > geometry.trackCount) return false;
+      return safeSector >= 0 && safeSector < d64.trackSectorCount(safeTrack);
+    };
+
+    const validateFieldBytes = function (label, fieldBytes, allowedPattern) {
+      const invalid = [];
+      const data =
+        fieldBytes instanceof Uint8Array
+          ? fieldBytes
+          : new Uint8Array(fieldBytes || []);
+      for (let index = 0; index < data.length; index += 1) {
+        const value = data[index];
+        if (value === 0x00 || value === 0xa0 || value === 0x20) continue;
+        const ch = String.fromCharCode(value & 0xff);
+        if (!allowedPattern.test(ch)) {
+          invalid.push(
+            "0x" + value.toString(16).padStart(2, "0").toUpperCase(),
+          );
+        }
+      }
+      if (invalid.length) {
+        addIssue(
+          "repairable",
+          "invalid-" + label + "-field",
+          label + " contains unexpected byte values.",
+          {
+            items: invalid,
+          },
+        );
+      }
+    };
+
+    const walkDirectoryChain = function (startTrack, startSector) {
+      const result = {
+        sectors: [],
+        entries: [],
+        visitedKeys: {},
+      };
+      let track = Math.max(0, Math.floor(Number(startTrack) || 0));
+      let sector = Math.max(0, Math.floor(Number(startSector) || 0));
+      while (track) {
+        if (!isValidPointer(track, sector, false)) {
+          addIssue(
+            "repairable",
+            "invalid-directory-pointer",
+            "Directory chain points outside the image geometry.",
+            {
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        if (track !== DIRECTORY_TRACK || sector < DIRECTORY_START_SECTOR) {
+          addIssue(
+            "repairable",
+            "directory-chain-off-track-18",
+            "Directory chain leaves the reserved directory track.",
+            {
+              items: [formatTs(track, sector)],
+            },
+          );
+        }
+        const key = makeKey(track, sector);
+        if (result.visitedKeys[key]) {
+          addIssue(
+            "repairable",
+            "circular-directory-chain",
+            "Directory chain loops back onto itself.",
+            {
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        result.visitedKeys[key] = true;
+        const sectorBytes = readSectorSafe(track, sector);
+        if (!sectorBytes || sectorBytes.length < SECTOR_SIZE) {
+          addIssue(
+            "warning",
+            "truncated-directory-sector",
+            "Directory sector data is missing or truncated.",
+            {
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        result.sectors.push({
+          track: track,
+          sector: sector,
+          nextTrack: sectorBytes[0],
+          nextSector: sectorBytes[1],
+          raw: new Uint8Array(sectorBytes),
+        });
+        for (let slot = 0; slot < 8; slot += 1) {
+          const offset = slot * 32;
+          const entry = d64.parseDirectoryEntryBytes(
+            sectorBytes.subarray(offset, offset + 32),
+            {
+              index: result.entries.length,
+              track: track,
+              sector: sector,
+              slot: slot,
+            },
+          );
+          entry.deleted = d64.isDeletedDirectoryEntry(entry);
+          result.entries.push(entry);
+        }
+        if (!sectorBytes[0]) {
+          break;
+        }
+        track = sectorBytes[0];
+        sector = sectorBytes[1];
+      }
+      return result;
+    };
+
+    const walkFileChain = function (entry, labelPrefix) {
+      const result = {
+        refs: [],
+        unusedTailBytes: 0,
+        nonZeroSlackBytes: 0,
+        terminated: false,
+      };
+      let track = Math.max(0, Math.floor(Number(entry.startTrack) || 0));
+      let sector = Math.max(0, Math.floor(Number(entry.startSector) || 0));
+      const visited = {};
+      if (!track) {
+        addIssue(
+          "warning",
+          "missing-file-start-pointer",
+          labelPrefix + " has no valid starting block.",
+          { fileName: entry.name },
+        );
+        return result;
+      }
+      while (track) {
+        if (!isValidPointer(track, sector, false)) {
+          addIssue(
+            "repairable",
+            "invalid-file-pointer",
+            labelPrefix + " points outside the image geometry.",
+            {
+              fileName: entry.name,
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        if (track === DIRECTORY_TRACK) {
+          addIssue(
+            "repairable",
+            "file-uses-reserved-track-18",
+            labelPrefix + " crosses into the reserved directory track.",
+            {
+              fileName: entry.name,
+              items: [formatTs(track, sector)],
+            },
+          );
+        }
+        const key = makeKey(track, sector);
+        if (visited[key]) {
+          addIssue(
+            "repairable",
+            "circular-file-chain",
+            labelPrefix + " contains a circular sector chain.",
+            {
+              fileName: entry.name,
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        visited[key] = true;
+        const block = readSectorSafe(track, sector);
+        if (!block || block.length < SECTOR_SIZE) {
+          addIssue(
+            "warning",
+            "truncated-file-sector",
+            labelPrefix + " references a missing or truncated sector.",
+            {
+              fileName: entry.name,
+              items: [formatTs(track, sector)],
+            },
+          );
+          break;
+        }
+        const nextTrack = block[0];
+        const nextSector = block[1];
+        const usedBytes =
+          nextTrack === 0 ? Math.max(0, Math.min(254, nextSector - 1)) : 254;
+        const unusedBytes = nextTrack === 0 ? Math.max(0, 254 - usedBytes) : 0;
+        let nonZeroSlackBytes = 0;
+        if (nextTrack === 0 && unusedBytes) {
+          for (let index = 0; index < unusedBytes; index += 1) {
+            if (block[2 + usedBytes + index] !== 0) {
+              nonZeroSlackBytes += 1;
+            }
+          }
+        }
+        result.refs.push({
+          track: track,
+          sector: sector,
+          nextTrack: nextTrack,
+          nextSector: nextSector,
+        });
+        result.unusedTailBytes += unusedBytes;
+        result.nonZeroSlackBytes += nonZeroSlackBytes;
+        if (!nextTrack) {
+          result.terminated = true;
+          break;
+        }
+        if (!isValidPointer(nextTrack, nextSector, false)) {
+          addIssue(
+            "repairable",
+            "broken-file-chain",
+            labelPrefix + " ends with an invalid next-block pointer.",
+            {
+              fileName: entry.name,
+              items: [
+                formatTs(track, sector) +
+                  " -> " +
+                  formatTs(nextTrack, nextSector),
+              ],
+            },
+          );
+          break;
+        }
+        track = nextTrack;
+        sector = nextSector;
+      }
+      return result;
+    };
+
+    const headerSector = readSectorSafe(DIRECTORY_TRACK, BAM_SECTOR);
+    if (!exactGeometry) {
+      addIssue(
+        "warning",
+        "invalid-image-size",
+        "Image size does not match a standard 35, 40, or 42 track D64 layout.",
+        {
+          details:
+            "Actual size is " +
+            String(bytes.length) +
+            " bytes; guessed format is " +
+            geometry.format +
+            ".",
+        },
+      );
+    }
+    if (!headerSector || headerSector.length < SECTOR_SIZE) {
+      addIssue(
+        "warning",
+        "missing-bam-header-sector",
+        "Track 18 sector 0 is missing or truncated, so BAM/header diagnosis is incomplete.",
+      );
+      report.ok = false;
+      return report;
+    }
+
+    const header = d64.readHeader(bytes);
+    report.header = header;
+    const bam = d64.readBam(bytes);
+    report.bam = {
+      trackCount: bam.trackCount,
+    };
+
+    const headerAnalysis = d64.analyzeBamLikeSector(headerSector);
+    if (!headerAnalysis || !headerAnalysis.looksLikeBam) {
+      addIssue(
+        "warning",
+        "damaged-bam-or-header",
+        "Track 18 sector 0 does not strongly resemble a valid BAM/header sector.",
+      );
+    }
+    if (
+      !isValidPointer(
+        header.nextDirectoryTrack,
+        header.nextDirectorySector,
+        true,
+      )
+    ) {
+      addIssue(
+        "repairable",
+        "invalid-header-directory-pointer",
+        "Header points to an invalid starting directory sector.",
+        {
+          items: [
+            formatTs(header.nextDirectoryTrack, header.nextDirectorySector),
+          ],
+        },
+      );
+    } else if (
+      header.nextDirectoryTrack !== 0 &&
+      header.nextDirectoryTrack !== DIRECTORY_TRACK
+    ) {
+      addIssue(
+        "repairable",
+        "directory-starts-off-track-18",
+        "Header starts the directory chain outside track 18.",
+        {
+          items: [
+            formatTs(header.nextDirectoryTrack, header.nextDirectorySector),
+          ],
+        },
+      );
+    }
+    if (header.dosVersionName === "unknown") {
+      addIssue(
+        "repairable",
+        "unknown-dos-version",
+        "Header DOS version byte is not recognized.",
+        {
+          details:
+            "Byte value is 0x" +
+            Number(header.dosVersionByte || 0)
+              .toString(16)
+              .padStart(2, "0")
+              .toUpperCase() +
+            ".",
+        },
+      );
+    }
+    if (header.dosType !== d64.dosTypes.dos2a) {
+      addIssue(
+        "repairable",
+        "unexpected-dos-type",
+        "Header DOS type field is not the expected 1541 DOS type.",
+        {
+          details: 'Found "' + String(header.dosType || "") + '".',
+        },
+      );
+    }
+    if (!String(header.diskName || "").trim()) {
+      addIssue("repairable", "blank-disk-name", "Disk name field is blank.");
+    }
+    if (String(header.diskId || "").trim().length < 2) {
+      addIssue(
+        "repairable",
+        "short-disk-id",
+        "Disk ID field is blank or shorter than two characters.",
+      );
+    }
+
+    validateFieldBytes(
+      "disk-name",
+      headerSector.subarray(
+        d64.headerOffsets.diskNameStart,
+        d64.headerOffsets.diskNameStart + d64.headerOffsets.diskNameLength,
+      ),
+      /^[A-Z0-9 ._-]$/,
+    );
+    validateFieldBytes(
+      "disk-id",
+      headerSector.subarray(
+        d64.headerOffsets.diskIdStart,
+        d64.headerOffsets.diskIdStart + d64.headerOffsets.diskIdLength,
+      ),
+      /^[A-Z0-9]$/,
+    );
+    validateFieldBytes(
+      "dos-type",
+      headerSector.subarray(
+        d64.headerOffsets.dosTypeStart,
+        d64.headerOffsets.dosTypeStart + d64.headerOffsets.dosTypeLength,
+      ),
+      /^[A-Z0-9]$/,
+    );
+
+    if (geometry.trackCount > DEFAULT_TRACK_COUNT) {
+      addIssue(
+        "informational",
+        "extended-track-bam-ambiguity",
+        "Tracks above 35 have no standard BAM entries in a plain D64, so their free/used state is ambiguous.",
+      );
+    }
+
+    const errorInfo = d64.readErrorInfo(bytes);
+    if (errorInfo.hasErrorInfo) {
+      const flagged = [];
+      for (let index = 0; index < errorInfo.bytes.length; index += 1) {
+        if (errorInfo.bytes[index] !== d64.errorCodes.ok) {
+          flagged.push(index);
+        }
+      }
+      addIssue(
+        "informational",
+        "d64-error-byte-info",
+        flagged.length
+          ? "D64 error bytes mark sectors with non-OK controller status."
+          : "D64 error bytes are present and all sectors currently report OK.",
+        flagged.length
+          ? {
+              details:
+                String(flagged.length) +
+                " sector error byte" +
+                (flagged.length === 1 ? " is" : "s are") +
+                " non-OK.",
+            }
+          : null,
+      );
+    }
+
+    const unexpectedBamSectors = d64.scanForUnexpectedBamSectors(bytes, {
+      validateContents: false,
+      minConfidence: 4,
+    });
+    if (unexpectedBamSectors.length) {
+      addIssue(
+        "warning",
+        "unexpected-bam-like-sectors",
+        "Additional BAM-like sectors were found elsewhere in the image.",
+        {
+          items: unexpectedBamSectors.map(function (candidate) {
+            return formatTs(candidate.track, candidate.sector);
+          }),
+        },
+      );
+    }
+
+    const directory = walkDirectoryChain(
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+    );
+    const reachableDirectoryKeys = {};
+    directory.sectors.forEach(function (sectorInfo) {
+      reachableDirectoryKeys[makeKey(sectorInfo.track, sectorInfo.sector)] =
+        true;
+    });
+
+    const rawDirectoryEntries = [];
+    const rawDeletedEntries = [];
+    const malformedEntries = [];
+    const activeEntries = [];
+    for (
+      let sectorIndex = DIRECTORY_START_SECTOR;
+      sectorIndex < d64.trackSectorCount(DIRECTORY_TRACK);
+      sectorIndex += 1
+    ) {
+      const sectorBytes = readSectorSafe(DIRECTORY_TRACK, sectorIndex);
+      if (!sectorBytes || sectorBytes.length < SECTOR_SIZE) {
+        continue;
+      }
+      for (let slot = 0; slot < 8; slot += 1) {
+        const offset = slot * 32;
+        const entry = d64.parseDirectoryEntryBytes(
+          sectorBytes.subarray(offset, offset + 32),
+          {
+            index: rawDirectoryEntries.length,
+            track: DIRECTORY_TRACK,
+            sector: sectorIndex,
+            slot: slot,
+          },
+        );
+        entry.deleted = d64.isDeletedDirectoryEntry(entry);
+        rawDirectoryEntries.push(entry);
+        if (!entry.typeByte && !entry.deleted) {
+          continue;
+        }
+        if (entry.deleted) {
+          rawDeletedEntries.push(entry);
+          continue;
+        }
+        activeEntries.push(entry);
+        if (
+          entry.fileType === "unknown" ||
+          entry.fileType === "del" ||
+          entry.typeCode < 1 ||
+          entry.typeCode > 4
+        ) {
+          malformedEntries.push(
+            entry.name ||
+              formatTs(entry.track, entry.sector) + " slot " + entry.slot,
+          );
+        }
+      }
+    }
+
+    if (malformedEntries.length) {
+      addIssue(
+        "repairable",
+        "invalid-file-types",
+        "Some directory entries use invalid or unsupported file types.",
+        {
+          items: malformedEntries,
+        },
+      );
+    }
+
+    const duplicateNames = {};
+    activeEntries.forEach(function (entry) {
+      const normalizedName = String(entry.name || "")
+        .trim()
+        .toUpperCase();
+      if (!normalizedName) return;
+      duplicateNames[normalizedName] = duplicateNames[normalizedName] || [];
+      duplicateNames[normalizedName].push(entry);
+    });
+    const duplicateLabels = Object.keys(duplicateNames)
+      .filter(function (name) {
+        return duplicateNames[name].length > 1;
+      })
+      .map(function (name) {
+        return (
+          name +
+          " (" +
+          duplicateNames[name]
+            .map(function (entry) {
+              return (
+                formatTs(entry.track, entry.sector) + "/" + String(entry.slot)
+              );
+            })
+            .join(", ") +
+          ")"
+        );
+      });
+    if (duplicateLabels.length) {
+      addIssue(
+        "repairable",
+        "duplicate-filenames",
+        "Duplicate active filenames were found in the directory.",
+        {
+          items: duplicateLabels,
+        },
+      );
+    }
+
+    const lockedNames = activeEntries
+      .filter(function (entry) {
+        return entry.locked;
+      })
+      .map(function (entry) {
+        return entry.name;
+      });
+    if (lockedNames.length) {
+      addIssue(
+        "informational",
+        "locked-files",
+        "Locked files are present in the directory.",
+        {
+          items: listUnique(lockedNames),
+        },
+      );
+    }
+
+    const splatNames = activeEntries
+      .filter(function (entry) {
+        return entry.closed === false;
+      })
+      .map(function (entry) {
+        return entry.name;
+      });
+    if (splatNames.length) {
+      addIssue(
+        "repairable",
+        "splat-files",
+        "Unclosed or splat files are present.",
+        {
+          items: listUnique(splatNames),
+        },
+      );
+    }
+
+    const malformedDirectoryEntries = [];
+    const activeRefs = {};
+    const expectedUsed = {};
+    expectedUsed[makeKey(DIRECTORY_TRACK, BAM_SECTOR)] = "bam";
+    directory.sectors.forEach(function (sectorInfo) {
+      expectedUsed[makeKey(sectorInfo.track, sectorInfo.sector)] = "directory";
+    });
+    const sharedActiveRefs = [];
+    const slackFiles = [];
+    const relProblems = [];
+
+    activeEntries.forEach(function (entry) {
+      const labelPrefix = 'File "' + String(entry.name || "(unnamed)") + '"';
+      if (!String(entry.name || "").trim()) {
+        malformedDirectoryEntries.push(labelPrefix + " has a blank filename.");
+      }
+      if (!isValidPointer(entry.startTrack, entry.startSector, false)) {
+        malformedDirectoryEntries.push(
+          labelPrefix +
+            " has an invalid start pointer " +
+            formatTs(entry.startTrack, entry.startSector) +
+            ".",
+        );
+        return;
+      }
+      if (
+        entry.fileType !== "rel" &&
+        (entry.sideSectorTrack || entry.sideSectorSector || entry.recordLength)
+      ) {
+        malformedDirectoryEntries.push(
+          labelPrefix +
+            " has REL-only side-sector metadata even though it is " +
+            String(entry.fileType || "unknown").toUpperCase() +
+            ".",
+        );
+      }
+      if (entry.fileType === "rel") {
+        if (!entry.recordLength || entry.recordLength > REL_MAX_RECORD_LENGTH) {
+          relProblems.push(
+            labelPrefix +
+              " has invalid record length " +
+              String(entry.recordLength || 0) +
+              ".",
+          );
+        }
+        if (
+          !isValidPointer(entry.sideSectorTrack, entry.sideSectorSector, false)
+        ) {
+          relProblems.push(
+            labelPrefix +
+              " has invalid side-sector pointer " +
+              formatTs(entry.sideSectorTrack, entry.sideSectorSector) +
+              ".",
+          );
+        } else {
+          try {
+            const sideSectors = d64.readRelativeSideSectors(
+              bytes,
+              entry.sideSectorTrack,
+              entry.sideSectorSector,
+            );
+            sideSectors.forEach(function (sideSector) {
+              expectedUsed[makeKey(sideSector.track, sideSector.sector)] =
+                "rel-side";
+              if (sideSector.recordLength !== entry.recordLength) {
+                relProblems.push(
+                  labelPrefix +
+                    " has side-sector record length " +
+                    String(sideSector.recordLength) +
+                    " that does not match entry length " +
+                    String(entry.recordLength) +
+                    ".",
+                );
+              }
+              sideSector.dataSectors.forEach(function (ref) {
+                if (!isValidPointer(ref.track, ref.sector, false)) {
+                  relProblems.push(
+                    labelPrefix +
+                      " references invalid REL data sector " +
+                      formatTs(ref.track, ref.sector) +
+                      ".",
+                  );
+                }
+              });
+            });
+          } catch (error) {
+            relProblems.push(
+              labelPrefix +
+                " has unreadable side sectors: " +
+                String(error && error.message ? error.message : error) +
+                ".",
+            );
+          }
+        }
+      }
+      const fileChain = walkFileChain(entry, labelPrefix);
+      if (
+        entry.blockCount &&
+        fileChain.refs.length &&
+        entry.blockCount !== fileChain.refs.length
+      ) {
+        addIssue(
+          "repairable",
+          "directory-block-count-mismatch",
+          labelPrefix +
+            " has a block count that does not match its sector chain.",
+          {
+            details:
+              "Directory says " +
+              String(entry.blockCount) +
+              ", chain uses " +
+              String(fileChain.refs.length) +
+              ".",
+          },
+        );
+      }
+      if (fileChain.nonZeroSlackBytes > 0) {
+        slackFiles.push(
+          labelPrefix +
+            " leaves " +
+            String(fileChain.nonZeroSlackBytes) +
+            " nonzero slack byte" +
+            (fileChain.nonZeroSlackBytes === 1 ? "" : "s") +
+            ".",
+        );
+      }
+      fileChain.refs.forEach(function (ref) {
+        const key = makeKey(ref.track, ref.sector);
+        expectedUsed[key] = expectedUsed[key] || "file";
+        if (activeRefs[key] && activeRefs[key] !== entry.name) {
+          sharedActiveRefs.push(
+            formatTs(ref.track, ref.sector) +
+              " shared by " +
+              activeRefs[key] +
+              " and " +
+              entry.name,
+          );
+        } else {
+          activeRefs[key] = entry.name;
+        }
+      });
+    });
+
+    if (malformedDirectoryEntries.length) {
+      addIssue(
+        "warning",
+        "malformed-directory-entries",
+        "Some directory entries contain malformed metadata.",
+        {
+          items: malformedDirectoryEntries,
+        },
+      );
+    }
+    if (relProblems.length) {
+      addIssue(
+        "warning",
+        "rel-file-problems",
+        "REL metadata problems were found.",
+        {
+          items: relProblems,
+        },
+      );
+    }
+    if (sharedActiveRefs.length) {
+      addIssue(
+        "repairable",
+        "cross-linked-file-sectors",
+        "Some file sectors are referenced by more than one active file.",
+        {
+          items: listUnique(sharedActiveRefs),
+        },
+      );
+    }
+    if (slackFiles.length) {
+      addIssue(
+        "informational",
+        "nonzero-unused-slack",
+        "Unused tail bytes contain nonzero data.",
+        {
+          items: slackFiles,
+        },
+      );
+    }
+
+    const recoverableDeleted = [];
+    const riskyDeleted = [];
+    rawDeletedEntries.forEach(function (entry) {
+      const label = 'Deleted "' + String(entry.name || "(unnamed)") + '"';
+      if (!entry.startTrack) {
+        return;
+      }
+      if (!isValidPointer(entry.startTrack, entry.startSector, false)) {
+        riskyDeleted.push(
+          label +
+            " points to invalid start sector " +
+            formatTs(entry.startTrack, entry.startSector) +
+            ".",
+        );
+        return;
+      }
+      const deletedChain = walkFileChain(entry, label);
+      const overlaps = deletedChain.refs
+        .filter(function (ref) {
+          return Boolean(activeRefs[makeKey(ref.track, ref.sector)]);
+        })
+        .map(function (ref) {
+          return formatTs(ref.track, ref.sector);
+        });
+      if (overlaps.length) {
+        riskyDeleted.push(
+          label +
+            " overlaps active allocation at " +
+            listUnique(overlaps).join(", ") +
+            ".",
+        );
+        return;
+      }
+      if (deletedChain.refs.length) {
+        recoverableDeleted.push(
+          label +
+            " may still be recoverable from " +
+            String(deletedChain.refs.length) +
+            " sector" +
+            (deletedChain.refs.length === 1 ? "" : "s") +
+            ".",
+        );
+      }
+    });
+    if (recoverableDeleted.length) {
+      addIssue(
+        "informational",
+        "recoverable-deleted-entries",
+        "Deleted DEL entries with recoverable-looking data were found.",
+        {
+          items: recoverableDeleted,
+        },
+      );
+    }
+    if (riskyDeleted.length) {
+      addIssue(
+        "warning",
+        "unsafe-deleted-entries",
+        "Some deleted DEL entries do not look safely recoverable.",
+        {
+          items: riskyDeleted,
+        },
+      );
+    }
+
+    const bamCountMismatches = [];
+    const blocksMarkedFreeButUsed = [];
+    const orphanedAllocatedBlocks = [];
+    for (
+      let track = 1;
+      track <= Math.min(DEFAULT_TRACK_COUNT, geometry.trackCount);
+      track += 1
+    ) {
+      const trackInfo = bam.tracks[track - 1];
+      if (!trackInfo) continue;
+      const computedFreeCount = trackInfo.sectorFree.filter(Boolean).length;
+      if (trackInfo.freeCount !== computedFreeCount) {
+        bamCountMismatches.push(
+          "Track " +
+            String(track) +
+            ": BAM says " +
+            String(trackInfo.freeCount) +
+            ", bits show " +
+            String(computedFreeCount),
+        );
+      }
+      for (let sector = 0; sector < trackInfo.sectorFree.length; sector += 1) {
+        const key = makeKey(track, sector);
+        const bamMarksFree = Boolean(trackInfo.sectorFree[sector]);
+        const shouldBeUsed = Boolean(expectedUsed[key]);
+        if (shouldBeUsed && bamMarksFree) {
+          blocksMarkedFreeButUsed.push({ track: track, sector: sector });
+        }
+        if (!shouldBeUsed && !bamMarksFree) {
+          orphanedAllocatedBlocks.push({ track: track, sector: sector });
+        }
+      }
+    }
+
+    if (bamCountMismatches.length) {
+      addIssue(
+        "repairable",
+        "incorrect-bam-free-counts",
+        "One or more BAM free-block counts do not match their bitmap entries.",
+        {
+          items: bamCountMismatches,
+        },
+      );
+    }
+    if (blocksMarkedFreeButUsed.length) {
+      addIssue(
+        "repairable",
+        "bam-disagrees-used-blocks-marked-free",
+        "BAM marks sectors free even though they are used by the directory or active files.",
+        {
+          items: formatTsList(blocksMarkedFreeButUsed),
+        },
+      );
+    }
+    if (orphanedAllocatedBlocks.length) {
+      addIssue(
+        "repairable",
+        "orphaned-allocated-blocks",
+        "BAM marks sectors used even though no reachable active structure claims them.",
+        {
+          items: formatTsList(orphanedAllocatedBlocks),
+        },
+      );
+    }
+
+    report.ok = report.summary.total === 0;
+    report.issues.sort(function (left, right) {
+      const weight = {
+        repairable: 0,
+        warning: 1,
+        informational: 2,
+      };
+      if (weight[left.level] !== weight[right.level]) {
+        return weight[left.level] - weight[right.level];
+      }
+      return String(left.message).localeCompare(String(right.message));
+    });
+    return report;
   };
 
   d64.validateImage = function (image, options) {

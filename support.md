@@ -861,6 +861,28 @@ Returns:
 
 - `{ header, bam, errorInfo, unexpectedBamSectors, entries, files }`
 
+### `diagnoseImage(image, options)`
+
+Performs a read-only structural diagnosis of a D64 image and reports issues
+without modifying any bytes.
+
+Parameters:
+
+- `image: Uint8Array | ArrayBuffer | number[]`
+- `options?: object`
+
+Returns:
+
+- `{ actualSize, geometry, header?, bam?, issues, summary, ok }`
+
+Notes:
+
+- Issues are classified as `informational`, `warning`, or `repairable`.
+- The report can include invalid image sizes, BAM/header problems, duplicate
+  names, broken chains, REL metadata issues, recoverable deleted entries, BAM
+  mismatches, orphaned allocated blocks, nonzero slack bytes, and optional D64
+  error-byte observations.
+
 ### `rebuildImage(image, files, options)`
 
 Rebuilds a standard D64 image from an existing image plus a replacement file list.

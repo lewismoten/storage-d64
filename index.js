@@ -26,6 +26,7 @@
   const diskFormatSelect = document.getElementById("disk-format");
   const imageUpload = document.getElementById("image-upload");
   const downloadButton = document.getElementById("download-button");
+  const doctorButton = document.getElementById("doctor-button");
   const validateButton = document.getElementById("validate-button");
   const fragmentButton = document.getElementById("fragment-button");
   const defragmentButton = document.getElementById("defragment-button");
@@ -97,6 +98,11 @@
   const sectorByteIndex = document.getElementById("sector-byte-index");
   const sectorByteValue = document.getElementById("sector-byte-value");
   const sectorByteCancel = document.getElementById("sector-byte-cancel");
+  const doctorDialog = document.getElementById("doctor-dialog");
+  const doctorDialogName = document.getElementById("doctor-dialog-name");
+  const doctorSummary = document.getElementById("doctor-summary");
+  const doctorReportBody = document.getElementById("doctor-report-body");
+  const doctorClose = document.getElementById("doctor-close");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
@@ -117,6 +123,7 @@
     "scratchFile",
     "undeleteFile",
     "destroyDeletedFile",
+    "diagnoseImage",
     "validateImage",
     "fragmentImage",
     "defragmentImage",
@@ -493,6 +500,7 @@
     state.sourceName = sourceName || "";
     currentFileName.textContent = state.sourceName || "Unsaved image";
     downloadButton.disabled = !state.image;
+    doctorButton.disabled = !state.image;
     validateButton.disabled = !state.image;
     fragmentButton.disabled = !state.image;
     defragmentButton.disabled = !state.image;
@@ -3761,6 +3769,106 @@
     }
   };
 
+  const closeDoctorDialog = function () {
+    if (typeof doctorDialog.close === "function") {
+      doctorDialog.close();
+    } else {
+      doctorDialog.removeAttribute("open");
+    }
+  };
+
+  const renderDoctorReport = function (report) {
+    const diagnosis = report || {
+      summary: {
+        repairable: 0,
+        warning: 0,
+        informational: 0,
+        total: 0,
+      },
+      issues: [],
+    };
+    const total = Math.max(0, Number(diagnosis.summary.total) || 0);
+    doctorSummary.innerHTML =
+      '<div class="doctor-summary-grid">' +
+      '<div class="doctor-summary-card doctor-summary-card-repairable"><strong>' +
+      escapeHtml(String(diagnosis.summary.repairable || 0)) +
+      "</strong><span>Repairable</span></div>" +
+      '<div class="doctor-summary-card doctor-summary-card-warning"><strong>' +
+      escapeHtml(String(diagnosis.summary.warning || 0)) +
+      "</strong><span>Warnings</span></div>" +
+      '<div class="doctor-summary-card doctor-summary-card-info"><strong>' +
+      escapeHtml(String(diagnosis.summary.informational || 0)) +
+      "</strong><span>Info</span></div>" +
+      '<div class="doctor-summary-card"><strong>' +
+      escapeHtml(String(total)) +
+      "</strong><span>Total</span></div>" +
+      "</div>";
+    if (!total) {
+      doctorReportBody.innerHTML =
+        '<div class="doctor-empty">No structural problems were detected.</div>';
+      return;
+    }
+    doctorReportBody.innerHTML = diagnosis.issues
+      .map(function (issue) {
+        const items = Array.isArray(issue.items)
+          ? issue.items
+              .map(function (item) {
+                return "<li>" + escapeHtml(String(item || "")) + "</li>";
+              })
+              .join("")
+          : "";
+        return (
+          '<article class="doctor-issue doctor-issue-' +
+          escapeHtml(issue.level || "informational") +
+          '">' +
+          '<div class="doctor-issue-heading">' +
+          '<span class="doctor-level doctor-level-' +
+          escapeHtml(issue.level || "informational") +
+          '">' +
+          escapeHtml(String(issue.level || "informational")) +
+          "</span>" +
+          "<h4>" +
+          escapeHtml(issue.message || "Issue detected") +
+          "</h4>" +
+          "</div>" +
+          (issue.details
+            ? '<p class="doctor-issue-details">' +
+              escapeHtml(String(issue.details)) +
+              "</p>"
+            : "") +
+          (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
+          "</article>"
+        );
+      })
+      .join("");
+  };
+
+  const runDoctorDiagnosis = function () {
+    if (!state.image) return;
+    try {
+      const report = d64.diagnoseImage(state.image);
+      doctorDialogName.textContent =
+        (state.sourceName || "Unsaved image") +
+        " · " +
+        String(report.summary.total || 0) +
+        " issue" +
+        (Number(report.summary.total || 0) === 1 ? "" : "s");
+      renderDoctorReport(report);
+      if (typeof doctorDialog.showModal === "function") {
+        doctorDialog.showModal();
+      } else {
+        doctorDialog.setAttribute("open", "open");
+      }
+      setStatus(
+        report.summary.total
+          ? "Doctor completed a read-only diagnosis."
+          : "Doctor found no structural problems.",
+      );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const downloadDiskFile = function (fileName) {
     if (!state.image) return;
     const file = d64.readFiles(state.image).find(function (entry) {
@@ -4205,6 +4313,7 @@
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);
+    doctorButton.addEventListener("click", runDoctorDiagnosis);
     validateButton.addEventListener("click", validateCurrentImage);
     fragmentButton.addEventListener("click", function () {
       rebuildDiskLayout("fragmented");
@@ -4327,6 +4436,9 @@
     sectorByteForm.addEventListener("submit", saveSectorByteDialog);
     sectorByteCancel.addEventListener("click", function () {
       closeSectorByteDialog();
+    });
+    doctorClose.addEventListener("click", function () {
+      closeDoctorDialog();
     });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
