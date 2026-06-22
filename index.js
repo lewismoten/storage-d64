@@ -3514,7 +3514,7 @@
 
     if (!files.length) {
       fileTableBody.innerHTML =
-        '<tr><td colspan="7" class="empty-state">This disk has no directory entries.</td></tr>';
+        '<tr><td colspan="8" class="empty-state">This disk has no directory entries.</td></tr>';
       return;
     }
 
@@ -3574,6 +3574,13 @@
             fileName: file.name,
             ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
           }) +
+          "</td>" +
+          "<td>" +
+          '<button type="button" class="file-type-button" data-action="download-file" data-name="' +
+          escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Download " + file.name) +
+          '">Save</button>' +
           "</td>" +
           "<td>" +
           '<button type="button" class="delete-button" data-action="delete-file" data-name="' +
@@ -3665,6 +3672,40 @@
     link.click();
     link.remove();
     setStatus("Downloaded current D64 image.");
+  };
+
+  const downloadDiskFile = function (fileName) {
+    if (!state.image) return;
+    const file = d64.readFiles(state.image).find(function (entry) {
+      return entry.name === fileName;
+    });
+    if (!file) {
+      setStatus("File not found: " + fileName, true);
+      return;
+    }
+    const extension =
+      {
+        prg: ".prg",
+        seq: ".seq",
+        usr: ".usr",
+        rel: ".rel",
+      }[String(file.type || "").toLowerCase()] || "";
+    const downloadName = /\.[^.\s]+$/.test(String(file.name || ""))
+      ? file.name
+      : file.name + extension;
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(
+      new Blob([file.data || new Uint8Array(0)], {
+        type: "application/octet-stream",
+      }),
+    );
+    link.href = objectUrl;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    setStatus("Downloaded " + file.name + ".");
   };
 
   const updateFileFlag = function (action, fileName) {
@@ -4151,6 +4192,10 @@
       }
       if (button.dataset.action === "edit-bytes") {
         openFileDataDialog(button.dataset.name);
+        return;
+      }
+      if (button.dataset.action === "download-file") {
+        downloadDiskFile(button.dataset.name);
         return;
       }
       if (button.dataset.action === "delete-file") {
