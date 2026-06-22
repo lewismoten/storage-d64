@@ -954,7 +954,7 @@
       segments
         .map(function (segment) {
           return (
-            segment.label +
+            (segment.fullLabel || segment.label) +
             ": " +
             formatByteSize(segment.value) +
             " (" +
@@ -967,7 +967,9 @@
     usageLegend.innerHTML = segments
       .map(function (segment) {
         return (
-          '<div class="legend-row">' +
+          '<div class="legend-row" title="' +
+          escapeHtml(segment.fullLabel || segment.label) +
+          '">' +
           '<span class="legend-swatch" style="background:' +
           segment.color +
           '"></span>' +
@@ -2714,7 +2716,7 @@
     ]);
 
     renderDefinitionList(usageSummary, [
-      { label: "File Count", value: String(files.length) },
+      { label: "Files", value: String(files.length) },
       {
         label: "File / Dir Sectors",
         value:
@@ -2725,27 +2727,32 @@
     ]);
     renderUsageChart([
       {
-        label: "File payload",
+        label: "Used",
+        fullLabel: "File payload",
         value: totalPayloadBytes,
         color: "#8ef3e6",
       },
       {
-        label: "File overhead",
+        label: "Overhead",
+        fullLabel: "File overhead",
         value: fileOverheadBytes,
         color: "#ffd36b",
       },
       {
-        label: "Directory reserved",
+        label: "Directory",
+        fullLabel: "Directory reserved",
         value: directoryReservedBytes,
         color: "#ff8e90",
       },
       {
-        label: "Deleted chains",
+        label: "Trash",
+        fullLabel: "Deleted chains",
         value: deletedBytes,
         color: DISK_MAP_COLORS.deleted,
       },
       {
-        label: "Free space",
+        label: "Free",
+        fullLabel: "Free space",
         value: freeBytes,
         color: "#3f82ff",
       },
