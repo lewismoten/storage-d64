@@ -456,12 +456,7 @@ button:disabled {
 }
 
 .disk-map-physical-panel {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 3;
-  pointer-events: auto;
+  margin-top: 14px;
 }
 
 .disk-map-frame {
