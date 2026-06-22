@@ -800,6 +800,16 @@
     );
   };
 
+  const formatDirectoryTypeLabel = function (file) {
+    const base = String((file && file.type) || "").toUpperCase();
+    if (!base) return "";
+    return (
+      (file && file.closed === false ? "*" : "") +
+      base +
+      (file && file.locked ? "<" : "")
+    );
+  };
+
   const updateDownloadLinkState = function () {
     releaseObjectUrl();
     if (!state.image) return;
@@ -3538,7 +3548,7 @@
           '" aria-label="' +
           escapeHtml("Edit file type for " + file.name) +
           '">' +
-          escapeHtml(String(file.type || "").toUpperCase()) +
+          escapeHtml(formatDirectoryTypeLabel(file)) +
           "</button>" +
           "</td>" +
           "<td>" +
