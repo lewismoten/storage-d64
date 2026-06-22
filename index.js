@@ -1401,6 +1401,8 @@
     const nextTrack = sectorBytes[0];
     const nextSector = sectorBytes[1];
     const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
+    const rotationMsPerRevolution = 200;
+    const headStepMsPerTrack = 3;
 
     const renderMiniSegment = function (part) {
       return (
@@ -1467,6 +1469,73 @@
       );
     };
 
+    const renderTimingSummary = function () {
+      if (!hasNextSectorLink) return "";
+      const previousBlock = { track: track, sector: sector };
+      const targetSectorCount = d64.trackSectorCount(nextTrack);
+      const predictedSector = d64.estimateNextSectorWindow(
+        previousBlock,
+        nextTrack,
+      );
+      const seekDistance = Math.abs(nextTrack - track);
+      const rotationalDistance =
+        (nextSector - predictedSector + targetSectorCount) % targetSectorCount;
+      const seekMs = seekDistance * headStepMsPerTrack;
+      const rotationMs =
+        (rotationalDistance / targetSectorCount) * rotationMsPerRevolution;
+      const totalMs = seekMs + rotationMs;
+      const worstRotationMs =
+        targetSectorCount > 1
+          ? ((targetSectorCount - 1) / targetSectorCount) *
+            rotationMsPerRevolution
+          : rotationMsPerRevolution;
+      const bestMs = seekMs;
+      const worstMs = seekMs + worstRotationMs;
+      const score =
+        worstMs <= bestMs
+          ? 100
+          : Math.max(
+              0,
+              Math.min(100, ((worstMs - totalMs) / (worstMs - bestMs)) * 100),
+            );
+      return (
+        '<div class="sector-physical-timing">' +
+        '<span class="sector-physical-chip is-inferred" title="' +
+        escapeHtml(
+          "Estimated delay before the drive can start reading the linked sector. Based on ~300 RPM rotation and ~3 ms per track head step.",
+        ) +
+        '">' +
+        "<strong>Next Read</strong><span>" +
+        totalMs.toFixed(1) +
+        " ms</span></span>" +
+        '<span class="sector-physical-chip is-expected" title="' +
+        escapeHtml(
+          "Predicted arrival window lands near sector " +
+            String(predictedSector) +
+            ". Rotational wait is " +
+            rotationalDistance +
+            " sector" +
+            (rotationalDistance === 1 ? "" : "s") +
+            ".",
+        ) +
+        '">' +
+        "<strong>Window</strong><span>S" +
+        String(predictedSector).padStart(2, "0") +
+        " +" +
+        String(rotationalDistance) +
+        "</span></span>" +
+        '<span class="sector-physical-chip is-stored" title="' +
+        escapeHtml(
+          "Optimization score for this link. 100% is the best reachable next sector without overshooting the estimated arrival window; 0% is nearly a full extra rotation.",
+        ) +
+        '">' +
+        "<strong>Score</strong><span>" +
+        score.toFixed(0) +
+        "%</span></span>" +
+        "</div>"
+      );
+    };
+
     return (
       '<section class="sector-physical">' +
       '<div class="sector-physical-head"><strong>Physical Sector Model</strong><span>Approximate 1541 on-disk layout inferred from this logical sector.</span></div>' +
@@ -1477,6 +1546,7 @@
       '<div class="sector-bitplane-wrap">' +
       renderBitplane() +
       "</div>" +
+      renderTimingSummary() +
       '<div class="sector-physical-bar-labels">' +
       (hasNextSectorLink
         ? renderSectorJumpButton(

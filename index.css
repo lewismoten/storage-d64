@@ -906,6 +906,12 @@ button:disabled {
   gap: 8px;
 }
 
+.sector-physical-timing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .sector-bitplane-wrap {
   padding: 6px;
   border: 1px solid rgba(185, 227, 242, 0.12);
@@ -1029,6 +1035,10 @@ button:disabled {
 
 .sector-physical-chip.is-expected {
   background: rgba(169, 192, 207, 0.12);
+}
+
+.sector-physical-timing .sector-physical-chip {
+  min-width: 96px;
 }
 
 .sector-physical-chip-label {
