@@ -96,10 +96,16 @@
   const sectorByteDialogMeta = document.getElementById(
     "sector-byte-dialog-meta",
   );
+  const sectorByteModeField = document.getElementById("sector-byte-mode-field");
+  const sectorByteModeHex = document.getElementById("sector-byte-mode-hex");
+  const sectorByteModeText = document.getElementById("sector-byte-mode-text");
   const sectorByteTrack = document.getElementById("sector-byte-track");
   const sectorByteSector = document.getElementById("sector-byte-sector");
   const sectorByteIndex = document.getElementById("sector-byte-index");
   const sectorByteValue = document.getElementById("sector-byte-value");
+  const sectorByteTextField = document.getElementById("sector-byte-text-field");
+  const sectorByteText = document.getElementById("sector-byte-text");
+  const sectorByteTextMeta = document.getElementById("sector-byte-text-meta");
   const sectorByteCancel = document.getElementById("sector-byte-cancel");
   const doctorDialog = document.getElementById("doctor-dialog");
   const doctorDialogName = document.getElementById("doctor-dialog-name");
@@ -1242,6 +1248,20 @@
     return ".";
   };
 
+  const normalizeDiskNameText = function (value) {
+    return String(value || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9 !"#$%&'()*+\-./:;<=>?@]+/g, "");
+  };
+
+  const encodeDiskNamePetsciiText = function (value) {
+    return Uint8Array.from(
+      Array.from(normalizeDiskNameText(value)).map(function (char) {
+        return char === " " ? 0xa0 : char.charCodeAt(0);
+      }),
+    );
+  };
+
   const renderSectorHexDump = function (bytes) {
     return renderSectorHexDumpWithOptions(bytes, {});
   };
@@ -1259,6 +1279,20 @@
           return result;
         }, {})
       : {};
+    const selectionStart = Number.isFinite(config.selectionStart)
+      ? Math.max(0, Math.floor(config.selectionStart))
+      : null;
+    const selectionEnd = Number.isFinite(config.selectionEnd)
+      ? Math.max(0, Math.floor(config.selectionEnd))
+      : null;
+    const selectedMin =
+      selectionStart == null || selectionEnd == null
+        ? null
+        : Math.min(selectionStart, selectionEnd);
+    const selectedMax =
+      selectionStart == null || selectionEnd == null
+        ? null
+        : Math.max(selectionStart, selectionEnd);
     const rows = [
       '<div class="sector-hex-row sector-hex-header' +
         (showOffsets ? "" : " sector-hex-row-no-offset") +
@@ -1301,6 +1335,13 @@
           if (invalidByteIndexes[absoluteIndex]) {
             classes.push("is-invalid");
           }
+          if (
+            selectedMin != null &&
+            absoluteIndex >= selectedMin &&
+            absoluteIndex <= selectedMax
+          ) {
+            classes.push("is-selected");
+          }
           return (
             '<span class="' +
             classes.join(" ") +
@@ -1327,6 +1368,13 @@
           }
           if (invalidByteIndexes[absoluteIndex]) {
             classes.push("is-invalid");
+          }
+          if (
+            selectedMin != null &&
+            absoluteIndex >= selectedMin &&
+            absoluteIndex <= selectedMax
+          ) {
+            classes.push("is-selected");
           }
           return (
             '<span class="' +
@@ -2463,6 +2511,81 @@
     }
   };
 
+  const getSelectedHexRange = function () {
+    if (!state.hexViewContext) return null;
+    const start = Number(state.hexViewContext.selectionStart);
+    const end = Number(state.hexViewContext.selectionEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    return {
+      start: Math.min(start, end),
+      end: Math.max(start, end),
+    };
+  };
+
+  const renderActiveHexView = function () {
+    if (!state.hexViewContext) return;
+    sectorDataDialogTitle.textContent = String(
+      state.hexViewContext.dialogTitle || "Sector Data",
+    );
+    sectorDataDialogName.textContent = String(
+      state.hexViewContext.dialogName || "",
+    );
+    sectorDataDialogBody.dataset.mode = String(state.hexViewContext.mode || "");
+    const note = state.hexViewContext.note
+      ? '<p class="sector-data-dialog-note">' +
+        escapeHtml(String(state.hexViewContext.note)) +
+        "</p>"
+      : "";
+    const selectionTip =
+      '<p class="sector-data-dialog-tip">Tip: Shift-click to select multiple bytes, then click the selection to edit that range.</p>';
+    sectorDataDialogBody.innerHTML =
+      note +
+      selectionTip +
+      '<div class="sector-hex-viewer">' +
+      renderSectorHexDumpWithOptions(
+        state.hexViewContext.bytes || new Uint8Array(0),
+        Object.assign({}, state.hexViewContext.renderConfig || {}, {
+          selectionStart: state.hexViewContext.selectionStart,
+          selectionEnd: state.hexViewContext.selectionEnd,
+        }),
+      ) +
+      "</div>";
+  };
+
+  const syncSectorByteTextField = function (options) {
+    const config = options || {};
+    const visible = Boolean(config.visible);
+    sectorByteTextField.hidden = !visible;
+    sectorByteTextMeta.hidden = !visible;
+    sectorByteModeField.hidden = !visible;
+    sectorByteDialog.dataset.textKind = visible
+      ? String(config.kind || "")
+      : "";
+    if (!visible) {
+      sectorByteModeHex.checked = true;
+      sectorByteModeText.checked = false;
+      sectorByteText.value = "";
+      sectorByteText.removeAttribute("maxlength");
+      sectorByteText.removeAttribute("placeholder");
+      sectorByteText.setCustomValidity("");
+      return;
+    }
+    sectorByteModeHex.checked = true;
+    sectorByteModeText.checked = false;
+    sectorByteText.value = "";
+    sectorByteText.maxLength = String(
+      Math.max(1, Math.floor(Number(config.maxLength) || 1)),
+    );
+    sectorByteText.placeholder = String(
+      config.placeholder || "Type replacement text",
+    );
+    sectorByteTextMeta.textContent = String(
+      config.meta ||
+        "Writes text into the selected byte and the following bytes.",
+    );
+    sectorByteText.setCustomValidity("");
+  };
+
   const openFileDataDialog = function (fileName) {
     if (!state.image) return;
     const file = d64.readFile(state.image, fileName);
@@ -2475,17 +2598,17 @@
     state.hexViewContext = {
       mode: "file",
       fileName: displayName,
+      dialogTitle: "File Data",
+      dialogName: displayName + " bytes",
+      note: "Payload bytes only. Link bytes and REL side sectors are not shown here.",
+      bytes: file.payload || new Uint8Array(0),
       byteOffsets: buildFileByteOffsetMap(file),
+      renderConfig: {},
+      selectionStart: null,
+      selectionEnd: null,
+      selectionAnchor: null,
     };
-    sectorDataDialogTitle.textContent = "File Data";
-    sectorDataDialogName.textContent = displayName + " bytes";
-    sectorDataDialogBody.dataset.mode = "file";
-    sectorDataDialogBody.dataset.fileName = displayName;
-    sectorDataDialogBody.innerHTML =
-      '<p class="sector-data-dialog-note">Payload bytes only. Link bytes and REL side sectors are not shown here.</p>' +
-      '<div class="sector-hex-viewer">' +
-      renderSectorHexDumpWithOptions(file.payload || new Uint8Array(0), {}) +
-      "</div>";
+    renderActiveHexView();
     if (typeof sectorDataDialog.showModal === "function") {
       sectorDataDialog.showModal();
     } else {
@@ -2527,7 +2650,7 @@
           return result;
         }
         const char = String.fromCharCode(value & 0xff);
-        if (!/^[A-Z0-9 ._-]$/.test(char)) {
+        if (!/^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]$/.test(char)) {
           result.push(index);
         }
         return result;
@@ -2536,7 +2659,12 @@
     state.hexViewContext = {
       mode: "absolute-range",
       title: String(options.title || "Byte Range"),
+      dialogTitle: String(options.dialogTitle || options.title || "Byte Range"),
+      dialogName: String(options.title || "Byte Range"),
+      note: options.note ? String(options.note) : "",
+      bytes: subset,
       absoluteOffsets: absoluteOffsets,
+      byteOffsets: absoluteOffsets.slice(),
       rangeConfig: {
         title: String(options.title || "Byte Range"),
         note: options.note ? String(options.note) : "",
@@ -2546,26 +2674,18 @@
         showOffsets: options.showOffsets !== false,
         highlightLinkBytes: options.highlightLinkBytes !== false,
         rangeKind: String(options.rangeKind || ""),
+        textConfig: options.textConfig || null,
       },
-    };
-    sectorDataDialogTitle.textContent = String(
-      options.dialogTitle || options.title || "Byte Range",
-    );
-    sectorDataDialogName.textContent = String(options.title || "Byte Range");
-    sectorDataDialogBody.dataset.mode = "absolute-range";
-    sectorDataDialogBody.innerHTML =
-      (options.note
-        ? '<p class="sector-data-dialog-note">' +
-          escapeHtml(String(options.note)) +
-          "</p>"
-        : "") +
-      '<div class="sector-hex-viewer">' +
-      renderSectorHexDumpWithOptions(subset, {
+      renderConfig: {
         showOffsets: options.showOffsets !== false,
         highlightLinkBytes: options.highlightLinkBytes !== false,
         invalidByteIndexes: invalidByteIndexes,
-      }) +
-      "</div>";
+      },
+      selectionStart: null,
+      selectionEnd: null,
+      selectionAnchor: null,
+    };
+    renderActiveHexView();
     if (typeof sectorDataDialog.showModal === "function") {
       sectorDataDialog.showModal();
     } else {
@@ -2575,12 +2695,26 @@
 
   const openImageByteDialog = function (config) {
     const options = config || {};
-    const absoluteOffset = Math.max(
-      0,
-      Math.floor(Number(options.absoluteOffset) || 0),
-    );
-    if (!state.image || absoluteOffset >= state.image.length) return;
+    const absoluteOffsets = Array.isArray(options.absoluteOffsets)
+      ? options.absoluteOffsets
+          .map(function (value) {
+            return Math.floor(Number(value));
+          })
+          .filter(function (value) {
+            return (
+              Number.isFinite(value) && value >= 0 && value < state.image.length
+            );
+          })
+      : [Math.max(0, Math.floor(Number(options.absoluteOffset) || 0))];
+    const absoluteOffset = absoluteOffsets[0];
+    if (
+      !state.image ||
+      !absoluteOffsets.length ||
+      absoluteOffset >= state.image.length
+    )
+      return;
     sectorByteDialog.dataset.absoluteOffset = String(absoluteOffset);
+    sectorByteDialog.dataset.absoluteOffsets = absoluteOffsets.join(",");
     sectorByteDialog.dataset.mode = String(options.mode || "");
     sectorByteDialog.dataset.fileName = String(options.fileName || "");
     sectorByteDialog.dataset.track = String(options.track || "");
@@ -2598,7 +2732,54 @@
           numberFormatter.format(absoluteOffset) +
           " bytes)",
     );
-    sectorByteValue.value = toHexByte(state.image[absoluteOffset]);
+    sectorByteValue.value = absoluteOffsets
+      .map(function (offset) {
+        return toHexByte(state.image[offset]);
+      })
+      .join(" ");
+    sectorByteValue.maxLength = String(
+      Math.max(2, absoluteOffsets.length * 3 - 1),
+    );
+    sectorByteText.value = absoluteOffsets
+      .map(function (offset) {
+        return toPrintableSectorChar(state.image[offset]);
+      })
+      .join("");
+    const rangeTextConfig =
+      options.mode === "absolute-range" &&
+      state.hexViewContext &&
+      state.hexViewContext.mode === "absolute-range" &&
+      state.hexViewContext.rangeConfig &&
+      state.hexViewContext.rangeConfig.textConfig
+        ? state.hexViewContext.rangeConfig.textConfig
+        : null;
+    if (rangeTextConfig && rangeTextConfig.kind === "disk-name") {
+      syncSectorByteTextField({
+        visible: true,
+        kind: "disk-name",
+        maxLength: absoluteOffsets.length,
+        placeholder: "Type disk name text",
+        meta:
+          "Disk name PETSCII text. " +
+          String(Math.max(0, absoluteOffsets.length)) +
+          " byte" +
+          (absoluteOffsets.length === 1 ? "" : "s") +
+          " selected.",
+      });
+    } else {
+      syncSectorByteTextField({
+        visible: absoluteOffsets.length > 1,
+        kind: "text",
+        maxLength: absoluteOffsets.length,
+        placeholder: "Type replacement text",
+        meta:
+          "Writes text into the " +
+          String(absoluteOffsets.length) +
+          " selected byte" +
+          (absoluteOffsets.length === 1 ? "" : "s") +
+          ".",
+      });
+    }
     if (typeof sectorByteDialog.showModal === "function") {
       sectorByteDialog.showModal();
     } else {
@@ -2630,18 +2811,29 @@
       mode: "sector",
       track: normalizedTrack,
       sector: normalizedSector,
+      dialogTitle: "Sector Data",
+      dialogName:
+        "Track " +
+        String(normalizedTrack) +
+        " Sector " +
+        String(normalizedSector),
+      note:
+        tailDimStart != null
+          ? "Dimmed tail bytes are beyond used payload."
+          : "",
+      bytes: sectorBytes,
+      byteOffsets: Array.from(
+        { length: sectorBytes.length },
+        function (_, index) {
+          return d64.trackOffset(normalizedTrack, normalizedSector) + index;
+        },
+      ),
+      renderConfig: { dimStart: tailDimStart },
+      selectionStart: null,
+      selectionEnd: null,
+      selectionAnchor: null,
     };
-    sectorDataDialogTitle.textContent = "Sector Data";
-    sectorDataDialogBody.dataset.mode = "sector";
-    sectorDataDialogBody.dataset.track = String(normalizedTrack);
-    sectorDataDialogBody.dataset.sector = String(normalizedSector);
-    sectorDataDialogBody.innerHTML =
-      (tailDimStart != null
-        ? '<p class="sector-data-dialog-note">Dimmed tail bytes are beyond used payload.</p>'
-        : "") +
-      '<div class="sector-hex-viewer">' +
-      renderSectorHexDumpWithOptions(sectorBytes, { dimStart: tailDimStart }) +
-      "</div>";
+    renderActiveHexView();
     if (typeof sectorDataDialog.showModal === "function") {
       sectorDataDialog.showModal();
     } else {
@@ -2695,18 +2887,82 @@
     const absoluteOffset = Number(
       sectorByteDialog.dataset.absoluteOffset || -1,
     );
+    const absoluteOffsets = String(
+      sectorByteDialog.dataset.absoluteOffsets || "",
+    )
+      .split(",")
+      .map(function (value) {
+        return Math.floor(Number(value));
+      })
+      .filter(function (value) {
+        return Number.isFinite(value) && value >= 0;
+      });
     const nextValueText = String(sectorByteValue.value || "")
       .trim()
       .toUpperCase();
-    if (!/^[0-9A-F]{2}$/.test(nextValueText)) {
-      sectorByteValue.setCustomValidity("Enter exactly two hex digits.");
+    const hexParts = nextValueText
+      ? nextValueText.split(/\s+/).filter(Boolean)
+      : [];
+    if (
+      !hexParts.length ||
+      hexParts.length !== absoluteOffsets.length ||
+      hexParts.some(function (part) {
+        return !/^[0-9A-F]{2}$/.test(part);
+      })
+    ) {
+      sectorByteValue.setCustomValidity(
+        "Enter exactly " +
+          String(Math.max(1, absoluteOffsets.length)) +
+          " two-digit hex value" +
+          (absoluteOffsets.length === 1 ? "" : "s") +
+          ".",
+      );
       sectorByteValue.reportValidity();
       return;
     }
     sectorByteValue.setCustomValidity("");
-    if (!Number.isFinite(absoluteOffset) || absoluteOffset < 0) return;
+    if (
+      !Number.isFinite(absoluteOffset) ||
+      absoluteOffset < 0 ||
+      !absoluteOffsets.length
+    )
+      return;
     const nextImage = state.image.slice();
-    nextImage[absoluteOffset] = parseInt(nextValueText, 16);
+    const overwriteText = String(sectorByteText.value || "");
+    if (
+      sectorByteModeText.checked &&
+      sectorByteDialog.dataset.textKind === "disk-name" &&
+      overwriteText.trim() !== ""
+    ) {
+      const normalizedText = normalizeDiskNameText(overwriteText);
+      if (overwriteText !== normalizedText) {
+        sectorByteText.value = normalizedText;
+      }
+      if (!normalizedText) {
+        sectorByteText.setCustomValidity(
+          "Use A-Z, 0-9, spaces, and the supported punctuation only.",
+        );
+        sectorByteText.reportValidity();
+        return;
+      }
+      sectorByteText.setCustomValidity("");
+      const encodedText = encodeDiskNamePetsciiText(normalizedText);
+      encodedText.forEach(function (byteValue, index) {
+        if (!Number.isFinite(Number(absoluteOffsets[index]))) return;
+        nextImage[absoluteOffsets[index]] = byteValue;
+      });
+    } else if (sectorByteModeText.checked && overwriteText !== "") {
+      const printableText = Array.from(overwriteText);
+      printableText
+        .slice(0, absoluteOffsets.length)
+        .forEach(function (char, index) {
+          nextImage[absoluteOffsets[index]] = char.charCodeAt(0) & 0xff;
+        });
+    } else {
+      hexParts.forEach(function (part, index) {
+        nextImage[absoluteOffsets[index]] = parseInt(part, 16);
+      });
+    }
     const rangeOffsets =
       state.hexViewContext &&
       state.hexViewContext.mode === "absolute-range" &&
@@ -2720,15 +2976,23 @@
     loadImageBytes(
       nextImage,
       state.sourceName || "disk.d64",
-      "Updated T" +
-        String(track).padStart(2, "0") +
-        "/S" +
-        String(sector).padStart(2, "0") +
-        " byte " +
-        toHexByte(byteIndex) +
-        " to $" +
-        nextValueText +
-        ".",
+      sectorByteModeText.checked &&
+        sectorByteDialog.dataset.textKind === "disk-name" &&
+        overwriteText.trim() !== ""
+        ? "Updated disk name text."
+        : "Updated T" +
+            String(track).padStart(2, "0") +
+            "/S" +
+            String(sector).padStart(2, "0") +
+            " byte range " +
+            toHexByte(byteIndex) +
+            (absoluteOffsets.length > 1
+              ? "-" +
+                toHexByte(byteIndex + Math.max(0, absoluteOffsets.length - 1))
+              : "") +
+            " to " +
+            nextValueText +
+            ".",
       { resetDeletedTypeHints: false },
     );
     if (
@@ -4577,14 +4841,28 @@
       closeFileNameDialog();
     });
     sectorByteValue.addEventListener("input", function () {
+      sectorByteModeHex.checked = true;
       const normalizedValue = String(sectorByteValue.value || "")
         .toUpperCase()
-        .replace(/[^0-9A-F]/g, "")
-        .slice(0, 2);
+        .replace(/[^0-9A-F\s]/g, "")
+        .replace(/\s+/g, " ")
+        .trimStart();
       if (sectorByteValue.value !== normalizedValue) {
         sectorByteValue.value = normalizedValue;
       }
       sectorByteValue.setCustomValidity("");
+    });
+    sectorByteText.addEventListener("input", function () {
+      sectorByteModeText.checked = true;
+      if (sectorByteDialog.dataset.textKind !== "disk-name") {
+        sectorByteText.setCustomValidity("");
+        return;
+      }
+      const normalizedValue = normalizeDiskNameText(sectorByteText.value);
+      if (sectorByteText.value !== normalizedValue) {
+        sectorByteText.value = normalizedValue;
+      }
+      sectorByteText.setCustomValidity("");
     });
     sectorByteForm.addEventListener("submit", saveSectorByteDialog);
     sectorByteCancel.addEventListener("click", function () {
@@ -4607,6 +4885,7 @@
           showOffsets: false,
           highlightLinkBytes: false,
           rangeKind: "disk-name",
+          textConfig: { kind: "disk-name" },
           absoluteOffsets: Array.from({ length: length }, function (_, index) {
             return start + index;
           }),
@@ -4753,56 +5032,64 @@
         Math.floor(Number(target.dataset.byteIndex) || 0),
       );
       if (
-        state.hexViewContext &&
-        state.hexViewContext.mode === "file" &&
-        Array.isArray(state.hexViewContext.byteOffsets)
+        !state.hexViewContext ||
+        !Array.isArray(state.hexViewContext.byteOffsets)
       ) {
-        const absoluteOffset = state.hexViewContext.byteOffsets[byteIndex];
-        if (!Number.isFinite(Number(absoluteOffset))) return;
-        openImageByteDialog({
-          absoluteOffset: absoluteOffset,
-          mode: "file",
-          fileName: state.hexViewContext.fileName || "",
-          byteIndex: byteIndex,
-          title:
-            (state.hexViewContext.fileName || "File") +
-            " Byte " +
-            toHexWord(byteIndex),
-          meta:
-            "File byte offset " +
-            toHexWord(byteIndex) +
-            " · absolute offset " +
-            toHexWord(absoluteOffset),
-        });
+        return;
+      }
+      const currentRange = getSelectedHexRange();
+      if (
+        event.shiftKey &&
+        Number.isFinite(state.hexViewContext.selectionAnchor)
+      ) {
+        state.hexViewContext.selectionStart =
+          state.hexViewContext.selectionAnchor;
+        state.hexViewContext.selectionEnd = byteIndex;
+        renderActiveHexView();
         return;
       }
       if (
-        state.hexViewContext &&
-        state.hexViewContext.mode === "absolute-range" &&
-        Array.isArray(state.hexViewContext.absoluteOffsets)
+        currentRange &&
+        byteIndex >= currentRange.start &&
+        byteIndex <= currentRange.end
       ) {
-        const absoluteOffset = state.hexViewContext.absoluteOffsets[byteIndex];
-        if (!Number.isFinite(Number(absoluteOffset))) return;
+        const selectedOffsets = state.hexViewContext.byteOffsets.slice(
+          currentRange.start,
+          currentRange.end + 1,
+        );
+        const firstAbsoluteOffset = selectedOffsets[0];
+        const titlePrefix =
+          state.hexViewContext.mode === "file"
+            ? state.hexViewContext.fileName || "File"
+            : state.hexViewContext.title ||
+              state.hexViewContext.dialogName ||
+              "Range";
         openImageByteDialog({
-          absoluteOffset: absoluteOffset,
-          mode: "absolute-range",
-          byteIndex: byteIndex,
+          absoluteOffset: firstAbsoluteOffset,
+          absoluteOffsets: selectedOffsets,
+          mode: String(state.hexViewContext.mode || ""),
+          fileName: state.hexViewContext.fileName || "",
+          byteIndex: currentRange.start,
           title:
-            (state.hexViewContext.title || "Byte Range") +
-            " Byte " +
-            toHexWord(byteIndex),
+            titlePrefix +
+            " Bytes " +
+            toHexWord(currentRange.start) +
+            (currentRange.end > currentRange.start
+              ? "-" + toHexWord(currentRange.end)
+              : ""),
           meta:
-            "Range byte offset " +
-            toHexWord(byteIndex) +
-            " · absolute offset " +
-            toHexWord(absoluteOffset),
+            "Selected " +
+            String(selectedOffsets.length) +
+            " byte" +
+            (selectedOffsets.length === 1 ? "" : "s") +
+            ".",
         });
         return;
       }
-      const track = sectorDataDialogBody.dataset.track;
-      const sector = sectorDataDialogBody.dataset.sector;
-      if (!track || !sector) return;
-      openSectorByteDialog(track, sector, byteIndex);
+      state.hexViewContext.selectionAnchor = byteIndex;
+      state.hexViewContext.selectionStart = byteIndex;
+      state.hexViewContext.selectionEnd = byteIndex;
+      renderActiveHexView();
     });
     sectorDataDialogBody.addEventListener("mouseout", function (event) {
       const target = event.target.closest("[data-byte-index]");

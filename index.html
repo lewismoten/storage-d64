@@ -356,6 +356,32 @@
               <p id="sector-byte-dialog-meta" class="sector-byte-dialog-meta">
                 Absolute offset 0x0000
               </p>
+              <fieldset
+                id="sector-byte-mode-field"
+                class="sector-byte-mode-field"
+                hidden
+              >
+                <legend>Save Mode</legend>
+                <label class="sector-byte-mode-option">
+                  <input
+                    id="sector-byte-mode-hex"
+                    type="radio"
+                    name="sector-byte-mode"
+                    value="hex"
+                    checked
+                  />
+                  <span>Hex</span>
+                </label>
+                <label class="sector-byte-mode-option">
+                  <input
+                    id="sector-byte-mode-text"
+                    type="radio"
+                    name="sector-byte-mode"
+                    value="text"
+                  />
+                  <span>Text</span>
+                </label>
+              </fieldset>
               <label>
                 Hex value
                 <input
@@ -370,6 +396,25 @@
                   required
                 />
               </label>
+              <label id="sector-byte-text-field" hidden>
+                Text overwrite
+                <input
+                  id="sector-byte-text"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  autocorrect="off"
+                  spellcheck="false"
+                  placeholder="Type replacement text"
+                />
+              </label>
+              <p
+                id="sector-byte-text-meta"
+                class="sector-byte-dialog-meta"
+                hidden
+              >
+                Writes text into following bytes.
+              </p>
               <div class="dialog-actions">
                 <button id="sector-byte-cancel" type="button">Cancel</button>
                 <button id="sector-byte-save" type="submit">Save</button>

@@ -2128,7 +2128,7 @@
         d64.headerOffsets.diskNameStart,
         d64.headerOffsets.diskNameStart + d64.headerOffsets.diskNameLength,
       ),
-      /^[A-Z0-9 ._-]$/,
+      /^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]$/,
     );
     validateFieldBytes(
       "disk-id",

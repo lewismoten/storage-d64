@@ -1011,6 +1011,13 @@ button:disabled {
   line-height: 1.4;
 }
 
+.sector-data-dialog-tip {
+  margin: -4px 0 0;
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
 .sector-byte-dialog-meta {
   margin: -4px 0 0;
   color: var(--muted);
@@ -1221,6 +1228,13 @@ button:disabled {
   background: rgba(142, 243, 230, 0.18);
   border-radius: 4px;
   box-shadow: inset 0 0 0 1px rgba(142, 243, 230, 0.28);
+}
+
+.sector-hex-byte.is-selected,
+.sector-ascii-char.is-selected {
+  background: rgba(255, 211, 107, 0.18);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 107, 0.34);
 }
 
 .disk-map-legend-group {
@@ -1465,6 +1479,36 @@ tbody tr.is-drop-target {
 .file-type-dialog.doctor-dialog {
   width: min(840px, calc(100vw - 28px));
   max-width: 840px;
+}
+
+.sector-byte-mode-field {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 227, 242, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sector-byte-mode-field legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sector-byte-mode-option {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: 16px;
+  cursor: pointer;
+}
+
+.sector-byte-mode-option input {
+  width: auto;
+  min-height: 0;
 }
 
 .dialog-actions {
