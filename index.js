@@ -9,6 +9,7 @@
     diskLayout: null,
     selectedSectorKey: "",
     diskCoverVisible: false,
+    heatMapVisible: false,
   };
 
   const createForm = document.getElementById("create-form");
@@ -23,6 +24,7 @@
   const downloadButton = document.getElementById("download-button");
   const fragmentButton = document.getElementById("fragment-button");
   const defragmentButton = document.getElementById("defragment-button");
+  const heatmapButton = document.getElementById("heatmap-button");
   const currentFileName = document.getElementById("current-file-name");
   const status = document.getElementById("status");
   const headerSummary = document.getElementById("header-summary");
@@ -32,6 +34,9 @@
   const usageLegend = document.getElementById("usage-legend");
   const diskMapFrame = document.getElementById("disk-map-frame");
   const diskMap = document.getElementById("disk-map");
+  const diskMapHeatmapSummary = document.getElementById(
+    "disk-map-heatmap-summary",
+  );
   const diskMapPointer = document.getElementById("disk-map-pointer");
   const diskMapTooltip = document.getElementById("disk-map-tooltip");
   const diskDropHint = document.getElementById("disk-drop-hint");
@@ -134,6 +139,7 @@
     deletedTail: "#ff8787",
     trackStroke: "rgba(255,255,255,0.08)",
   });
+  const HEATMAP_YELLOW_SCORE = 70;
   const SHELL_COLOR_PRESETS = Object.freeze([
     {
       id: "black",
@@ -322,6 +328,50 @@
     return numberFormatter.format(Math.max(0, Math.round(Number(value) || 0)));
   };
 
+  const mixColor = function (start, end, ratio) {
+    const normalizeHex = function (hex) {
+      const value = String(hex || "").replace("#", "");
+      const expanded =
+        value.length === 3
+          ? value
+              .split("")
+              .map(function (part) {
+                return part + part;
+              })
+              .join("")
+          : value.padStart(6, "0").slice(0, 6);
+      return {
+        r: parseInt(expanded.slice(0, 2), 16),
+        g: parseInt(expanded.slice(2, 4), 16),
+        b: parseInt(expanded.slice(4, 6), 16),
+      };
+    };
+    const startColor = normalizeHex(start);
+    const endColor = normalizeHex(end);
+    const amount = Math.max(0, Math.min(1, Number(ratio) || 0));
+    const toHex = function (value) {
+      return Math.round(value).toString(16).padStart(2, "0");
+    };
+    return (
+      "#" +
+      toHex(startColor.r + (endColor.r - startColor.r) * amount) +
+      toHex(startColor.g + (endColor.g - startColor.g) * amount) +
+      toHex(startColor.b + (endColor.b - startColor.b) * amount)
+    );
+  };
+
+  const scoreToHeatColor = function (score) {
+    const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
+    if (safeScore <= HEATMAP_YELLOW_SCORE) {
+      return mixColor("#e03131", "#ffd43b", safeScore / HEATMAP_YELLOW_SCORE);
+    }
+    return mixColor(
+      "#ffd43b",
+      "#2fce6d",
+      (safeScore - HEATMAP_YELLOW_SCORE) / (100 - HEATMAP_YELLOW_SCORE),
+    );
+  };
+
   const formatExactBytes = function (value) {
     const bytes = Math.max(0, Math.round(Number(value) || 0));
     return formatNumber(bytes) + " bytes";
@@ -437,6 +487,7 @@
     downloadButton.disabled = !state.image;
     fragmentButton.disabled = !state.image;
     defragmentButton.disabled = !state.image;
+    heatmapButton.disabled = !state.image;
   };
 
   const resetDeletedTypeHints = function () {
@@ -788,6 +839,10 @@
     diskMapCoverToggle.textContent = state.diskCoverVisible
       ? "Show Media"
       : "Show Cover";
+    heatmapButton.disabled = !hasImage;
+    heatmapButton.textContent = state.heatMapVisible
+      ? "Efficiency Map On"
+      : "Efficiency Map Off";
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
     diskMapZoomReset.disabled = !hasImage;
@@ -1298,6 +1353,62 @@
     );
   };
 
+  const estimateSectorLinkMetrics = function (
+    track,
+    sector,
+    nextTrack,
+    nextSector,
+  ) {
+    if (!isValidSectorAddress(nextTrack, nextSector, state.image)) {
+      return null;
+    }
+    const previousBlock = {
+      track: Math.max(1, Math.floor(Number(track) || 0)),
+      sector: Math.max(0, Math.floor(Number(sector) || 0)),
+    };
+    const targetTrack = Math.max(1, Math.floor(Number(nextTrack) || 0));
+    const targetSector = Math.max(0, Math.floor(Number(nextSector) || 0));
+    const rotationMsPerRevolution = 200;
+    const headStepMsPerTrack = 3;
+    const targetSectorCount = d64.trackSectorCount(targetTrack);
+    const predictedSector = d64.estimateNextSectorWindow(
+      previousBlock,
+      targetTrack,
+    );
+    const seekDistance = Math.abs(targetTrack - previousBlock.track);
+    const rotationalDistance =
+      (targetSector - predictedSector + targetSectorCount) % targetSectorCount;
+    const seekMs = seekDistance * headStepMsPerTrack;
+    const rotationMs =
+      (rotationalDistance / targetSectorCount) * rotationMsPerRevolution;
+    const totalMs = seekMs + rotationMs;
+    const worstRotationMs =
+      targetSectorCount > 1
+        ? ((targetSectorCount - 1) / targetSectorCount) *
+          rotationMsPerRevolution
+        : rotationMsPerRevolution;
+    const bestMs = seekMs;
+    const worstMs = seekMs + worstRotationMs;
+    const score =
+      worstMs <= bestMs
+        ? 100
+        : Math.max(
+            0,
+            Math.min(100, ((worstMs - totalMs) / (worstMs - bestMs)) * 100),
+          );
+    return {
+      predictedSector: predictedSector,
+      seekDistance: seekDistance,
+      rotationalDistance: rotationalDistance,
+      seekMs: seekMs,
+      rotationMs: rotationMs,
+      totalMs: totalMs,
+      bestMs: bestMs,
+      worstMs: worstMs,
+      score: score,
+    };
+  };
+
   const renderPhysicalSectorLegend = function (
     track,
     sector,
@@ -1401,8 +1512,9 @@
     const nextTrack = sectorBytes[0];
     const nextSector = sectorBytes[1];
     const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
-    const rotationMsPerRevolution = 200;
-    const headStepMsPerTrack = 3;
+    const linkMetrics = hasNextSectorLink
+      ? estimateSectorLinkMetrics(track, sector, nextTrack, nextSector)
+      : null;
 
     const renderMiniSegment = function (part) {
       return (
@@ -1470,34 +1582,7 @@
     };
 
     const renderTimingSummary = function () {
-      if (!hasNextSectorLink) return "";
-      const previousBlock = { track: track, sector: sector };
-      const targetSectorCount = d64.trackSectorCount(nextTrack);
-      const predictedSector = d64.estimateNextSectorWindow(
-        previousBlock,
-        nextTrack,
-      );
-      const seekDistance = Math.abs(nextTrack - track);
-      const rotationalDistance =
-        (nextSector - predictedSector + targetSectorCount) % targetSectorCount;
-      const seekMs = seekDistance * headStepMsPerTrack;
-      const rotationMs =
-        (rotationalDistance / targetSectorCount) * rotationMsPerRevolution;
-      const totalMs = seekMs + rotationMs;
-      const worstRotationMs =
-        targetSectorCount > 1
-          ? ((targetSectorCount - 1) / targetSectorCount) *
-            rotationMsPerRevolution
-          : rotationMsPerRevolution;
-      const bestMs = seekMs;
-      const worstMs = seekMs + worstRotationMs;
-      const score =
-        worstMs <= bestMs
-          ? 100
-          : Math.max(
-              0,
-              Math.min(100, ((worstMs - totalMs) / (worstMs - bestMs)) * 100),
-            );
+      if (!linkMetrics) return "";
       return (
         '<div class="sector-physical-timing">' +
         '<span class="sector-physical-chip is-inferred" title="' +
@@ -1506,23 +1591,23 @@
         ) +
         '">' +
         "<strong>Next Read</strong><span>" +
-        totalMs.toFixed(1) +
+        linkMetrics.totalMs.toFixed(1) +
         " ms</span></span>" +
         '<span class="sector-physical-chip is-expected" title="' +
         escapeHtml(
           "Predicted arrival window lands near sector " +
-            String(predictedSector) +
+            String(linkMetrics.predictedSector) +
             ". Rotational wait is " +
-            rotationalDistance +
+            linkMetrics.rotationalDistance +
             " sector" +
-            (rotationalDistance === 1 ? "" : "s") +
+            (linkMetrics.rotationalDistance === 1 ? "" : "s") +
             ".",
         ) +
         '">' +
         "<strong>Window</strong><span>S" +
-        String(predictedSector).padStart(2, "0") +
+        String(linkMetrics.predictedSector).padStart(2, "0") +
         " +" +
-        String(rotationalDistance) +
+        String(linkMetrics.rotationalDistance) +
         "</span></span>" +
         '<span class="sector-physical-chip is-stored" title="' +
         escapeHtml(
@@ -1530,7 +1615,7 @@
         ) +
         '">' +
         "<strong>Score</strong><span>" +
-        score.toFixed(0) +
+        linkMetrics.score.toFixed(0) +
         "%</span></span>" +
         "</div>"
       );
@@ -1821,11 +1906,55 @@
       }
     });
 
+    Object.keys(sectorMap).forEach(function (key) {
+      const sectorInfo = sectorMap[key];
+      if (
+        /^(free|reservedFree|header|directory)$/.test(
+          String(sectorInfo.category || ""),
+        )
+      ) {
+        return;
+      }
+      const sectorBytes = d64.readSector(
+        image,
+        sectorInfo.track,
+        sectorInfo.sector,
+      );
+      const nextTrack = sectorBytes[0];
+      const nextSector = sectorBytes[1];
+      const metrics = estimateSectorLinkMetrics(
+        sectorInfo.track,
+        sectorInfo.sector,
+        nextTrack,
+        nextSector,
+      );
+      if (!metrics) return;
+      sectorInfo.linkMetrics = metrics;
+      sectorInfo.heatColor = scoreToHeatColor(metrics.score);
+    });
+
+    const scoredSectors = Object.values(sectorMap).filter(
+      function (sectorInfo) {
+        return (
+          sectorInfo &&
+          sectorInfo.linkMetrics &&
+          Number.isFinite(Number(sectorInfo.linkMetrics.score))
+        );
+      },
+    );
+    const averageLinkScore = scoredSectors.length
+      ? scoredSectors.reduce(function (sum, sectorInfo) {
+          return sum + (Number(sectorInfo.linkMetrics.score) || 0);
+        }, 0) / scoredSectors.length
+      : null;
+
     return {
       geometry: geometry,
       sectorMap: sectorMap,
       directorySectors: directory.sectors.length,
       activeFiles: activeEntries.length,
+      averageLinkScore: averageLinkScore,
+      scoredSectorCount: scoredSectors.length,
     };
   };
 
@@ -2247,6 +2376,9 @@
       diskMap.innerHTML =
         "Load or create a disk image to view tracks and sectors.";
       diskMap.className = "disk-map empty-state";
+      diskMapHeatmapSummary.hidden = true;
+      diskMapHeatmapSummary.textContent = "";
+      diskMapHeatmapSummary.removeAttribute("style");
       setHoveredDiskMapSector(null);
       hideDiskMapPointer();
       hideDiskMapTooltip();
@@ -2372,6 +2504,18 @@
           sectorZeroAngleOffset;
         const totalFraction =
           info && typeof info.usedFraction === "number" ? info.usedFraction : 1;
+        const displayColor =
+          state.heatMapVisible && info && info.heatColor
+            ? info.heatColor
+            : null;
+        const displayTailColor =
+          state.heatMapVisible && info && info.heatColor
+            ? mixColor(info.heatColor, "#f4f8fb", 0.46)
+            : null;
+        const efficiencySuffix =
+          info && info.linkMetrics
+            ? " · efficiency " + info.linkMetrics.score.toFixed(0) + "%"
+            : "";
         const usedStartAngle =
           endAngle - (endAngle - startAngle) * totalFraction;
         const basePath = describeSectorPath(
@@ -2400,7 +2544,7 @@
               '" data-key="' +
               key +
               '" fill="' +
-              info.color +
+              (displayColor || info.color) +
               '" stroke="' +
               info.stroke +
               '" stroke-width="0.5" data-tooltip="' +
@@ -2413,7 +2557,8 @@
                   info.label +
                   " · " +
                   formatNumber(Math.round(totalFraction * 254)) +
-                  " used bytes",
+                  " used bytes" +
+                  efficiencySuffix,
               ) +
               '"></path>',
           );
@@ -2434,7 +2579,7 @@
               '" data-key="' +
               key +
               '" fill="' +
-              info.tailColor +
+              (displayTailColor || info.tailColor) +
               '" stroke="' +
               info.stroke +
               '" stroke-width="0.5" data-tooltip="' +
@@ -2445,7 +2590,8 @@
                   String(sector) +
                   " · " +
                   info.label +
-                  " · tail bytes",
+                  " · tail bytes" +
+                  efficiencySuffix,
               ) +
               '"></path>',
           );
@@ -2460,7 +2606,8 @@
               '" data-key="' +
               key +
               '" fill="' +
-              (info ? info.color : DISK_MAP_COLORS.unknownUsed) +
+              (displayColor ||
+                (info ? info.color : DISK_MAP_COLORS.unknownUsed)) +
               '" stroke="' +
               (info ? info.stroke : DISK_MAP_COLORS.trackStroke) +
               '" stroke-width="0.5" data-tooltip="' +
@@ -2470,7 +2617,8 @@
                   " S" +
                   String(sector) +
                   " · " +
-                  (info ? info.label : "Sector"),
+                  (info ? info.label : "Sector") +
+                  efficiencySuffix,
               ) +
               '"></path>',
           );
@@ -2503,6 +2651,29 @@
       " sectors · " +
       formatNumber(layout.activeFiles) +
       " active files";
+    if (
+      state.heatMapVisible &&
+      layout &&
+      Number.isFinite(Number(layout.averageLinkScore))
+    ) {
+      const averageScore = Math.max(
+        0,
+        Math.min(100, Number(layout.averageLinkScore) || 0),
+      );
+      diskMapHeatmapSummary.hidden = false;
+      diskMapHeatmapSummary.textContent =
+        "Avg Read Score " + averageScore.toFixed(0) + "%";
+      diskMapHeatmapSummary.title =
+        "Average read optimization score across " +
+        formatNumber(layout.scoredSectorCount || 0) +
+        " linked sectors.";
+      diskMapHeatmapSummary.style.background = scoreToHeatColor(averageScore);
+    } else {
+      diskMapHeatmapSummary.hidden = true;
+      diskMapHeatmapSummary.textContent = "";
+      diskMapHeatmapSummary.removeAttribute("style");
+      diskMapHeatmapSummary.removeAttribute("title");
+    }
     diskMap.className = "disk-map";
     diskMap.innerHTML =
       '<svg viewBox="0 0 760 620" role="img" aria-label="' +
@@ -3637,6 +3808,12 @@
     diskMapCoverToggle.addEventListener("click", function () {
       if (!state.image) return;
       state.diskCoverVisible = !state.diskCoverVisible;
+      renderDiskMap(state.image);
+    });
+    heatmapButton.addEventListener("click", function () {
+      if (!state.image) return;
+      state.heatMapVisible = !state.heatMapVisible;
+      syncDiskMapControls();
       renderDiskMap(state.image);
     });
     diskMapZoomOut.addEventListener("click", function () {

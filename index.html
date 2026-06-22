@@ -93,6 +93,9 @@
                 <button id="defragment-button" type="button" disabled>
                   Defragment Disk
                 </button>
+                <button id="heatmap-button" type="button" disabled>
+                  Efficiency Map Off
+                </button>
               </div>
             </fieldset>
           </div>
@@ -128,6 +131,11 @@
                 <div id="disk-map" class="disk-map empty-state">
                   Load or create a disk image to view tracks and sectors.
                 </div>
+                <div
+                  id="disk-map-heatmap-summary"
+                  class="disk-map-heatmap-summary"
+                  hidden
+                ></div>
                 <div
                   id="disk-map-pointer"
                   class="disk-map-pointer"

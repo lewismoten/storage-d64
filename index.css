@@ -564,6 +564,27 @@ button:disabled {
   font-weight: 600;
 }
 
+.disk-map-heatmap-summary {
+  position: absolute;
+  top: 58px;
+  left: 18px;
+  z-index: 3;
+  padding: 7px 11px;
+  border: 1px solid rgba(8, 28, 39, 0.22);
+  border-radius: 999px;
+  color: #08202c;
+  box-shadow: 0 10px 22px rgba(6, 17, 27, 0.16);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.disk-map-heatmap-summary[hidden] {
+  display: none !important;
+}
+
 .disk-map.is-pannable {
   cursor: grab;
 }
