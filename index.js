@@ -2485,6 +2485,33 @@
       .join("");
   };
 
+  const estimateDeletedUsageBytes = function (image, entries) {
+    return (Array.isArray(entries) ? entries : []).reduce(function (
+      sum,
+      entry,
+    ) {
+      try {
+        const chain = d64.readFileChain(
+          image,
+          entry.startTrack,
+          entry.startSector,
+        );
+        let total = chain.blocks.length * 256;
+        if (entry.sideSectorTrack) {
+          total +=
+            d64.readRelativeSideSectors(
+              image,
+              entry.sideSectorTrack,
+              entry.sideSectorSector,
+            ).length * 256;
+        }
+        return sum + total;
+      } catch (error) {
+        return sum + Math.max(0, Number(entry.blockCount) || 0) * 256;
+      }
+    }, 0);
+  };
+
   const refreshView = function () {
     if (!state.image) {
       renderDefinitionList(headerSummary, [
@@ -2517,13 +2544,17 @@
     }, 0);
     const directoryReservedBytes = usage.directorySectors * 256;
     const allocatedSectorBytes = usage.totalFileSectors * 256;
+    const deletedBytes = estimateDeletedUsageBytes(state.image, deletedEntries);
     const fileOverheadBytes = Math.max(
       0,
       allocatedSectorBytes - totalPayloadBytes,
     );
     const freeBytes = Math.max(
       0,
-      geometry.dataSize - directoryReservedBytes - allocatedSectorBytes,
+      geometry.dataSize -
+        directoryReservedBytes -
+        allocatedSectorBytes -
+        deletedBytes,
     );
 
     renderDefinitionList(headerSummary, [
@@ -2565,6 +2596,7 @@
           formatNumber(usage.directorySectors),
       },
       { label: "Payload Bytes", value: formatNumber(totalPayloadBytes) },
+      { label: "Deleted Bytes", value: formatNumber(deletedBytes) },
       { label: "Free Bytes", value: formatNumber(freeBytes) },
     ]);
     renderUsageChart([
@@ -2582,6 +2614,11 @@
         label: "Directory reserved",
         value: directoryReservedBytes,
         color: "#ff8e90",
+      },
+      {
+        label: "Deleted chains",
+        value: deletedBytes,
+        color: DISK_MAP_COLORS.deleted,
       },
       {
         label: "Free space",
