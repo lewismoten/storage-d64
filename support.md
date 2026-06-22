@@ -1109,7 +1109,8 @@ Returns:
 Notes:
 
 - The `allocation` object is mutated.
-- Allocation proceeds forward from the current `track` and `sector`.
+- Sequential allocation now prefers tracks nearest `18` first and chooses follow-up sectors by a simple seek-plus-rotation cost model.
+- Fragmented allocation intentionally scatters blocks across the free sector pool.
 
 ### `writeFile(image, data, allocation, unusedTailData)`
 
@@ -1206,6 +1207,10 @@ Returns:
 ### `buildImage(files, options)`
 
 Builds a complete standard D64 image from a set of file records.
+
+Notes:
+
+- In sequential mode, the first `PRG` file is written first so it lands nearest the directory track before the remaining files are allocated.
 
 Parameters:
 

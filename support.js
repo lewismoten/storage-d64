@@ -1594,39 +1594,111 @@
     return result;
   };
 
-  d64.allocateSequentialSectors = function (count, allocation) {
-    const result = [];
-    const trackLimit = d64.normalizeTrackCount(
-      allocation.trackCount || DEFAULT_TRACK_COUNT,
-    );
-    for (
-      let track = allocation.track;
-      track <= trackLimit && result.length < count;
-      track += 1
-    ) {
-      if (track === 18) continue;
+  d64.centerOutTrackOrder = function (trackCount) {
+    const maxTrack = d64.normalizeTrackCount(trackCount);
+    const order = [];
+    for (let distance = 1; order.length < maxTrack - 1; distance += 1) {
+      const lower = DIRECTORY_TRACK - distance;
+      const upper = DIRECTORY_TRACK + distance;
+      if (lower >= 1) order.push(lower);
+      if (upper <= maxTrack) order.push(upper);
+    }
+    return order;
+  };
+
+  d64.findNextCenterOutStartSector = function (
+    allocation,
+    preferredTrackOrder,
+  ) {
+    const trackOrder =
+      preferredTrackOrder || d64.centerOutTrackOrder(allocation.trackCount);
+    for (let index = 0; index < trackOrder.length; index += 1) {
+      const track = trackOrder[index];
+      if (track === DIRECTORY_TRACK) continue;
       const sectorCount = d64.trackSectorCount(track);
       allocation.map[track] =
         allocation.map[track] || new Array(sectorCount).fill(true);
-      for (
-        let sector = allocation.sector;
-        sector < sectorCount && result.length < count;
-        sector += 1
-      ) {
+      for (let sector = 0; sector < sectorCount; sector += 1) {
         if (!allocation.map[track][sector]) continue;
-        allocation.map[track][sector] = false;
-        result.push({ track: track, sector: sector });
+        return { track: track, sector: sector };
       }
-      allocation.sector = 0;
+    }
+    return null;
+  };
+
+  d64.estimateNextSectorWindow = function (previousBlock, targetTrack) {
+    if (!previousBlock) return 0;
+    const previousSectorCount = d64.trackSectorCount(previousBlock.track);
+    const targetSectorCount = d64.trackSectorCount(targetTrack);
+    const seekDistance = Math.abs(targetTrack - previousBlock.track);
+    const rotationalLead = Math.min(
+      previousSectorCount + targetSectorCount,
+      seekDistance === 0 ? 9 : seekDistance === 1 ? 4 : 2 + seekDistance * 2,
+    );
+    return (previousBlock.sector + rotationalLead) % targetSectorCount;
+  };
+
+  d64.findNearestSmartSector = function (allocation, previousBlock) {
+    const freePool = d64.collectAllocatableSectors(allocation);
+    if (!freePool.length) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (let index = 0; index < freePool.length; index += 1) {
+      const candidate = freePool[index];
+      const seekDistance = previousBlock
+        ? Math.abs(candidate.track - previousBlock.track)
+        : Math.abs(candidate.track - DIRECTORY_TRACK);
+      const predictedSector = d64.estimateNextSectorWindow(
+        previousBlock,
+        candidate.track,
+      );
+      const sectorCount = d64.trackSectorCount(candidate.track);
+      const rotationalDistance =
+        previousBlock == null
+          ? candidate.sector
+          : (candidate.sector - predictedSector + sectorCount) % sectorCount;
+      const score =
+        seekDistance * 100 +
+        rotationalDistance * 3 +
+        Math.abs(candidate.track - DIRECTORY_TRACK) * 2 +
+        candidate.sector / 100;
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    return best;
+  };
+
+  d64.markAllocatedSector = function (allocation, block) {
+    if (!block) return null;
+    const sectorCount = d64.trackSectorCount(block.track);
+    allocation.map[block.track] =
+      allocation.map[block.track] || new Array(sectorCount).fill(true);
+    allocation.map[block.track][block.sector] = false;
+    return block;
+  };
+
+  d64.allocateSequentialSectors = function (count, allocation, options) {
+    const result = [];
+    const config = options || {};
+    const preferredTrackOrder =
+      config.preferredTrackOrder ||
+      allocation.preferredTrackOrder ||
+      d64.centerOutTrackOrder(allocation.trackCount);
+    while (result.length < count) {
+      const nextBlock =
+        result.length === 0
+          ? d64.findNextCenterOutStartSector(allocation, preferredTrackOrder)
+          : d64.findNearestSmartSector(allocation, result[result.length - 1]);
+      if (!nextBlock) break;
+      d64.markAllocatedSector(allocation, nextBlock);
+      result.push(nextBlock);
     }
     if (result.length) {
       const last = result[result.length - 1];
       allocation.track = last.track;
-      allocation.sector = last.sector + 1;
-      if (allocation.sector >= d64.trackSectorCount(allocation.track)) {
-        allocation.track += 1;
-        allocation.sector = 0;
-      }
+      allocation.sector = last.sector;
     }
     return result;
   };
@@ -1685,7 +1757,7 @@
     if (mode === "fragmented") {
       return d64.allocateFragmentedSectors(count, allocation);
     }
-    return d64.allocateSequentialSectors(count, allocation);
+    return d64.allocateSequentialSectors(count, allocation, options);
   };
 
   d64.writeFile = function (image, data, allocation, unusedTailData) {
@@ -1839,6 +1911,28 @@
     };
   };
 
+  d64.planBuildOrder = function (files) {
+    const items = (Array.isArray(files) ? files : []).map(
+      function (file, index) {
+        return {
+          file: file,
+          index: index,
+          type: d64.decodeDirectoryEntryType(
+            d64.normalizeFileType(file && file.type),
+          ).fileType,
+        };
+      },
+    );
+    const firstPrgIndex = items.findIndex(function (item) {
+      return item.type === "prg";
+    });
+    if (firstPrgIndex <= 0) return items;
+    return [items[firstPrgIndex]].concat(
+      items.slice(0, firstPrgIndex),
+      items.slice(firstPrgIndex + 1),
+    );
+  };
+
   d64.finalizeImage = function (
     image,
     allocation,
@@ -1900,9 +1994,15 @@
       map: {},
       directorySectors: [],
     };
+    allocation.preferredTrackOrder = d64.centerOutTrackOrder(
+      geometry.trackCount,
+    );
     const directoryEntries = [];
-    for (let i = 0; i < files.length; i += 1) {
-      const file = files[i];
+    const fileRecords = new Array(files.length);
+    const plannedFiles = d64.planBuildOrder(files);
+    for (let i = 0; i < plannedFiles.length; i += 1) {
+      const planned = plannedFiles[i];
+      const file = planned.file;
       const layout = d64.prepareFileLayout(file);
       const fileRecord =
         layout.type === d64.fileTypes.rel
@@ -1920,19 +2020,28 @@
               layout.unusedTailData,
             );
       if (!fileRecord) return null;
+      fileRecords[planned.index] = {
+        layout: layout,
+        fileRecord: fileRecord,
+      };
+    }
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      const built = fileRecords[i];
+      if (!built) return null;
       directoryEntries.push(
         d64.createDirectoryEntry(
           file.name,
-          layout.type,
-          fileRecord.startTrack,
-          fileRecord.startSector,
-          fileRecord.sectorCount,
+          built.layout.type,
+          built.fileRecord.startTrack,
+          built.fileRecord.startSector,
+          built.fileRecord.sectorCount,
           {
-            closed: layout.closed,
-            locked: layout.locked,
-            sideSectorTrack: fileRecord.sideSectorTrack,
-            sideSectorSector: fileRecord.sideSectorSector,
-            recordLength: fileRecord.recordLength,
+            closed: built.layout.closed,
+            locked: built.layout.locked,
+            sideSectorTrack: built.fileRecord.sideSectorTrack,
+            sideSectorSector: built.fileRecord.sideSectorSector,
+            recordLength: built.fileRecord.recordLength,
           },
         ),
       );
