@@ -4304,11 +4304,26 @@
     sectorDataClose.addEventListener("click", closeSectorDataDialog);
     window.addEventListener("beforeunload", releaseObjectUrl);
     syncDiskMapControls();
-
-    refreshView();
-    setStatus(
-      "D64 helpers ready. Create a blank image or load an existing one.",
-    );
+    try {
+      const defaultOptions = {
+        diskName: "TEST LAB",
+        diskId: "TP",
+        format: d64.diskFormats ? d64.diskFormats.d64_35_track : "d64_35_track",
+        name: "TEST LAB",
+      };
+      const defaultImage = d64.buildImage([], defaultOptions);
+      if (!defaultImage) {
+        throw new Error("Unable to create the default blank disk image.");
+      }
+      loadImageBytes(
+        defaultImage,
+        d64.fileName(defaultOptions),
+        "Blank disk image ready.",
+      );
+    } catch (error) {
+      refreshView();
+      setStatus(error.message || String(error), true);
+    }
   };
 
   initialize();
