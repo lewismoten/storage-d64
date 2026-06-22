@@ -1340,6 +1340,12 @@
             data: deletedFile.payload.slice(),
             unusedTailData: deletedFile.unusedTailData.slice(),
           },
+          totalSectors: d64.prepareFileLayout({
+            type: deletedFile.fileType,
+            data: deletedFile.payload,
+            recordLength: deletedFile.recordLength,
+            unusedTailData: deletedFile.unusedTailData,
+          }).totalSectors,
           refs: refs,
           refKeys: refs.map(function (ref) {
             return String(ref.track) + ":" + String(ref.sector);
@@ -1365,6 +1371,42 @@
         return activeRefs[key] || deletedRefCounts[key] > 1;
       });
     });
+  };
+
+  d64.selectDeletedPlansToDrop = function (
+    deletedPlans,
+    requiredSectorRelease,
+    requiredSlotRelease,
+  ) {
+    const plans = (Array.isArray(deletedPlans) ? deletedPlans : []).slice();
+    plans.sort(function (left, right) {
+      if (right.totalSectors !== left.totalSectors) {
+        return right.totalSectors - left.totalSectors;
+      }
+      return left.entry.index - right.entry.index;
+    });
+    const dropped = {};
+    let releasedSectors = 0;
+    let releasedSlots = 0;
+    for (let index = 0; index < plans.length; index += 1) {
+      if (
+        releasedSectors >= requiredSectorRelease &&
+        releasedSlots >= requiredSlotRelease
+      ) {
+        break;
+      }
+      const plan = plans[index];
+      dropped[plan.entry.index] = true;
+      releasedSectors += plan.totalSectors;
+      releasedSlots += 1;
+    }
+    if (
+      releasedSectors < requiredSectorRelease ||
+      releasedSlots < requiredSlotRelease
+    ) {
+      return null;
+    }
+    return dropped;
   };
 
   d64.collectFileSectorRefs = function (image, entry, options) {
@@ -2269,7 +2311,7 @@
     return d64.buildImage(files, config);
   };
 
-  d64.reflowImage = function (image, options) {
+  d64.composeImageWithDeleted = function (image, activeFiles, options) {
     const header = d64.readHeader(image);
     const errorInfo = d64.readErrorInfo(image);
     const config = Object.assign(
@@ -2285,48 +2327,63 @@
       },
       options || {},
     );
-    const activeFiles = d64.readFiles(image, options);
-    const visibleEntries = d64.readDirectoryEntriesFrom(
-      image,
-      header.nextDirectoryTrack,
-      header.nextDirectorySector,
-      { includeDeleted: true },
-    ).entries;
+    const files = Array.isArray(activeFiles)
+      ? activeFiles.slice()
+      : d64.readFiles(image, options);
     const deletedPlans = d64.collectDeletedRebuildEntries(image, options);
-    const deletedLayoutSectors = deletedPlans.reduce(function (sum, plan) {
-      return sum + d64.prepareFileLayout(plan.file).totalSectors;
+    const activeEstimate = d64.estimateImageUsage(files, config);
+    if (activeEstimate.totalFileSectors > activeEstimate.usableFileSectors) {
+      return null;
+    }
+    const maxDirectoryEntries = (d64.trackSectorCount(18) - 1) * 8;
+    let keptDeletedPlans = deletedPlans.slice();
+    let keptDeletedSectors = keptDeletedPlans.reduce(function (sum, plan) {
+      return sum + plan.totalSectors;
     }, 0);
-    const activeEstimate = d64.estimateImageUsage(activeFiles, config);
-    const totalEntryCount = activeFiles.length + deletedPlans.length;
-    const requiredDirectorySectors = Math.max(
-      1,
-      Math.ceil(totalEntryCount / 8),
+    const requiredSectorRelease = Math.max(
+      0,
+      activeEstimate.totalFileSectors +
+        keptDeletedSectors -
+        activeEstimate.usableFileSectors,
     );
+    const requiredSlotRelease = Math.max(
+      0,
+      files.length + keptDeletedPlans.length - maxDirectoryEntries,
+    );
+    if (requiredSectorRelease || requiredSlotRelease) {
+      const dropped = d64.selectDeletedPlansToDrop(
+        keptDeletedPlans,
+        requiredSectorRelease,
+        requiredSlotRelease,
+      );
+      if (!dropped) return null;
+      keptDeletedPlans = keptDeletedPlans.filter(function (plan) {
+        return !dropped[plan.entry.index];
+      });
+      keptDeletedSectors = keptDeletedPlans.reduce(function (sum, plan) {
+        return sum + plan.totalSectors;
+      }, 0);
+    }
     if (
-      activeEstimate.totalFileSectors + deletedLayoutSectors >
+      activeEstimate.totalFileSectors + keptDeletedSectors >
       activeEstimate.usableFileSectors
     ) {
       return null;
     }
-    if (requiredDirectorySectors > d64.trackSectorCount(18) - 1) {
-      return null;
-    }
-    const nextImage = d64.buildImage(activeFiles, config);
+    const nextImage = d64.buildImage(files, config);
     if (!nextImage) return null;
     const builtActiveEntries = d64.readDirectoryEntries(nextImage);
-    const activeEntryMap = {};
-    activeFiles.forEach(function (file, index) {
-      activeEntryMap[file.entry.index] = builtActiveEntries[index].raw.slice();
-    });
     const allocation = d64.buildAllocationFromFreeMap(
       d64.readFreeMap(nextImage),
       config,
     );
     allocation.preferredTrackOrder = d64.outerInTrackOrder(config.trackCount);
-    const deletedEntryMap = {};
-    const deletedReservedRefs = [];
-    for (let index = 0; index < deletedPlans.length; index += 1) {
-      const plan = deletedPlans[index];
+    const directoryEntries = [];
+    for (let index = 0; index < builtActiveEntries.length; index += 1) {
+      directoryEntries.push(builtActiveEntries[index].raw.slice());
+    }
+    for (let index = 0; index < keptDeletedPlans.length; index += 1) {
+      const plan = keptDeletedPlans[index];
       const layout = d64.prepareFileLayout(plan.file);
       const fileRecord =
         layout.type === d64.fileTypes.rel
@@ -2344,43 +2401,22 @@
               layout.unusedTailData,
             );
       if (!fileRecord) return null;
-      const deletedEntryBytes = d64.createDeletedDirectoryEntry(
-        plan.file.name,
-        fileRecord.startTrack,
-        fileRecord.startSector,
-        fileRecord.sectorCount,
-        {
-          sideSectorTrack: fileRecord.sideSectorTrack,
-          sideSectorSector: fileRecord.sideSectorSector,
-          recordLength: fileRecord.recordLength,
-        },
+      directoryEntries.push(
+        d64.createDeletedDirectoryEntry(
+          plan.file.name,
+          fileRecord.startTrack,
+          fileRecord.startSector,
+          fileRecord.sectorCount,
+          {
+            sideSectorTrack: fileRecord.sideSectorTrack,
+            sideSectorSector: fileRecord.sideSectorSector,
+            recordLength: fileRecord.recordLength,
+          },
+        ),
       );
-      deletedEntryMap[plan.entry.index] = deletedEntryBytes;
-      const refs = d64.collectFileSectorRefs(nextImage, {
-        fileType: layout.type === d64.fileTypes.rel ? "rel" : "prg",
-        startTrack: fileRecord.startTrack,
-        startSector: fileRecord.startSector,
-        sideSectorTrack: fileRecord.sideSectorTrack || 0,
-        sideSectorSector: fileRecord.sideSectorSector || 0,
-      });
-      refs.forEach(function (ref) {
-        deletedReservedRefs.push(ref);
-      });
     }
-    d64.updateFreeMapSectors(allocation.map, deletedReservedRefs, true);
-    const directoryEntries = [];
-    visibleEntries.forEach(function (entry) {
-      if (entry.deleted) {
-        if (deletedEntryMap[entry.index]) {
-          directoryEntries.push(deletedEntryMap[entry.index]);
-        }
-        return;
-      }
-      if (activeEntryMap[entry.index]) {
-        directoryEntries.push(activeEntryMap[entry.index]);
-      }
-    });
     const dirSectors = Math.max(1, Math.ceil(directoryEntries.length / 8));
+    if (dirSectors > d64.trackSectorCount(18) - 1) return null;
     allocation.directorySectors = [];
     for (let index = 0; index < dirSectors; index += 1) {
       allocation.directorySectors.push(
@@ -2392,6 +2428,14 @@
       d64.writeErrorInfo(nextImage, config.errorInfo, config);
     }
     return nextImage;
+  };
+
+  d64.reflowImage = function (image, options) {
+    return d64.composeImageWithDeleted(
+      image,
+      d64.readFiles(image, options),
+      options,
+    );
   };
 
   d64.defragmentImage = function (image, options) {
@@ -2418,7 +2462,11 @@
   };
 
   d64.setDiskInfo = function (image, updates, options) {
-    return d64.rebuildImage(image, d64.readFiles(image, options), updates);
+    return d64.composeImageWithDeleted(
+      image,
+      d64.readFiles(image, options),
+      updates,
+    );
   };
 
   d64.setDiskName = function (image, diskName, options) {
@@ -2514,7 +2562,7 @@
           : new Uint8Array(patch.unusedTailData || [])
         : files[index].unusedTailData,
     };
-    return d64.rebuildImage(image, files, options);
+    return d64.composeImageWithDeleted(image, files, options);
   };
 
   d64.readUnusedTailData = function (image, entryOrName, options) {
@@ -2629,7 +2677,46 @@
     if (filtered.length === files.length) {
       throw new Error("File not found: " + String(entryOrName || ""));
     }
-    return d64.rebuildImage(image, filtered, options);
+    return d64.composeImageWithDeleted(image, filtered, options);
+  };
+
+  d64.addFile = function (image, file, options) {
+    const files = d64.readFiles(image, options);
+    const nextFile = file || {};
+    const targetName = String(nextFile.name || "")
+      .trim()
+      .toUpperCase();
+    if (!targetName) {
+      throw new Error("New file must have a name.");
+    }
+    const existingIndex = files.findIndex(function (entry) {
+      return (
+        String(entry.name || "")
+          .trim()
+          .toUpperCase() === targetName
+      );
+    });
+    if (existingIndex >= 0) {
+      throw new Error("File already exists: " + String(nextFile.name || ""));
+    }
+    files.push({
+      name: String(nextFile.name || "").trim(),
+      type: Object.prototype.hasOwnProperty.call(nextFile, "type")
+        ? nextFile.type
+        : "prg",
+      closed: nextFile.closed !== false,
+      locked: Boolean(nextFile.locked),
+      recordLength: nextFile.recordLength,
+      data:
+        nextFile.data instanceof Uint8Array
+          ? nextFile.data
+          : new Uint8Array(nextFile.data || []),
+      unusedTailData:
+        nextFile.unusedTailData instanceof Uint8Array
+          ? nextFile.unusedTailData
+          : new Uint8Array(nextFile.unusedTailData || []),
+    });
+    return d64.composeImageWithDeleted(image, files, options);
   };
 
   d64.fileName = function (options) {

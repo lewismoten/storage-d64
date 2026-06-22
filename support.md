@@ -877,6 +877,8 @@ Notes:
 - Active files are rebuilt using the selected allocation strategy.
 - Valid deleted chains are rewritten afterward into remaining outer-area free space.
 - Deleted chains that overlap active data or another deleted chain are treated as corrupt and cleared.
+- Active directory entries are written first; kept deleted entries are moved to the end of the directory list.
+- If space or directory-entry capacity is insufficient, the smallest number of deleted chains needed to satisfy the write is dropped.
 
 ### `setDiskInfo(image, updates, options)`
 
@@ -1038,6 +1040,25 @@ Parameters:
 Returns:
 
 - `Uint8Array | null`
+
+### `addFile(image, file, options)`
+
+Adds a new active file to an existing image while preserving valid deleted chains when possible.
+
+Parameters:
+
+- `image: Uint8Array | ArrayBuffer | number[]`
+- `file: D64File`
+- `options?: D64DiskInfo`
+
+Returns:
+
+- `Uint8Array | null`
+
+Notes:
+
+- New active files are inserted before any kept deleted entries.
+- If free space or directory-entry capacity is tight, deleted chains are discarded first before the write fails.
 
 ### `diskSignature(image)`
 
