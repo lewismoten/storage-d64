@@ -950,6 +950,10 @@ button:disabled {
   fill: rgba(152, 245, 225, 0.1);
 }
 
+.sector-bitplane-zero-column {
+  fill: rgba(120, 132, 142, 0.42);
+}
+
 .sector-bitplane-pixel.is-link {
   fill: #b6f3ff;
 }
@@ -1183,6 +1187,10 @@ button:disabled {
 .sector-hex-byte.is-link,
 .sector-ascii-char.is-link {
   color: #8ef3e6;
+}
+
+.sector-hex-byte.is-zero {
+  opacity: 0.42;
 }
 
 .sector-hex-byte.is-invalid,

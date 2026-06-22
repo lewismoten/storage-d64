@@ -1286,6 +1286,9 @@
         .map(function (value, index) {
           const absoluteIndex = offset + index;
           const classes = ["sector-hex-byte"];
+          if ((Number(value) || 0) === 0) {
+            classes.push("is-zero");
+          }
           if (
             highlightLinkBytes &&
             (absoluteIndex === 0 || absoluteIndex === 1)
@@ -1655,6 +1658,7 @@
     };
 
     const renderBitplane = function () {
+      const zeroColumns = [];
       const pixels = [];
       for (let byteIndex = 0; byteIndex < sectorBytes.length; byteIndex += 1) {
         const value = sectorBytes[byteIndex];
@@ -1664,6 +1668,13 @@
             : byteIndex < usedBytes + 2
               ? "is-payload"
               : "is-tail";
+        if ((Number(value) || 0) === 0) {
+          zeroColumns.push(
+            '<rect class="sector-bitplane-zero-column" x="' +
+              String(byteIndex) +
+              '" y="0" width="1" height="8"></rect>',
+          );
+        }
         for (let bit = 0; bit < 8; bit += 1) {
           if (((value >> (7 - bit)) & 1) === 0) continue;
           pixels.push(
@@ -1695,6 +1706,7 @@
             String(Math.max(0, 254 - usedBytes)) +
             '" height="8"></rect>'
           : "") +
+        zeroColumns.join("") +
         pixels.join("") +
         "</svg>" +
         "</button>"
