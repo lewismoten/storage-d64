@@ -981,6 +981,12 @@ button.sector-physical-bar-segment {
   line-height: 1.4;
 }
 
+.sector-byte-dialog-meta {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .sector-physical-chip {
   display: grid;
   gap: 2px;
@@ -1142,6 +1148,16 @@ button.sector-physical-bar-segment {
 .sector-hex-byte.is-link,
 .sector-ascii-char.is-link {
   color: #8ef3e6;
+}
+
+.sector-hex-byte[data-byte-index],
+.sector-ascii-char[data-byte-index] {
+  cursor: pointer;
+}
+
+.sector-hex-byte[data-byte-index]:hover,
+.sector-ascii-char[data-byte-index]:hover {
+  color: var(--paper-strong);
 }
 
 .sector-hex-byte.is-dim,

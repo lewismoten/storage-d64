@@ -327,6 +327,39 @@
               </div>
             </div>
           </dialog>
+
+          <dialog id="sector-byte-dialog" class="file-type-dialog">
+            <form id="sector-byte-form" method="dialog" class="file-type-form">
+              <input id="sector-byte-track" type="hidden" />
+              <input id="sector-byte-sector" type="hidden" />
+              <input id="sector-byte-index" type="hidden" />
+              <div class="section-heading">
+                <h3>Edit Byte</h3>
+                <p id="sector-byte-dialog-name">Track 0 Sector 0 Byte 00</p>
+              </div>
+              <p id="sector-byte-dialog-meta" class="sector-byte-dialog-meta">
+                Absolute offset 0x0000
+              </p>
+              <label>
+                Hex value
+                <input
+                  id="sector-byte-value"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  maxlength="2"
+                  placeholder="00"
+                  required
+                />
+              </label>
+              <div class="dialog-actions">
+                <button id="sector-byte-cancel" type="button">Cancel</button>
+                <button id="sector-byte-save" type="submit">Save</button>
+              </div>
+            </form>
+          </dialog>
         </section>
       </section>
     </main>

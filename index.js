@@ -74,6 +74,19 @@
     "sector-data-dialog-body",
   );
   const sectorDataClose = document.getElementById("sector-data-close");
+  const sectorByteDialog = document.getElementById("sector-byte-dialog");
+  const sectorByteForm = document.getElementById("sector-byte-form");
+  const sectorByteDialogName = document.getElementById(
+    "sector-byte-dialog-name",
+  );
+  const sectorByteDialogMeta = document.getElementById(
+    "sector-byte-dialog-meta",
+  );
+  const sectorByteTrack = document.getElementById("sector-byte-track");
+  const sectorByteSector = document.getElementById("sector-byte-sector");
+  const sectorByteIndex = document.getElementById("sector-byte-index");
+  const sectorByteValue = document.getElementById("sector-byte-value");
+  const sectorByteCancel = document.getElementById("sector-byte-cancel");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
@@ -2040,6 +2053,14 @@
     });
   };
 
+  const closeSectorByteDialog = function () {
+    if (typeof sectorByteDialog.close === "function") {
+      sectorByteDialog.close();
+    } else {
+      sectorByteDialog.removeAttribute("open");
+    }
+  };
+
   const openSectorDataDialog = function (track, sector) {
     if (!state.image || !isValidSectorAddress(track, sector, state.image))
       return;
@@ -2058,6 +2079,8 @@
       String(normalizedTrack) +
       " Sector " +
       String(normalizedSector);
+    sectorDataDialogBody.dataset.track = String(normalizedTrack);
+    sectorDataDialogBody.dataset.sector = String(normalizedSector);
     sectorDataDialogBody.innerHTML =
       (tailDimStart != null
         ? '<p class="sector-data-dialog-note">Dimmed tail bytes are beyond used payload.</p>'
@@ -2070,6 +2093,83 @@
     } else {
       sectorDataDialog.setAttribute("open", "open");
     }
+  };
+
+  const openSectorByteDialog = function (track, sector, byteIndex) {
+    if (!state.image || !isValidSectorAddress(track, sector, state.image)) {
+      return;
+    }
+    const normalizedTrack = Math.max(1, Math.floor(Number(track) || 0));
+    const normalizedSector = Math.max(0, Math.floor(Number(sector) || 0));
+    const normalizedIndex = Math.max(0, Math.min(255, Number(byteIndex) || 0));
+    const sectorBytes = d64.readSector(
+      state.image,
+      normalizedTrack,
+      normalizedSector,
+    );
+    const absoluteOffset =
+      d64.trackOffset(normalizedTrack, normalizedSector) + normalizedIndex;
+    sectorByteTrack.value = String(normalizedTrack);
+    sectorByteSector.value = String(normalizedSector);
+    sectorByteIndex.value = String(normalizedIndex);
+    sectorByteDialogName.textContent =
+      "Track " +
+      String(normalizedTrack) +
+      " Sector " +
+      String(normalizedSector) +
+      " Byte " +
+      toHexByte(normalizedIndex);
+    sectorByteDialogMeta.textContent =
+      "Absolute offset " +
+      toHexWord(absoluteOffset) +
+      " (" +
+      numberFormatter.format(absoluteOffset) +
+      " bytes)";
+    sectorByteValue.value = toHexByte(sectorBytes[normalizedIndex]);
+    if (typeof sectorByteDialog.showModal === "function") {
+      sectorByteDialog.showModal();
+    } else {
+      sectorByteDialog.setAttribute("open", "open");
+    }
+    sectorByteValue.focus();
+    sectorByteValue.select();
+  };
+
+  const saveSectorByteDialog = function (event) {
+    event.preventDefault();
+    if (!state.image) return;
+    const track = Number(sectorByteTrack.value);
+    const sector = Number(sectorByteSector.value);
+    const byteIndex = Number(sectorByteIndex.value);
+    const nextValueText = String(sectorByteValue.value || "")
+      .trim()
+      .toUpperCase();
+    if (!/^[0-9A-F]{2}$/.test(nextValueText)) {
+      sectorByteValue.setCustomValidity("Enter exactly two hex digits.");
+      sectorByteValue.reportValidity();
+      return;
+    }
+    sectorByteValue.setCustomValidity("");
+    const absoluteOffset = d64.trackOffset(track, sector) + byteIndex;
+    const nextImage = state.image.slice();
+    nextImage[absoluteOffset] = parseInt(nextValueText, 16);
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      "Updated T" +
+        String(track).padStart(2, "0") +
+        "/S" +
+        String(sector).padStart(2, "0") +
+        " byte " +
+        toHexByte(byteIndex) +
+        " to $" +
+        nextValueText +
+        ".",
+      { resetDeletedTypeHints: false },
+    );
+    selectDiskMapSector(track, sector);
+    openSectorDataDialog(track, sector);
+    closeSectorByteDialog();
   };
 
   const renderDiskMap = function (image) {
@@ -3559,6 +3659,20 @@
     fileNameCancel.addEventListener("click", function () {
       closeFileNameDialog();
     });
+    sectorByteValue.addEventListener("input", function () {
+      const normalizedValue = String(sectorByteValue.value || "")
+        .toUpperCase()
+        .replace(/[^0-9A-F]/g, "")
+        .slice(0, 2);
+      if (sectorByteValue.value !== normalizedValue) {
+        sectorByteValue.value = normalizedValue;
+      }
+      sectorByteValue.setCustomValidity("");
+    });
+    sectorByteForm.addEventListener("submit", saveSectorByteDialog);
+    sectorByteCancel.addEventListener("click", function () {
+      closeSectorByteDialog();
+    });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
@@ -3612,6 +3726,14 @@
       const target = event.target.closest("[data-byte-index]");
       if (!target) return;
       setSectorDataHoverIndex(target.dataset.byteIndex || "");
+    });
+    sectorDataDialogBody.addEventListener("click", function (event) {
+      const target = event.target.closest("[data-byte-index]");
+      if (!target) return;
+      const track = sectorDataDialogBody.dataset.track;
+      const sector = sectorDataDialogBody.dataset.sector;
+      if (!track || !sector) return;
+      openSectorByteDialog(track, sector, target.dataset.byteIndex);
     });
     sectorDataDialogBody.addEventListener("mouseout", function (event) {
       const target = event.target.closest("[data-byte-index]");
