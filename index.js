@@ -1624,21 +1624,34 @@
       {
         title: "Disk Structure",
         rows: [
-          ["Header", DISK_MAP_COLORS.header, "Track 18 sector 0 disk header"],
+          [
+            "Header",
+            DISK_MAP_COLORS.header,
+            null,
+            "Track 18 sector 0 disk header",
+          ],
           [
             "Track 18",
             DISK_MAP_COLORS.reservedTrack,
+            null,
             "Reserved directory track underlay",
           ],
           [
             "BAM / Free",
             DISK_MAP_COLORS.free,
+            null,
             "Free sectors according to the BAM",
           ],
-          ["Directory", DISK_MAP_COLORS.directory, "Directory chain sectors"],
+          [
+            "Directory",
+            DISK_MAP_COLORS.directory,
+            null,
+            "Directory chain sectors",
+          ],
           [
             "Used / Unknown",
             DISK_MAP_COLORS.unknownUsed,
+            null,
             "Used sectors not tied to a decoded file",
           ],
         ],
@@ -1649,28 +1662,38 @@
           [
             "PRG",
             DISK_MAP_COLORS.prgUsed,
+            DISK_MAP_COLORS.prgTail,
             "Dark = used bytes, light = tail bytes",
           ],
           [
             "SEQ",
             DISK_MAP_COLORS.seqUsed,
+            DISK_MAP_COLORS.seqTail,
             "Dark = used bytes, light = tail bytes",
           ],
           [
             "USR",
             DISK_MAP_COLORS.usrUsed,
+            DISK_MAP_COLORS.usrTail,
             "Dark = used bytes, light = tail bytes",
           ],
           [
             "REL Data",
             DISK_MAP_COLORS.relUsed,
+            DISK_MAP_COLORS.relTail,
             "Dark = used bytes, light = tail bytes",
           ],
-          ["REL Side", DISK_MAP_COLORS.relSide, "REL side-sector chain"],
+          [
+            "REL Side",
+            DISK_MAP_COLORS.relSide,
+            DISK_MAP_COLORS.relSideTail,
+            "REL side-sector chain. Dark = used bytes, light = tail bytes",
+          ],
           [
             "Deleted",
             DISK_MAP_COLORS.deleted,
-            "Deleted file chains and deleted REL side sectors",
+            DISK_MAP_COLORS.deletedTail,
+            "Deleted file chains and deleted REL side sectors. Dark = used bytes, light = tail bytes",
           ],
         ],
       },
@@ -1682,16 +1705,23 @@
           "</h4>" +
           group.rows
             .map(function (row) {
+              const swatchStyle = row[2]
+                ? "background:linear-gradient(135deg, " +
+                  row[1] +
+                  " 0 50%, " +
+                  row[2] +
+                  " 50% 100%)"
+                : "background:" + row[1];
               return (
-                '<div class="disk-map-legend-row">' +
-                '<span class="disk-map-swatch" style="background:' +
-                row[1] +
+                '<div class="disk-map-legend-row"' +
+                (row[3] ? ' title="' + escapeHtml(row[3]) + '"' : "") +
+                ">" +
+                '<span class="disk-map-swatch" style="' +
+                swatchStyle +
                 '"></span>' +
                 "<span><strong>" +
                 escapeHtml(row[0]) +
-                "</strong><br />" +
-                escapeHtml(row[2]) +
-                "</span></div>"
+                "</strong></span></div>"
               );
             })
             .join("") +
