@@ -1237,6 +1237,7 @@
 
   const toPrintableSectorChar = function (value) {
     const byte = Number(value) || 0;
+    if (byte === 0x20 || byte === 0xa0) return " ";
     if (byte >= 32 && byte <= 126) return String.fromCharCode(byte);
     return ".";
   };
