@@ -1280,6 +1280,56 @@ tbody tr:hover {
   background: rgba(142, 243, 230, 0.08);
 }
 
+tbody tr[data-file-name] {
+  cursor: default;
+}
+
+tbody tr.is-dragging {
+  opacity: 0.45;
+}
+
+tbody tr.is-drop-target {
+  background: rgba(142, 243, 230, 0.08);
+}
+
+.drag-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.drag-handle {
+  min-width: 30px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: grab;
+  box-shadow: none;
+}
+
+.drag-handle:hover {
+  color: var(--accent-strong);
+  background: rgba(142, 243, 230, 0.08);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drop-ghost td {
+  padding: 10px;
+  border-bottom: 1px dashed rgba(142, 243, 230, 0.45);
+  color: var(--accent-strong);
+  background: rgba(142, 243, 230, 0.12);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 .empty-state {
   padding: 18px;
   text-align: center;

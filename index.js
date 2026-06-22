@@ -11,6 +11,9 @@
     diskCoverVisible: false,
     heatMapVisible: false,
     hexViewContext: null,
+    draggedFileName: "",
+    dropTargetName: "",
+    dropPlacement: "before",
   };
 
   const createForm = document.getElementById("create-form");
@@ -118,6 +121,7 @@
     "fragmentImage",
     "defragmentImage",
     "addFile",
+    "reorderFiles",
     "trackSectorCount",
   ];
   const DISK_MAP_COLORS = Object.freeze({
@@ -3529,17 +3533,28 @@
       (files.length === 1 ? " entry" : " entries") +
       (deletedEntries.length ? " · " + deletedEntries.length + " deleted" : "");
     renderDeletedFiles();
+    clearDropGhost();
 
     if (!files.length) {
       fileTableBody.innerHTML =
-        '<tr><td colspan="8" class="empty-state">This disk has no directory entries.</td></tr>';
+        '<tr><td colspan="9" class="empty-state">This disk has no directory entries.</td></tr>';
       return;
     }
 
     fileTableBody.innerHTML = files
       .map(function (file) {
+        if (state.draggedFileName && state.draggedFileName === file.name) {
+          return "";
+        }
         return (
-          "<tr>" +
+          '<tr data-file-name="' +
+          escapeHtml(file.name) +
+          '">' +
+          '<td class="drag-cell"><button type="button" class="drag-handle" draggable="true" data-drag-handle="true" data-name="' +
+          escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Drag to reorder " + file.name) +
+          '">::</button></td>' +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-name" data-name="' +
           escapeHtml(file.name) +
@@ -3611,6 +3626,46 @@
         );
       })
       .join("");
+  };
+
+  const clearDropGhost = function () {
+    const ghost = fileTableBody.querySelector("tr.drop-ghost");
+    if (ghost) {
+      ghost.remove();
+    }
+    fileTableBody.querySelectorAll("tr.is-drop-target").forEach(function (row) {
+      row.classList.remove("is-drop-target");
+    });
+  };
+
+  const ensureDropGhost = function () {
+    let ghost = fileTableBody.querySelector("tr.drop-ghost");
+    if (ghost) {
+      return ghost;
+    }
+    ghost = document.createElement("tr");
+    ghost.className = "drop-ghost";
+    ghost.innerHTML =
+      '<td colspan="9">Move <span class="drop-ghost-name"></span> here</td>';
+    return ghost;
+  };
+
+  const moveDropGhost = function (targetRow, placement) {
+    if (!state.draggedFileName || !targetRow) return;
+    const ghost = ensureDropGhost();
+    const label = ghost.querySelector(".drop-ghost-name");
+    if (label) {
+      label.textContent = state.draggedFileName;
+    }
+    clearDropGhost();
+    if (placement === "after" && targetRow.nextSibling) {
+      fileTableBody.insertBefore(ghost, targetRow.nextSibling);
+    } else if (placement === "after") {
+      fileTableBody.appendChild(ghost);
+    } else {
+      fileTableBody.insertBefore(ghost, targetRow);
+    }
+    targetRow.classList.add("is-drop-target");
   };
 
   const loadImageBytes = function (bytes, sourceName, message, options) {
@@ -3835,6 +3890,46 @@
         { resetDeletedTypeHints: false },
       );
       delete state.deletedTypeHints[deletedEntry.index];
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const reorderDirectoryFiles = function (draggedName, targetName) {
+    if (
+      !state.image ||
+      !draggedName ||
+      !targetName ||
+      draggedName === targetName
+    )
+      return;
+    try {
+      const files = d64.readFiles(state.image);
+      const names = files.map(function (file) {
+        return file.name;
+      });
+      const fromIndex = names.indexOf(draggedName);
+      const toIndex = names.indexOf(targetName);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+      const reordered = names.slice();
+      const moved = reordered.splice(fromIndex, 1)[0];
+      let insertIndex = toIndex;
+      if (state.dropPlacement === "after") {
+        insertIndex += 1;
+      }
+      if (fromIndex < insertIndex) {
+        insertIndex -= 1;
+      }
+      reordered.splice(insertIndex, 0, moved);
+      state.draggedFileName = "";
+      state.dropTargetName = "";
+      state.dropPlacement = "before";
+      loadImageBytes(
+        d64.reorderFiles(state.image, reordered),
+        state.sourceName || "disk.d64",
+        "Reordered directory files.",
+        { resetDeletedTypeHints: false },
+      );
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4257,6 +4352,68 @@
         return;
       }
       updateFileFlag(button.dataset.action, button.dataset.name);
+    });
+    fileTableBody.addEventListener("dragstart", function (event) {
+      const handle = event.target.closest("[data-drag-handle='true']");
+      if (!handle) {
+        event.preventDefault();
+        return;
+      }
+      const row = handle.closest("tr[data-file-name]");
+      if (!row) return;
+      state.draggedFileName = row.dataset.fileName || "";
+      state.dropTargetName = "";
+      state.dropPlacement = "before";
+      renderDirectory();
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", state.draggedFileName);
+      }
+    });
+    fileTableBody.addEventListener("dragover", function (event) {
+      if (!state.draggedFileName) return;
+      event.preventDefault();
+      const row = event.target.closest("tr[data-file-name]");
+      if (!row) {
+        const rows = Array.from(
+          fileTableBody.querySelectorAll("tr[data-file-name]"),
+        );
+        const lastRow = rows.length ? rows[rows.length - 1] : null;
+        if (!lastRow) return;
+        state.dropTargetName = lastRow.dataset.fileName || "";
+        state.dropPlacement = "after";
+        moveDropGhost(lastRow, "after");
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        return;
+      }
+      const rect = row.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      state.dropTargetName = row.dataset.fileName || "";
+      state.dropPlacement = before ? "before" : "after";
+      moveDropGhost(row, state.dropPlacement);
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    });
+    fileTableBody.addEventListener("dragleave", function (event) {
+      const row = event.target.closest("tr[data-file-name]");
+      if (!row) return;
+      row.classList.remove("is-drop-target");
+    });
+    fileTableBody.addEventListener("drop", function (event) {
+      if (!state.draggedFileName || !state.dropTargetName) return;
+      event.preventDefault();
+      clearDropGhost();
+      reorderDirectoryFiles(state.draggedFileName, state.dropTargetName);
+    });
+    fileTableBody.addEventListener("dragend", function () {
+      clearDropGhost();
+      state.draggedFileName = "";
+      state.dropTargetName = "";
+      state.dropPlacement = "before";
+      renderDirectory();
     });
     deletedFilesList.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");

@@ -2842,6 +2842,38 @@
     return d64.composeImageWithDeleted(image, files, options);
   };
 
+  d64.reorderFiles = function (image, orderedNames, options) {
+    const files = d64.readFiles(image, options);
+    const order = Array.isArray(orderedNames) ? orderedNames.slice() : [];
+    const byName = {};
+    files.forEach(function (file) {
+      byName[
+        String(file.name || "")
+          .trim()
+          .toUpperCase()
+      ] = file;
+    });
+    const reordered = [];
+    const seen = {};
+    order.forEach(function (name) {
+      const key = String(name || "")
+        .trim()
+        .toUpperCase();
+      if (!key || seen[key] || !byName[key]) return;
+      reordered.push(byName[key]);
+      seen[key] = true;
+    });
+    files.forEach(function (file) {
+      const key = String(file.name || "")
+        .trim()
+        .toUpperCase();
+      if (seen[key]) return;
+      reordered.push(file);
+      seen[key] = true;
+    });
+    return d64.composeImageWithDeleted(image, reordered, options);
+  };
+
   d64.readUnusedTailData = function (image, entryOrName, options) {
     const file = d64.readFile(image, entryOrName, options);
     return file ? file.unusedTailData.slice() : null;
