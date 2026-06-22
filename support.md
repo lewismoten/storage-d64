@@ -859,6 +859,25 @@ Notes:
 
 - Existing disk metadata is preserved by default unless overridden.
 
+### `reflowImage(image, options)`
+
+Rebuilds an image using the current active files plus any valid deleted-file chains.
+
+Parameters:
+
+- `image: Uint8Array | ArrayBuffer | number[]`
+- `options?: D64DiskInfo`
+
+Returns:
+
+- `Uint8Array | null`
+
+Notes:
+
+- Active files are rebuilt using the selected allocation strategy.
+- Valid deleted chains are rewritten afterward into remaining outer-area free space.
+- Deleted chains that overlap active data or another deleted chain are treated as corrupt and cleared.
+
 ### `setDiskInfo(image, updates, options)`
 
 Rebuilds an image with updated disk-level metadata.
