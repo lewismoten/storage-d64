@@ -299,6 +299,40 @@
     return numberFormatter.format(Math.max(0, Math.round(Number(value) || 0)));
   };
 
+  const formatExactBytes = function (value) {
+    const bytes = Math.max(0, Math.round(Number(value) || 0));
+    return formatNumber(bytes) + " bytes";
+  };
+
+  const formatByteSize = function (value) {
+    const bytes = Math.max(0, Number(value) || 0);
+    const units = ["b", "kb", "mb", "gb", "tb"];
+    let unitIndex = 0;
+    let scaled = bytes;
+    while (scaled >= 1000 && unitIndex < units.length - 1) {
+      scaled /= 1024;
+      unitIndex += 1;
+    }
+    const decimals = unitIndex > 0 && scaled < 100 ? 1 : 0;
+    const rounded = decimals
+      ? Math.round(scaled * 10) / 10
+      : Math.round(scaled);
+    return (
+      String(decimals ? rounded.toFixed(1).replace(/\.0$/, "") : rounded) +
+      units[unitIndex]
+    );
+  };
+
+  const formatByteHtml = function (value) {
+    return (
+      '<span title="' +
+      escapeHtml(formatExactBytes(value)) +
+      '">' +
+      escapeHtml(formatByteSize(value)) +
+      "</span>"
+    );
+  };
+
   const inferDroppedFileType = function (name) {
     const extension = String(name || "")
       .trim()
@@ -393,7 +427,7 @@
           "<div><dt>" +
           escapeHtml(row.label) +
           "</dt><dd>" +
-          escapeHtml(row.value) +
+          (row.html != null ? row.html : escapeHtml(row.value)) +
           "</dd></div>"
         );
       })
@@ -919,7 +953,14 @@
       "aria-label",
       segments
         .map(function (segment) {
-          return segment.label + ": " + formatNumber(segment.value) + " bytes";
+          return (
+            segment.label +
+            ": " +
+            formatByteSize(segment.value) +
+            " (" +
+            formatExactBytes(segment.value) +
+            ")"
+          );
         })
         .join(", "),
     );
@@ -934,7 +975,7 @@
           escapeHtml(segment.label) +
           "</span>" +
           "<strong>" +
-          escapeHtml(formatNumber(segment.value) + " bytes") +
+          formatByteHtml(segment.value) +
           "</strong>" +
           "</div>"
         );
@@ -1247,9 +1288,11 @@
       {
         label: "PAY",
         value:
+          usedPayloadBytes == null ? "254b" : formatByteSize(usedPayloadBytes),
+        title:
           usedPayloadBytes == null
-            ? "254B"
-            : formatNumber(usedPayloadBytes) + "B",
+            ? formatExactBytes(254)
+            : formatExactBytes(usedPayloadBytes),
         source: usedPayloadBytes == null ? "stored" : "inferred",
         note:
           usedPayloadBytes == null
@@ -1260,7 +1303,8 @@
     if (unusedPayloadBytes) {
       shorthand.push({
         label: "TAIL",
-        value: formatNumber(unusedPayloadBytes) + "B",
+        value: formatByteSize(unusedPayloadBytes),
+        title: formatExactBytes(unusedPayloadBytes),
         source: "stored",
         note: "Bytes preserved in sector but beyond logical payload",
       });
@@ -1275,7 +1319,9 @@
             '<div class="sector-physical-chip is-' +
             part.source +
             '" title="' +
-            escapeHtml(part.note) +
+            escapeHtml(
+              part.title ? part.note + " (" + part.title + ")" : part.note,
+            ) +
             '">' +
             '<span class="sector-physical-chip-label">' +
             escapeHtml(part.label) +
@@ -1648,8 +1694,7 @@
       },
       {
         label: "Offset",
-        value:
-          "0x" + toHexWord(offset) + " (" + formatNumber(offset) + " bytes)",
+        html: "0x" + toHexWord(offset) + " (" + formatByteHtml(offset) + ")",
       },
       {
         label: "Sector Index",
@@ -1759,10 +1804,10 @@
     } else if (info && /Data|relSide/.test(String(info.category || ""))) {
       rows.push({
         label: "Data Use",
-        value:
+        html:
           typeof info.usedFraction === "number"
-            ? formatNumber(Math.round(info.usedFraction * 254)) +
-              " of 254 payload bytes"
+            ? formatByteHtml(Math.round(info.usedFraction * 254)) +
+              " of 254b payload"
             : "Sector payload",
       });
     }
@@ -2542,8 +2587,7 @@
           '<div class="deleted-file-meta">' +
           "Deleted entry" +
           " · " +
-          escapeHtml(formatNumber((entry.blockCount || 0) * 254)) +
-          " bytes" +
+          formatByteHtml((entry.blockCount || 0) * 254) +
           "</div>" +
           "</div>" +
           '<div class="restore-controls">' +
@@ -2746,7 +2790,7 @@
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
           "</td>" +
           "<td>" +
-          escapeHtml(formatNumber((file.data && file.data.length) || 0)) +
+          formatByteHtml((file.data && file.data.length) || 0) +
           "</td>" +
           "<td>" +
           flagMarkup(file.closed, {
