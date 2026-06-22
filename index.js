@@ -985,6 +985,42 @@
       .join("");
   };
 
+  const buildUsageSegments = function (values) {
+    const source = values || {};
+    return [
+      {
+        label: "Used",
+        fullLabel: "File payload",
+        value: Math.max(0, Number(source.totalPayloadBytes) || 0),
+        color: "#8ef3e6",
+      },
+      {
+        label: "Overhead",
+        fullLabel: "File overhead",
+        value: Math.max(0, Number(source.fileOverheadBytes) || 0),
+        color: "#ffd36b",
+      },
+      {
+        label: "Directory",
+        fullLabel: "Directory reserved",
+        value: Math.max(0, Number(source.directoryReservedBytes) || 0),
+        color: "#ff8e90",
+      },
+      {
+        label: "Trash",
+        fullLabel: "Deleted chains",
+        value: Math.max(0, Number(source.deletedBytes) || 0),
+        color: DISK_MAP_COLORS.deleted,
+      },
+      {
+        label: "Free",
+        fullLabel: "Free space",
+        value: Math.max(0, Number(source.freeBytes) || 0),
+        color: "#3f82ff",
+      },
+    ];
+  };
+
   const polarToCartesian = function (cx, cy, radius, angle) {
     return {
       x: cx + radius * Math.cos(angle - Math.PI / 2),
@@ -2652,12 +2688,18 @@
   const refreshView = function () {
     if (!state.image) {
       renderDefinitionList(headerSummary, [
-        { label: "Status", value: "No image loaded" },
+        { label: "Disk Name", value: "-" },
+        { label: "Disk ID / DOS", value: "-" },
+        { label: "Format", value: "-" },
+        { label: "Tracks / Sectors", value: "-" },
+        { label: "DOS Version", value: "-" },
+        { label: "Error Info", value: "-" },
       ]);
       renderDefinitionList(usageSummary, [
-        { label: "Status", value: "Waiting for an image" },
+        { label: "File Count", value: "-" },
+        { label: "File / Dir Sectors", value: "-" },
       ]);
-      renderUsageChart(null);
+      renderUsageChart(buildUsageSegments());
       renderDiskMap(null);
       renderDeletedFiles();
       directoryCount.textContent = "0 entries";
@@ -2725,38 +2767,15 @@
           formatNumber(usage.directorySectors),
       },
     ]);
-    renderUsageChart([
-      {
-        label: "Used",
-        fullLabel: "File payload",
-        value: totalPayloadBytes,
-        color: "#8ef3e6",
-      },
-      {
-        label: "Overhead",
-        fullLabel: "File overhead",
-        value: fileOverheadBytes,
-        color: "#ffd36b",
-      },
-      {
-        label: "Directory",
-        fullLabel: "Directory reserved",
-        value: directoryReservedBytes,
-        color: "#ff8e90",
-      },
-      {
-        label: "Trash",
-        fullLabel: "Deleted chains",
-        value: deletedBytes,
-        color: DISK_MAP_COLORS.deleted,
-      },
-      {
-        label: "Free",
-        fullLabel: "Free space",
-        value: freeBytes,
-        color: "#3f82ff",
-      },
-    ]);
+    renderUsageChart(
+      buildUsageSegments({
+        totalPayloadBytes: totalPayloadBytes,
+        fileOverheadBytes: fileOverheadBytes,
+        directoryReservedBytes: directoryReservedBytes,
+        deletedBytes: deletedBytes,
+        freeBytes: freeBytes,
+      }),
+    );
     renderDiskMap(state.image);
 
     directoryCount.textContent =
