@@ -1641,10 +1641,17 @@
   d64.findNearestSmartSector = function (allocation, previousBlock) {
     const freePool = d64.collectAllocatableSectors(allocation);
     if (!freePool.length) return null;
+    const previousSide = previousBlock
+      ? previousBlock.track < DIRECTORY_TRACK
+        ? "inner"
+        : "outer"
+      : null;
     let best = null;
     let bestScore = Infinity;
     for (let index = 0; index < freePool.length; index += 1) {
       const candidate = freePool[index];
+      const candidateSide =
+        candidate.track < DIRECTORY_TRACK ? "inner" : "outer";
       const seekDistance = previousBlock
         ? Math.abs(candidate.track - previousBlock.track)
         : Math.abs(candidate.track - DIRECTORY_TRACK);
@@ -1660,6 +1667,7 @@
       const score =
         seekDistance * 100 +
         rotationalDistance * 3 +
+        (previousSide && candidateSide !== previousSide ? 180 : 0) +
         Math.abs(candidate.track - DIRECTORY_TRACK) * 2 +
         candidate.sector / 100;
       if (score < bestScore) {
