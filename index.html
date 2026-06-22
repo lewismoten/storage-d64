@@ -29,19 +29,12 @@
         <aside class="panel controls">
           <div class="stack">
             <fieldset class="field-group">
-              <legend>Create New Image</legend>
-              <button id="create-button" type="button">Create</button>
-            </fieldset>
-          </div>
-
-          <div class="stack">
-            <fieldset class="field-group">
-              <legend>Load Existing Image</legend>
-
-              <label class="field">
-                <span>D64 File</span>
-                <input id="image-upload" type="file" accept=".d64" />
-              </label>
+              <legend>Image</legend>
+              <div class="action-row">
+                <button id="create-button" type="button">Create</button>
+                <button id="load-button" type="button">Load</button>
+              </div>
+              <input id="image-upload" type="file" accept=".d64" hidden />
             </fieldset>
           </div>
 

@@ -15,6 +15,7 @@
   const createDialog = document.getElementById("create-dialog");
   const createButton = document.getElementById("create-button");
   const createCancel = document.getElementById("create-cancel");
+  const loadButton = document.getElementById("load-button");
   const diskNameInput = document.getElementById("disk-name");
   const diskIdInput = document.getElementById("disk-id");
   const diskFormatSelect = document.getElementById("disk-format");
@@ -2840,7 +2841,7 @@
   const loadSelectedFile = async function () {
     const file = imageUpload.files && imageUpload.files[0];
     if (!file) {
-      setStatus("Choose a .d64 file first.", true);
+      setStatus("Choose a disk image first.", true);
       return;
     }
     try {
@@ -2848,6 +2849,8 @@
       loadImageBytes(bytes, file.name, "Loaded existing D64 image.");
     } catch (error) {
       setStatus(error.message || String(error), true);
+    } finally {
+      imageUpload.value = "";
     }
   };
 
@@ -3162,10 +3165,14 @@
         true,
       );
       createButton.disabled = true;
+      loadButton.disabled = true;
       return;
     }
 
     createButton.addEventListener("click", openCreateDialog);
+    loadButton.addEventListener("click", function () {
+      imageUpload.click();
+    });
     createForm.addEventListener("submit", createDiskImage);
     createCancel.addEventListener("click", function () {
       closeCreateDialog();
