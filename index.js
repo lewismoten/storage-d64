@@ -378,7 +378,6 @@
     state.sourceName = sourceName || "";
     currentFileName.textContent = state.sourceName || "Unsaved image";
     downloadButton.disabled = !state.image;
-    refreshButton.disabled = !state.image;
     fragmentButton.disabled = !state.image;
     defragmentButton.disabled = !state.image;
   };
