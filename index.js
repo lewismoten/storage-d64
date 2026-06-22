@@ -1864,6 +1864,9 @@
             color: usedColor,
             tailColor: tailColor,
             stroke: DISK_MAP_COLORS.trackStroke,
+            fileName: entry.name,
+            fileType: type.toUpperCase(),
+            blockLabel: String(blockIndex + 1),
             label:
               entry.name +
               " (" +
@@ -1893,6 +1896,9 @@
                 color: DISK_MAP_COLORS.relSide,
                 tailColor: DISK_MAP_COLORS.relSideTail,
                 stroke: DISK_MAP_COLORS.trackStroke,
+                fileName: entry.name,
+                fileType: "REL",
+                blockLabel: "Side " + String(sideIndex + 1),
                 label:
                   entry.name +
                   " (REL side sector " +
@@ -1932,6 +1938,9 @@
             color: DISK_MAP_COLORS.deleted,
             tailColor: DISK_MAP_COLORS.deletedTail,
             stroke: DISK_MAP_COLORS.trackStroke,
+            fileName: entry.name,
+            fileType: "DEL " + deletedType.toUpperCase(),
+            blockLabel: String(blockIndex + 1),
             label:
               entry.name +
               " (deleted " +
@@ -1961,6 +1970,9 @@
                 color: DISK_MAP_COLORS.deleted,
                 tailColor: DISK_MAP_COLORS.deletedTail,
                 stroke: DISK_MAP_COLORS.trackStroke,
+                fileName: entry.name,
+                fileType: "DEL REL",
+                blockLabel: "Side " + String(sideIndex + 1),
                 label:
                   entry.name +
                   " (deleted REL side sector " +
@@ -2196,12 +2208,8 @@
       );
     const rows = [
       {
-        label: "Purpose",
-        value: info ? info.label : "Sector data",
-      },
-      {
         label: "Offset",
-        html: "0x" + toHexWord(offset) + " (" + formatByteHtml(offset) + ")",
+        value: "0x" + toHexWord(offset),
       },
       {
         label: "Sector Index",
@@ -2212,15 +2220,29 @@
               formatNumber(state.diskLayout.geometry.sectorCount - 1)
             : "n/a",
       },
-      {
-        label: "Logical Disk ID",
-        value:
-          toHexByte(logicalDiskIdBytes[0]) +
-          " " +
-          toHexByte(logicalDiskIdBytes[1]) +
-          " (inferred from T18/S0 header)",
-      },
     ];
+
+    if (info && info.fileName) {
+      rows.unshift(
+        {
+          label: "Block",
+          value: info.blockLabel || "-",
+        },
+        {
+          label: "Type",
+          value: info.fileType || "-",
+        },
+        {
+          label: "File",
+          value: info.fileName || "-",
+        },
+      );
+    } else {
+      rows.unshift({
+        label: "Purpose",
+        value: info ? info.label : "Sector data",
+      });
+    }
 
     if (track === 18 && sector === 0) {
       const bam = d64.readBam(state.image);
@@ -2285,10 +2307,9 @@
     } else if (info && /Data|relSide/.test(String(info.category || ""))) {
       rows.push({
         label: "Data Use",
-        html:
+        value:
           typeof info.usedFraction === "number"
-            ? formatByteHtml(Math.round(info.usedFraction * 254)) +
-              " of 254b payload"
+            ? (info.usedFraction * 100).toFixed(1).replace(/\.0$/, "") + "%"
             : "Sector payload",
       });
     }
