@@ -1934,11 +1934,30 @@
     const firstPrgIndex = items.findIndex(function (item) {
       return item.type === "prg";
     });
-    if (firstPrgIndex <= 0) return items;
-    return [items[firstPrgIndex]].concat(
-      items.slice(0, firstPrgIndex),
-      items.slice(firstPrgIndex + 1),
-    );
+    const getTier = function (item, index) {
+      if (index === firstPrgIndex) return 0;
+      if (item.type === "prg") return 1;
+      if (item.type === "seq" || item.type === "usr") return 2;
+      if (item.type === "rel") return 3;
+      return 4;
+    };
+    return items
+      .map(function (item, index) {
+        return {
+          item: item,
+          tier: getTier(item, index),
+          originalIndex: index,
+        };
+      })
+      .sort(function (left, right) {
+        if (left.tier !== right.tier) {
+          return left.tier - right.tier;
+        }
+        return left.originalIndex - right.originalIndex;
+      })
+      .map(function (entry) {
+        return entry.item;
+      });
   };
 
   d64.finalizeImage = function (

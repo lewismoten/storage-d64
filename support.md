@@ -1111,6 +1111,7 @@ Notes:
 - The `allocation` object is mutated.
 - Sequential allocation now prefers tracks nearest `18` first and chooses follow-up sectors by a simple seek-plus-rotation cost model.
 - Fragmented allocation intentionally scatters blocks across the free sector pool.
+- Sequential write priority is: first `PRG`, remaining `PRG`, then `SEQ`/`USR`, and finally `REL`.
 
 ### `writeFile(image, data, allocation, unusedTailData)`
 
@@ -1211,6 +1212,7 @@ Builds a complete standard D64 image from a set of file records.
 Notes:
 
 - In sequential mode, the first `PRG` file is written first so it lands nearest the directory track before the remaining files are allocated.
+- Remaining files are then written in this priority order: `PRG`, `SEQ`/`USR`, then `REL`.
 
 Parameters:
 
