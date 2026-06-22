@@ -323,8 +323,8 @@ button:disabled {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-columns: 1fr;
+  gap: 16px;
 }
 
 .summary-card,
@@ -342,6 +342,10 @@ button:disabled {
 
 .summary-card h3 {
   margin-bottom: 10px;
+}
+
+.summary-section {
+  padding-top: 14px;
 }
 
 .meta-list {
