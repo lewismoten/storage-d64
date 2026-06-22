@@ -1506,6 +1506,15 @@
         "Deleted file not found: " + String(deletedEntryOrName || ""),
       );
     }
+    const restoredName = d64.normalizeFileName(entry.name, 16);
+    const existingActiveFile = d64
+      .readFiles(image, options)
+      .find(function (file) {
+        return d64.normalizeFileName(file.name, 16) === restoredName;
+      });
+    if (existingActiveFile) {
+      throw new Error("File already exists: " + restoredName);
+    }
     const restoredType = String(options.type || "")
       .trim()
       .toLowerCase();
@@ -2505,6 +2514,19 @@
       throw new Error("File not found: " + String(entryOrName || ""));
     }
     const patch = updates || {};
+    const nextName = Object.prototype.hasOwnProperty.call(patch, "name")
+      ? d64.normalizeFileName(patch.name, 16)
+      : d64.normalizeFileName(files[index].name, 16);
+    if (!nextName) {
+      throw new Error("File name can not be empty.");
+    }
+    const duplicateIndex = files.findIndex(function (file, fileIndex) {
+      if (fileIndex === index) return false;
+      return d64.normalizeFileName(file.name, 16) === nextName;
+    });
+    if (duplicateIndex >= 0) {
+      throw new Error("File already exists: " + nextName);
+    }
     const metadataOnly =
       !Object.prototype.hasOwnProperty.call(patch, "data") &&
       !Object.prototype.hasOwnProperty.call(patch, "recordLength") &&
@@ -2522,12 +2544,6 @@
     ) {
       const entry = files[index].entry;
       const entryBytes = entry.raw.slice();
-      const nextName = Object.prototype.hasOwnProperty.call(patch, "name")
-        ? d64.normalizeFileName(patch.name, 16)
-        : d64.normalizeFileName(files[index].name, 16);
-      if (!nextName) {
-        throw new Error("File name can not be empty.");
-      }
       entryBytes.set(d64.encodeFileName(nextName, 16), 5);
       entryBytes[2] = d64.encodeDirectoryEntryType(nextTypeName, {
         closed: Object.prototype.hasOwnProperty.call(patch, "closed")
@@ -2538,12 +2554,6 @@
           : files[index].locked,
       });
       return d64.writeDirectoryEntryBytes(image, entry, entryBytes);
-    }
-    const nextName = Object.prototype.hasOwnProperty.call(patch, "name")
-      ? d64.normalizeFileName(patch.name, 16)
-      : d64.normalizeFileName(files[index].name, 16);
-    if (!nextName) {
-      throw new Error("File name can not be empty.");
     }
     files[index] = {
       name: nextName,

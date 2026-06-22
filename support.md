@@ -1061,6 +1061,25 @@ Returns:
 
 - `Uint8Array | null`
 
+### `undeleteFile(image, deletedEntryOrName, restoreOptions)`
+
+Restores a deleted directory entry when its sector chain is still recoverable.
+
+Parameters:
+
+- `image: Uint8Array | ArrayBuffer | number[]`
+- `deletedEntryOrName: object | string`
+- `restoreOptions?: { type: "prg" | "seq" | "usr" | "rel", closed?: boolean, locked?: boolean }`
+
+Returns:
+
+- `Uint8Array`
+
+Notes:
+
+- Restore fails if the deleted sector chain overlaps any currently used sector.
+- Restore also fails if any active non-deleted file already uses the same normalized filename.
+
 ### `addFile(image, file, options)`
 
 Adds a new active file to an existing image while preserving valid deleted chains when possible.

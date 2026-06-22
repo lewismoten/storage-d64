@@ -319,6 +319,32 @@
     );
   };
 
+  const hasDuplicateFileName = function (nextName, currentName) {
+    if (!state.image) return false;
+    const normalizedNextName = d64.normalizeFileName(nextName, 16);
+    const normalizedCurrentName = d64.normalizeFileName(currentName, 16);
+    return d64.readFiles(state.image).some(function (entry) {
+      const entryName = d64.normalizeFileName(entry.name, 16);
+      return (
+        entryName === normalizedNextName && entryName !== normalizedCurrentName
+      );
+    });
+  };
+
+  const validateFileNameInput = function () {
+    const nextName = d64.normalizeFileName(fileNameInput.value, 16);
+    if (!nextName) {
+      fileNameInput.setCustomValidity("File name can not be empty.");
+      return false;
+    }
+    if (hasDuplicateFileName(nextName, fileNameTarget.value)) {
+      fileNameInput.setCustomValidity("A file with that name already exists.");
+      return false;
+    }
+    fileNameInput.setCustomValidity("");
+    return true;
+  };
+
   const toggleDiskDropTarget = function (isActive) {
     diskMapFrame.classList.toggle("is-file-drop-target", Boolean(isActive));
     diskDropHint.hidden = !isActive;
@@ -2941,6 +2967,7 @@
     fileNameTarget.value = file.name;
     fileNameDialogName.textContent = file.name;
     fileNameInput.value = file.name;
+    validateFileNameInput();
     if (typeof fileNameDialog.showModal === "function") {
       fileNameDialog.showModal();
     } else {
@@ -2996,8 +3023,8 @@
     if (!state.image) return;
     const fileName = fileNameTarget.value;
     const nextName = d64.normalizeFileName(fileNameInput.value, 16);
-    if (!nextName) {
-      setStatus("File name can not be empty.", true);
+    if (!validateFileNameInput()) {
+      fileNameInput.reportValidity();
       return;
     }
     try {
@@ -3271,6 +3298,7 @@
           fileNameInput.setSelectionRange(nextStart, nextEnd);
         }
       }
+      validateFileNameInput();
     });
     fileNameForm.addEventListener("submit", saveFileNameDialog);
     fileNameCancel.addEventListener("click", function () {
