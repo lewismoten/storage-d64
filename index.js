@@ -2668,14 +2668,6 @@
     ]);
 
     renderDefinitionList(usageSummary, [
-      {
-        label: "Image / Data",
-        value:
-          formatNumber(geometry.imageSize) +
-          " / " +
-          formatNumber(geometry.dataSize) +
-          " bytes",
-      },
       { label: "File Count", value: String(files.length) },
       {
         label: "File / Dir Sectors",
@@ -2684,9 +2676,6 @@
           " / " +
           formatNumber(usage.directorySectors),
       },
-      { label: "Payload Bytes", value: formatNumber(totalPayloadBytes) },
-      { label: "Deleted Bytes", value: formatNumber(deletedBytes) },
-      { label: "Free Bytes", value: formatNumber(freeBytes) },
     ]);
     renderUsageChart([
       {
