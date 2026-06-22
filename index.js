@@ -2311,9 +2311,7 @@
       " Sector " +
       String(sector) +
       "</h4>" +
-      "<p>Click another sector to inspect it.</p>" +
       "</div>" +
-      '<button type="button" class="sector-inspector-close" data-action="show-legend">Show Legend</button>' +
       "</div>" +
       '<dl class="sector-inspector-meta">' +
       rows
@@ -2328,7 +2326,6 @@
         })
         .join("") +
       "</dl>" +
-      '<p class="sector-inspector-note">Physical sync marks and per-sector on-disk headers are not stored in a plain .d64 image. Disk ID is inferred from the logical DOS header at T18/S0.</p>' +
       "</section>";
   };
 
@@ -4045,12 +4042,6 @@
         button.dataset.entryIndex,
         select ? select.value : "prg",
       );
-    });
-    diskMapInspector.addEventListener("click", function (event) {
-      const button = event.target.closest('[data-action="show-legend"]');
-      if (!button) return;
-      clearSelectedDiskMapSector();
-      renderDiskMapInspector();
     });
     diskMapLegend.addEventListener("click", function (event) {
       const jumpButton = event.target.closest('[data-action="jump-sector"]');
