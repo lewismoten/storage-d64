@@ -1398,13 +1398,9 @@
       usedPayloadBytes == null
         ? 254
         : Math.max(0, Math.min(254, usedPayloadBytes));
-    const tailBytes = unusedPayloadBytes == null ? 0 : unusedPayloadBytes;
-    const usedStartPercent = Math.max(18, Math.min(58, (usedBytes / 254) * 58));
-    const usedEndPercent = Math.max(
-      10,
-      Math.min(24, (Math.max(0, usedBytes - 96) / 158) * 24),
-    );
-    const tailPercent = Math.max(8, Math.min(24, (tailBytes / 254) * 24));
+    const nextTrack = sectorBytes[0];
+    const nextSector = sectorBytes[1];
+    const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
 
     const renderMiniSegment = function (part) {
       return (
@@ -1424,6 +1420,53 @@
       );
     };
 
+    const renderBitplane = function () {
+      const pixels = [];
+      for (let byteIndex = 0; byteIndex < sectorBytes.length; byteIndex += 1) {
+        const value = sectorBytes[byteIndex];
+        const fillClass =
+          byteIndex < 2
+            ? "is-link"
+            : byteIndex < usedBytes + 2
+              ? "is-payload"
+              : "is-tail";
+        for (let bit = 0; bit < 8; bit += 1) {
+          if (((value >> (7 - bit)) & 1) === 0) continue;
+          pixels.push(
+            '<rect class="sector-bitplane-pixel ' +
+              fillClass +
+              '" x="' +
+              String(byteIndex) +
+              '" y="' +
+              String(bit) +
+              '" width="1" height="1"></rect>',
+          );
+        }
+      }
+      return (
+        '<button type="button" class="sector-bitplane-button" data-action="open-sector-data" data-track="' +
+        String(track) +
+        '" data-sector="' +
+        String(sector) +
+        '" title="Open sector data">' +
+        '<svg class="sector-bitplane" viewBox="0 0 256 8" preserveAspectRatio="none" aria-hidden="true">' +
+        '<rect class="sector-bitplane-zone is-link" x="0" y="0" width="2" height="8"></rect>' +
+        '<rect class="sector-bitplane-zone is-payload" x="2" y="0" width="' +
+        String(Math.max(0, usedBytes)) +
+        '" height="8"></rect>' +
+        (tailPart
+          ? '<rect class="sector-bitplane-zone is-tail" x="' +
+            String(usedBytes + 2) +
+            '" y="0" width="' +
+            String(Math.max(0, 254 - usedBytes)) +
+            '" height="8"></rect>'
+          : "") +
+        pixels.join("") +
+        "</svg>" +
+        "</button>"
+      );
+    };
+
     return (
       '<section class="sector-physical">' +
       '<div class="sector-physical-head"><strong>Physical Sector Model</strong><span>Approximate 1541 on-disk layout inferred from this logical sector.</span></div>' +
@@ -1431,37 +1474,21 @@
       preamble.map(renderMiniSegment).join("") +
       "</div>" +
       '<div class="sector-physical-bar-wrap">' +
-      '<div class="sector-physical-bar" aria-hidden="true">' +
-      '<span class="sector-physical-bar-segment is-stored is-link" style="width:14%" title="' +
-      escapeHtml(linkPart.note) +
-      '">LINK</span>' +
-      '<button type="button" class="sector-physical-bar-segment is-stored is-payload-start" data-action="open-sector-data" data-track="' +
-      String(track) +
-      '" data-sector="' +
-      String(sector) +
-      '" style="width:' +
-      usedStartPercent.toFixed(1) +
-      '%" title="Open sector data"></button>' +
-      '<span class="sector-physical-bar-break" title="Payload continues across the omitted middle span">...</span>' +
-      '<button type="button" class="sector-physical-bar-segment is-stored is-payload-end" data-action="open-sector-data" data-track="' +
-      String(track) +
-      '" data-sector="' +
-      String(sector) +
-      '" style="width:' +
-      usedEndPercent.toFixed(1) +
-      '%" title="Open sector data"></button>' +
-      (tailPart
-        ? '<span class="sector-physical-bar-segment is-tail" style="width:' +
-          tailPercent.toFixed(1) +
-          '%"></span>'
-        : "") +
+      '<div class="sector-bitplane-wrap">' +
+      renderBitplane() +
       "</div>" +
       '<div class="sector-physical-bar-labels">' +
-      '<span title="' +
-      escapeHtml(linkPart.note) +
-      '">LINK ' +
-      escapeHtml(linkPart.value) +
-      "</span>" +
+      (hasNextSectorLink
+        ? renderSectorJumpButton(
+            nextTrack,
+            nextSector,
+            "LINK " + toHexByte(nextTrack) + " " + toHexByte(nextSector),
+          )
+        : '<span title="' +
+          escapeHtml(linkPart.note) +
+          '">LINK ' +
+          escapeHtml(linkPart.value) +
+          "</span>") +
       '<button type="button" class="sector-physical-bar-label" data-action="open-sector-data" data-track="' +
       String(track) +
       '" data-sector="' +
@@ -1868,9 +1895,6 @@
         d64.headerOffsets.diskIdStart,
         d64.headerOffsets.diskIdStart + 2,
       );
-    const nextTrack = sectorBytes[0];
-    const nextSector = sectorBytes[1];
-    const hasNextSectorLink = isValidSectorAddress(nextTrack, nextSector);
     const rows = [
       {
         label: "Purpose",
@@ -1888,32 +1912,6 @@
               " / " +
               formatNumber(state.diskLayout.geometry.sectorCount - 1)
             : "n/a",
-      },
-      {
-        label: "Link Bytes",
-        html: hasNextSectorLink
-          ? '<div class="sector-link-row"><span class="sector-link-raw">' +
-            escapeHtml(
-              toHexByte(nextTrack) + " " + toHexByte(nextSector) + " ->",
-            ) +
-            "</span>" +
-            renderSectorJumpButton(
-              nextTrack,
-              nextSector,
-              "T" +
-                String(nextTrack).padStart(2, "0") +
-                " S" +
-                String(nextSector).padStart(2, "0"),
-            ) +
-            "</div>"
-          : escapeHtml(
-              nextTrack === 0
-                ? toHexByte(nextTrack) +
-                    " " +
-                    toHexByte(nextSector) +
-                    " (final block marker / used-byte count)"
-                : toHexByte(nextTrack) + " " + toHexByte(nextSector),
-            ),
       },
       {
         label: "Logical Disk ID",
@@ -3718,6 +3716,15 @@
       }
     });
     diskMapPhysical.addEventListener("click", function (event) {
+      const jumpButton = event.target.closest('[data-action="jump-sector"]');
+      if (jumpButton) {
+        selectDiskMapSector(
+          jumpButton.dataset.track,
+          jumpButton.dataset.sector,
+          { centerView: true },
+        );
+        return;
+      }
       const button = event.target.closest('[data-action="open-sector-data"]');
       if (!button) return;
       openSectorDataDialog(button.dataset.track, button.dataset.sector);
