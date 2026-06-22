@@ -16,7 +16,8 @@ The local browser test lab lives in [index.html](./index.html) and
 [index.js](./index.js).
 
 The lab can also rebuild a loaded image into either a deliberately
-fragmented layout or a compact defragmented layout for visualization.
+fragmented layout or a compact defragmented layout for visualization, while
+preserving and scoring layout choices that affect follow-up read efficiency.
 
 When loaded, it calls:
 
@@ -175,11 +176,26 @@ http://localhost:1541/
 
 The lab lets you:
 
-- create a blank `.d64` image with selectable geometry
-- load an existing `.d64` file from disk
-- inspect header metadata and geometry
-- list directory files
-- toggle file lock and open/closed flags, then download the updated image
+- start from a default blank disk image immediately on load
+- create a new blank disk image with selectable geometry
+- load an existing disk image from disk
+- inspect header metadata, usage, and directory state
+- list active and deleted directory entries
+- rename files, change file types, and toggle file lock and open/closed flags
+- delete, restore, fragment, and defragment files and whole images
+- drag host files into the image and export individual files back out
+- inspect the disk layout, sector usage, directory track, and file placement
+- open sector and file byte data in a hex/printable viewer and edit bytes in place
+- compare read-efficiency layout visually with the Efficiency Map overlay
+- download either the current full image or individual extracted files
+
+The disk layout view also includes:
+
+- a sector legend for disk structure and file types
+- a selected-sector inspector with track/sector metadata
+- a physical sector model and bitplane view for the selected sector
+- inferred read-timing and read-optimization scoring for chained sectors
+- a floppy-shell presentation mode, including sleeve/cover visualization
 
 The disk layout inspector in the lab can also show inferred disk-level context,
 such as the logical disk ID associated with a selected sector. A plain `.d64`
@@ -187,6 +203,16 @@ image does not store low-level GCR details like sync marks, per-sector physical
 headers, or exact rotational timing. When the lab shows that kind of context,
 it is inferred from the logical DOS structures in the image, especially the
 header/BAM sector at track 18 sector 0.
+
+Current rebuild behavior in the lab and support layer includes:
+
+- sequential file allocation that prefers tracks near track `18`
+- directory-sector layout on track `18` using directory interleave `3`
+- fragmented rebuilds that intentionally scatter file sectors and directory sectors
+- read-optimization scoring for both file chains and directory-sector links
+
+Clicking a file's `Bytes` value opens a full-file payload hex viewer/editor.
+Clicking a sector in the disk map opens a per-sector hex viewer/editor.
 
 ## Notes
 
