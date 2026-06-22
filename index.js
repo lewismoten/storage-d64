@@ -21,7 +21,6 @@
   const diskFormatSelect = document.getElementById("disk-format");
   const imageUpload = document.getElementById("image-upload");
   const downloadButton = document.getElementById("download-button");
-  const refreshButton = document.getElementById("refresh-button");
   const fragmentButton = document.getElementById("fragment-button");
   const defragmentButton = document.getElementById("defragment-button");
   const currentFileName = document.getElementById("current-file-name");
@@ -3289,14 +3288,6 @@
     window.addEventListener("mouseup", stopDiskMapDrag);
     diskMap.addEventListener("mouseleave", function () {
       if (!diskMapView.dragging) return;
-    });
-    refreshButton.addEventListener("click", function () {
-      try {
-        refreshView();
-        setStatus("Re-read the current disk image.");
-      } catch (error) {
-        setStatus(error.message || String(error), true);
-      }
     });
     fileTypeSelect.addEventListener("change", syncFileTypeDialog);
     fileTypeForm.addEventListener("submit", saveFileTypeDialog);

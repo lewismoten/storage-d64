@@ -43,18 +43,7 @@
 
           <div class="stack">
             <fieldset class="field-group">
-              <legend>Current Image</legend>
-
-              <div class="field compact-metadata">
-                <span class="metadata-label">Filename</span>
-                <strong id="current-file-name">None loaded</strong>
-              </div>
-
-              <div class="action-row">
-                <button id="refresh-button" type="button" disabled>
-                  Refresh Parse
-                </button>
-              </div>
+              <legend>Utilities</legend>
               <div class="action-row action-row-secondary">
                 <button id="fragment-button" type="button" disabled>
                   Fragment Disk
@@ -72,9 +61,7 @@
         <section class="panel content">
           <div class="panel-heading">
             <h2>Inspection</h2>
-            <p>
-              Header details, geometry, usage estimates, and directory view.
-            </p>
+            <p id="current-file-name">None loaded</p>
           </div>
 
           <section class="summary-grid" aria-label="Disk summary">
