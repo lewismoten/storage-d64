@@ -112,6 +112,7 @@
     "closeFile",
     "scratchFile",
     "undeleteFile",
+    "destroyDeletedFile",
     "fragmentImage",
     "defragmentImage",
     "addFile",
@@ -3390,6 +3391,9 @@
           '<button type="button" class="restore-button" data-action="restore-file" data-entry-index="' +
           String(entry.index) +
           '">Restore</button>' +
+          '<button type="button" class="delete-button" data-action="destroy-deleted-file" data-entry-index="' +
+          String(entry.index) +
+          '">Destroy</button>' +
           "</div>" +
           "</article>"
         );
@@ -3790,6 +3794,27 @@
           " as " +
           restoreType.toUpperCase() +
           ".",
+        { resetDeletedTypeHints: false },
+      );
+      delete state.deletedTypeHints[deletedEntry.index];
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const destroyDeletedFile = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const deletedEntry = d64
+        .readDeletedEntries(state.image)
+        .find(function (entry) {
+          return String(entry.index) === String(entryIndex);
+        });
+      if (!deletedEntry) throw new Error("Deleted file not found.");
+      loadImageBytes(
+        d64.destroyDeletedFile(state.image, deletedEntry),
+        state.sourceName || "disk.d64",
+        "Destroyed deleted entry " + deletedEntry.name + ".",
         { resetDeletedTypeHints: false },
       );
       delete state.deletedTypeHints[deletedEntry.index];
@@ -4216,8 +4241,13 @@
       updateFileFlag(button.dataset.action, button.dataset.name);
     });
     deletedFilesList.addEventListener("click", function (event) {
-      const button = event.target.closest("button[data-action='restore-file']");
+      const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "destroy-deleted-file") {
+        destroyDeletedFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action !== "restore-file") return;
       const select = deletedFilesList.querySelector(
         "select[data-restore-type='" + button.dataset.entryIndex + "']",
       );
