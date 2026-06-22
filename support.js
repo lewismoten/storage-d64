@@ -2124,6 +2124,16 @@
           items: [
             formatTs(header.nextDirectoryTrack, header.nextDirectorySector),
           ],
+          sectorHighlights: [
+            {
+              track: DIRECTORY_TRACK,
+              sector: BAM_SECTOR,
+              byteIndexes: [
+                d64.headerOffsets.nextDirectoryTrack,
+                d64.headerOffsets.nextDirectorySector,
+              ],
+            },
+          ],
         },
       );
     } else if (
@@ -2154,6 +2164,13 @@
               .padStart(2, "0")
               .toUpperCase() +
             ".",
+          sectorHighlights: [
+            {
+              track: DIRECTORY_TRACK,
+              sector: BAM_SECTOR,
+              byteIndexes: [d64.headerOffsets.dosVersion],
+            },
+          ],
         },
       );
     }
@@ -2164,6 +2181,18 @@
         "Header DOS type field is not the expected 1541 DOS type.",
         {
           details: 'Found "' + String(header.dosType || "") + '".',
+          sectorHighlights: [
+            {
+              track: DIRECTORY_TRACK,
+              sector: BAM_SECTOR,
+              byteIndexes: Array.from(
+                { length: d64.headerOffsets.dosTypeLength },
+                function (_, index) {
+                  return d64.headerOffsets.dosTypeStart + index;
+                },
+              ),
+            },
+          ],
         },
       );
     }
@@ -2175,6 +2204,20 @@
         "repairable",
         "short-disk-id",
         "Disk ID field is blank or shorter than two characters.",
+        {
+          sectorHighlights: [
+            {
+              track: DIRECTORY_TRACK,
+              sector: BAM_SECTOR,
+              byteIndexes: Array.from(
+                { length: d64.headerOffsets.diskIdLength },
+                function (_, index) {
+                  return d64.headerOffsets.diskIdStart + index;
+                },
+              ),
+            },
+          ],
+        },
       );
     }
 
@@ -2512,6 +2555,18 @@
               ", chain uses " +
               String(fileChain.refs.length) +
               ".",
+            items: [
+              formatTs(entry.track, entry.sector) +
+                " slot " +
+                String(entry.slot),
+            ],
+            sectorHighlights: [
+              {
+                track: entry.track,
+                sector: entry.sector,
+                byteIndexes: [entry.slot * 32 + 28, entry.slot * 32 + 29],
+              },
+            ],
           },
         );
       }

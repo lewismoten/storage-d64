@@ -11,6 +11,7 @@
     diskCoverVisible: false,
     heatMapVisible: false,
     hexViewContext: null,
+    doctorReport: null,
     draggedFileName: "",
     dropTargetName: "",
     dropPlacement: "before",
@@ -347,6 +348,85 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  };
+
+  const encodeHtmlAttribute = function (value) {
+    return escapeHtml(value);
+  };
+
+  const matchesDoctorSectorHighlight = function (highlight, track, sector) {
+    return (
+      highlight &&
+      Number(highlight.track) === Number(track) &&
+      Number(highlight.sector) === Number(sector)
+    );
+  };
+
+  const findDoctorIssueHighlight = function (issue, track, sector) {
+    if (!issue || !Array.isArray(issue.sectorHighlights)) return null;
+    return (
+      issue.sectorHighlights.find(function (highlight) {
+        return matchesDoctorSectorHighlight(highlight, track, sector);
+      }) || null
+    );
+  };
+
+  const findMatchingDoctorIssue = function (report, context) {
+    const issues = report && Array.isArray(report.issues) ? report.issues : [];
+    const target = context || {};
+    return (
+      issues.find(function (issue) {
+        if (target.code && issue.code !== target.code) return false;
+        if (
+          target.entryIndex != null &&
+          Number(issue.entryIndex) !== Number(target.entryIndex)
+        ) {
+          return false;
+        }
+        if (
+          target.track != null &&
+          target.sector != null &&
+          Array.isArray(issue.sectorHighlights) &&
+          issue.sectorHighlights.length
+        ) {
+          return issue.sectorHighlights.some(function (highlight) {
+            return matchesDoctorSectorHighlight(
+              highlight,
+              target.track,
+              target.sector,
+            );
+          });
+        }
+        return true;
+      }) || null
+    );
+  };
+
+  const renderDoctorTextWithSectorLinks = function (text, issueIndex) {
+    const source = String(text || "");
+    const pattern = /T\s*(\d{1,2})\s*S\s*(\d{1,2})/gi;
+    let cursor = 0;
+    let markup = "";
+    let match = pattern.exec(source);
+    while (match) {
+      const start = match.index;
+      const end = start + match[0].length;
+      markup += escapeHtml(source.slice(cursor, start));
+      markup +=
+        '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+        encodeHtmlAttribute(String(issueIndex)) +
+        '" data-track="' +
+        encodeHtmlAttribute(String(Number(match[1]))) +
+        '" data-sector="' +
+        encodeHtmlAttribute(String(Number(match[2]))) +
+        '">' +
+        escapeHtml(match[0].replace(/\s+/g, " ").trim()) +
+        "</button>";
+      cursor = end;
+      match = pattern.exec(source);
+    }
+    markup += escapeHtml(source.slice(cursor));
+    return markup;
   };
 
   const formatNumber = function (value) {
@@ -1280,6 +1360,12 @@
           return result;
         }, {})
       : {};
+    const significantByteIndexes = Array.isArray(config.highlightByteIndexes)
+      ? config.highlightByteIndexes.reduce(function (result, value) {
+          result[Math.max(0, Math.floor(Number(value) || 0))] = true;
+          return result;
+        }, {})
+      : {};
     const selectionStart = Number.isFinite(config.selectionStart)
       ? Math.max(0, Math.floor(config.selectionStart))
       : null;
@@ -1336,6 +1422,9 @@
           if (invalidByteIndexes[absoluteIndex]) {
             classes.push("is-invalid");
           }
+          if (significantByteIndexes[absoluteIndex]) {
+            classes.push("is-significant");
+          }
           if (
             selectedMin != null &&
             absoluteIndex >= selectedMin &&
@@ -1369,6 +1458,9 @@
           }
           if (invalidByteIndexes[absoluteIndex]) {
             classes.push("is-invalid");
+          }
+          if (significantByteIndexes[absoluteIndex]) {
+            classes.push("is-significant");
           }
           if (
             selectedMin != null &&
@@ -2677,10 +2769,14 @@
         rangeKind: String(options.rangeKind || ""),
         textConfig: options.textConfig || null,
       },
+      doctorContext: options.doctorContext || null,
       renderConfig: {
         showOffsets: options.showOffsets !== false,
         highlightLinkBytes: options.highlightLinkBytes !== false,
         invalidByteIndexes: invalidByteIndexes,
+        highlightByteIndexes: Array.isArray(options.highlightByteIndexes)
+          ? options.highlightByteIndexes.slice()
+          : [],
       },
       selectionStart: null,
       selectionEnd: null,
@@ -2790,7 +2886,8 @@
     sectorByteValue.select();
   };
 
-  const openSectorDataDialog = function (track, sector) {
+  const openSectorDataDialog = function (track, sector, options) {
+    const config = options || {};
     if (!state.image || !isValidSectorAddress(track, sector, state.image))
       return;
     const normalizedTrack = Math.max(1, Math.floor(Number(track) || 0));
@@ -2803,6 +2900,18 @@
       normalizedSector,
     );
     const tailDimStart = getSectorTailDimStart(sectorBytes, info);
+    const notes = [];
+    if (tailDimStart != null) {
+      notes.push("Dimmed tail bytes are beyond used payload.");
+    }
+    if (
+      Array.isArray(config.highlightByteIndexes) &&
+      config.highlightByteIndexes.length
+    ) {
+      notes.push(
+        "Blue highlights mark bytes relevant to the selected Doctor issue.",
+      );
+    }
     sectorDataDialogName.textContent =
       "Track " +
       String(normalizedTrack) +
@@ -2818,10 +2927,7 @@
         String(normalizedTrack) +
         " Sector " +
         String(normalizedSector),
-      note:
-        tailDimStart != null
-          ? "Dimmed tail bytes are beyond used payload."
-          : "",
+      note: notes.join(" "),
       bytes: sectorBytes,
       byteOffsets: Array.from(
         { length: sectorBytes.length },
@@ -2829,7 +2935,13 @@
           return d64.trackOffset(normalizedTrack, normalizedSector) + index;
         },
       ),
-      renderConfig: { dimStart: tailDimStart },
+      renderConfig: {
+        dimStart: tailDimStart,
+        highlightByteIndexes: Array.isArray(config.highlightByteIndexes)
+          ? config.highlightByteIndexes.slice()
+          : [],
+      },
+      doctorContext: config.doctorContext || null,
       selectionStart: null,
       selectionEnd: null,
       selectionAnchor: null,
@@ -2974,13 +3086,29 @@
       state.hexViewContext && state.hexViewContext.mode === "absolute-range"
         ? state.hexViewContext.rangeConfig || {}
         : {};
+    const doctorContext =
+      state.hexViewContext && state.hexViewContext.doctorContext
+        ? Object.assign({}, state.hexViewContext.doctorContext)
+        : null;
+    const diagnosisAfterEdit = doctorContext
+      ? d64.diagnoseImage(nextImage)
+      : null;
+    const resolvedIssue = doctorContext
+      ? !findMatchingDoctorIssue(diagnosisAfterEdit, doctorContext)
+      : null;
+    const resolutionSuffix =
+      resolvedIssue == null
+        ? ""
+        : resolvedIssue
+          ? " Doctor issue resolved."
+          : " Doctor issue still present.";
     loadImageBytes(
       nextImage,
       state.sourceName || "disk.d64",
       sectorByteModeText.checked &&
         sectorByteDialog.dataset.textKind === "disk-name" &&
         overwriteText.trim() !== ""
-        ? "Updated disk name text."
+        ? "Updated disk name text." + resolutionSuffix
         : "Updated T" +
             String(track).padStart(2, "0") +
             "/S" +
@@ -2993,9 +3121,13 @@
               : "") +
             " to " +
             nextValueText +
-            ".",
+            "." +
+            resolutionSuffix,
       { resetDeletedTypeHints: false },
     );
+    if (diagnosisAfterEdit) {
+      state.doctorReport = diagnosisAfterEdit;
+    }
     if (
       sectorByteDialog.dataset.mode === "file" &&
       sectorByteDialog.dataset.fileName
@@ -3005,11 +3137,23 @@
       openImageRangeDialog(
         Object.assign({}, rangeConfig, {
           absoluteOffsets: rangeOffsets,
+          doctorContext: doctorContext,
         }),
       );
     } else {
       selectDiskMapSector(track, sector);
-      openSectorDataDialog(track, sector);
+      openSectorDataDialog(track, sector, {
+        highlightByteIndexes:
+          state.hexViewContext &&
+          state.hexViewContext.renderConfig &&
+          Array.isArray(state.hexViewContext.renderConfig.highlightByteIndexes)
+            ? state.hexViewContext.renderConfig.highlightByteIndexes.slice()
+            : [],
+        doctorContext: doctorContext,
+      });
+    }
+    if (diagnosisAfterEdit) {
+      refreshDoctorReport(nextImage);
     }
     closeSectorByteDialog();
   };
@@ -4192,6 +4336,7 @@
       },
       issues: [],
     };
+    state.doctorReport = diagnosis;
     const total = Math.max(0, Number(diagnosis.summary.total) || 0);
     doctorSummary.innerHTML =
       '<div class="doctor-summary-grid">' +
@@ -4248,11 +4393,18 @@
           "</div>"
         : "") +
       diagnosis.issues
-        .map(function (issue) {
+        .map(function (issue, issueIndex) {
           const items = Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
-                  return "<li>" + escapeHtml(String(item || "")) + "</li>";
+                  return (
+                    "<li>" +
+                    renderDoctorTextWithSectorLinks(
+                      String(item || ""),
+                      issueIndex,
+                    ) +
+                    "</li>"
+                  );
                 })
                 .join("")
             : "";
@@ -4272,7 +4424,10 @@
             "</div>" +
             (issue.details
               ? '<p class="doctor-issue-details">' +
-                escapeHtml(String(issue.details)) +
+                renderDoctorTextWithSectorLinks(
+                  String(issue.details),
+                  issueIndex,
+                ) +
                 "</p>"
               : "") +
             (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
@@ -4287,6 +4442,7 @@
     if (!state.image) return;
     try {
       const report = d64.diagnoseImage(state.image);
+      state.doctorReport = report;
       doctorDialogName.textContent =
         (state.sourceName || "Unsaved image") +
         " · " +
@@ -4313,6 +4469,7 @@
     const image = imageOverride || state.image;
     if (!image) return;
     const report = d64.diagnoseImage(image);
+    state.doctorReport = report;
     doctorDialogName.textContent =
       (state.sourceName || "Unsaved image") +
       " · " +
@@ -4939,6 +5096,11 @@
       const button = event.target.closest("button[data-action]");
       if (!button) return;
       if (button.dataset.action === "open-doctor-disk-name-hex") {
+        const report = state.doctorReport;
+        const issue = findMatchingDoctorIssue(report, {
+          code: "invalid-disk-name-field",
+        });
+        const highlight = issue ? findDoctorIssueHighlight(issue, 18, 0) : null;
         closeDoctorDialog();
         const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
         const length = d64.headerOffsets.diskNameLength;
@@ -4950,6 +5112,14 @@
           highlightLinkBytes: false,
           rangeKind: "disk-name",
           textConfig: { kind: "disk-name" },
+          doctorContext: issue
+            ? {
+                code: issue.code,
+                track: 18,
+                sector: 0,
+              }
+            : null,
+          highlightByteIndexes: highlight ? highlight.byteIndexes || [] : [],
           absoluteOffsets: Array.from({ length: length }, function (_, index) {
             return start + index;
           }),
@@ -4962,6 +5132,42 @@
       }
       if (button.dataset.action === "repair-doctor-block-counts-all") {
         repairMismatchedBlockCounts();
+        return;
+      }
+      if (button.dataset.action === "open-doctor-sector") {
+        const issueIndex = Math.max(
+          0,
+          Math.floor(Number(button.dataset.issueIndex) || 0),
+        );
+        const track = Math.max(
+          1,
+          Math.floor(Number(button.dataset.track) || 0),
+        );
+        const sector = Math.max(
+          0,
+          Math.floor(Number(button.dataset.sector) || 0),
+        );
+        const issue =
+          state.doctorReport &&
+          Array.isArray(state.doctorReport.issues) &&
+          state.doctorReport.issues[issueIndex]
+            ? state.doctorReport.issues[issueIndex]
+            : null;
+        const highlight = findDoctorIssueHighlight(issue, track, sector);
+        closeDoctorDialog();
+        selectDiskMapSector(track, sector, { centerView: true });
+        openSectorDataDialog(track, sector, {
+          highlightByteIndexes: highlight ? highlight.byteIndexes || [] : [],
+          doctorContext: issue
+            ? {
+                code: issue.code,
+                entryIndex:
+                  issue.entryIndex != null ? Number(issue.entryIndex) : null,
+                track: track,
+                sector: sector,
+              }
+            : null,
+        });
       }
     });
     fileTableBody.addEventListener("click", function (event) {
@@ -5125,6 +5331,7 @@
         byteIndex >= currentRange.start &&
         byteIndex <= currentRange.end
       ) {
+        const doctorContext = state.hexViewContext.doctorContext || null;
         const selectedOffsets = state.hexViewContext.byteOffsets.slice(
           currentRange.start,
           currentRange.end + 1,

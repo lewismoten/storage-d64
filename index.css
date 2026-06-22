@@ -1208,6 +1208,13 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(255, 142, 144, 0.2);
 }
 
+.sector-hex-byte.is-significant,
+.sector-ascii-char.is-significant {
+  background: rgba(94, 219, 255, 0.16);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(94, 219, 255, 0.28);
+}
+
 .sector-hex-byte[data-byte-index],
 .sector-ascii-char[data-byte-index] {
   cursor: pointer;
@@ -1654,6 +1661,24 @@ tbody tr.is-drop-target {
 
 .doctor-issue-items li + li {
   margin-top: 4px;
+}
+
+.doctor-sector-link {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0.12rem;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid rgba(142, 243, 230, 0.28);
+  border-radius: 999px;
+  background: rgba(142, 243, 230, 0.12);
+  color: var(--accent-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.doctor-sector-link:hover {
+  background: rgba(142, 243, 230, 0.18);
+  border-color: rgba(142, 243, 230, 0.42);
 }
 
 .doctor-issue-actions {
