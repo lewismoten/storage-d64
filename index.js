@@ -55,6 +55,12 @@
     "file-record-length-input",
   );
   const fileTypeCancel = document.getElementById("file-type-cancel");
+  const fileNameDialog = document.getElementById("file-name-dialog");
+  const fileNameForm = document.getElementById("file-name-form");
+  const fileNameDialogName = document.getElementById("file-name-dialog-name");
+  const fileNameTarget = document.getElementById("file-name-target");
+  const fileNameInput = document.getElementById("file-name-input");
+  const fileNameCancel = document.getElementById("file-name-cancel");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
   const REQUIRED_API = [
@@ -2698,7 +2704,13 @@
         return (
           "<tr>" +
           "<td>" +
+          '<button type="button" class="file-type-button" data-action="edit-name" data-name="' +
           escapeHtml(file.name) +
+          '" aria-label="' +
+          escapeHtml("Rename " + file.name) +
+          '">' +
+          escapeHtml(file.name) +
+          "</button>" +
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-type" data-name="' +
@@ -2913,11 +2925,38 @@
     }
   };
 
+  const openFileNameDialog = function (fileName) {
+    if (!state.image) return;
+    const file = d64.readFiles(state.image).find(function (entry) {
+      return entry.name === fileName;
+    });
+    if (!file) {
+      setStatus("File not found: " + fileName, true);
+      return;
+    }
+    fileNameTarget.value = file.name;
+    fileNameDialogName.textContent = file.name;
+    fileNameInput.value = file.name;
+    if (typeof fileNameDialog.showModal === "function") {
+      fileNameDialog.showModal();
+    } else {
+      fileNameDialog.setAttribute("open", "open");
+    }
+  };
+
   const closeFileTypeDialog = function () {
     if (typeof fileTypeDialog.close === "function") {
       fileTypeDialog.close();
     } else {
       fileTypeDialog.removeAttribute("open");
+    }
+  };
+
+  const closeFileNameDialog = function () {
+    if (typeof fileNameDialog.close === "function") {
+      fileNameDialog.close();
+    } else {
+      fileNameDialog.removeAttribute("open");
     }
   };
 
@@ -2943,6 +2982,28 @@
         "Updated file type for " + fileName + ".",
       );
       closeFileTypeDialog();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveFileNameDialog = function (event) {
+    event.preventDefault();
+    if (!state.image) return;
+    const fileName = fileNameTarget.value;
+    const nextName = String(fileNameInput.value || "").trim();
+    if (!nextName) {
+      setStatus("File name can not be empty.", true);
+      return;
+    }
+    try {
+      const nextImage = d64.renameFile(state.image, fileName, nextName);
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Renamed " + fileName + " to " + nextName + ".",
+      );
+      closeFileNameDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -3191,9 +3252,28 @@
     fileTypeCancel.addEventListener("click", function () {
       closeFileTypeDialog();
     });
+    fileNameInput.addEventListener("input", function () {
+      const upperValue = String(fileNameInput.value || "").toUpperCase();
+      if (fileNameInput.value !== upperValue) {
+        const start = fileNameInput.selectionStart;
+        const end = fileNameInput.selectionEnd;
+        fileNameInput.value = upperValue;
+        if (typeof start === "number" && typeof end === "number") {
+          fileNameInput.setSelectionRange(start, end);
+        }
+      }
+    });
+    fileNameForm.addEventListener("submit", saveFileNameDialog);
+    fileNameCancel.addEventListener("click", function () {
+      closeFileNameDialog();
+    });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "edit-name") {
+        openFileNameDialog(button.dataset.name);
+        return;
+      }
       if (button.dataset.action === "edit-type") {
         openFileTypeDialog(button.dataset.name);
         return;

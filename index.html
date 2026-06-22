@@ -288,6 +288,33 @@
               </div>
             </form>
           </dialog>
+
+          <dialog id="file-name-dialog" class="file-type-dialog">
+            <form id="file-name-form" method="dialog" class="file-type-form">
+              <div class="section-heading">
+                <h3>File Name</h3>
+                <p id="file-name-dialog-name">Rename a directory entry</p>
+              </div>
+              <input id="file-name-target" type="hidden" />
+              <label class="field">
+                <span>Name</span>
+                <input
+                  id="file-name-input"
+                  type="text"
+                  maxlength="16"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-1p-ignore="true"
+                />
+              </label>
+              <div class="dialog-actions">
+                <button id="file-name-cancel" type="button">Cancel</button>
+                <button id="file-name-save" type="submit">Save Name</button>
+              </div>
+            </form>
+          </dialog>
         </section>
       </section>
     </main>
