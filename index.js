@@ -18,6 +18,8 @@
   const imageUpload = document.getElementById("image-upload");
   const downloadButton = document.getElementById("download-button");
   const refreshButton = document.getElementById("refresh-button");
+  const fragmentButton = document.getElementById("fragment-button");
+  const defragmentButton = document.getElementById("defragment-button");
   const currentFileName = document.getElementById("current-file-name");
   const status = document.getElementById("status");
   const headerSummary = document.getElementById("header-summary");
@@ -58,6 +60,8 @@
     "closeFile",
     "scratchFile",
     "undeleteFile",
+    "fragmentImage",
+    "defragmentImage",
     "trackSectorCount",
   ];
   const DISK_MAP_COLORS = Object.freeze({
@@ -282,6 +286,8 @@
     currentFileName.textContent = state.sourceName || "Unsaved image";
     downloadButton.disabled = !state.image;
     refreshButton.disabled = !state.image;
+    fragmentButton.disabled = !state.image;
+    defragmentButton.disabled = !state.image;
   };
 
   const resetDeletedTypeHints = function () {
@@ -2713,6 +2719,34 @@
     }
   };
 
+  const rebuildDiskLayout = function (mode) {
+    if (!state.image) return;
+    try {
+      const deletedBefore = d64.readDeletedEntries(state.image).length;
+      const nextImage =
+        mode === "fragmented"
+          ? d64.fragmentImage(state.image)
+          : d64.defragmentImage(state.image);
+      if (!nextImage) {
+        throw new Error(
+          mode === "fragmented"
+            ? "Unable to fragment the current D64 image."
+            : "Unable to defragment the current D64 image.",
+        );
+      }
+      const message =
+        (mode === "fragmented"
+          ? "Fragmented active file allocation across the disk."
+          : "Defragmented active files into a compact layout.") +
+        (deletedBefore
+          ? " Deleted recovery entries were cleared during the rebuild."
+          : "");
+      loadImageBytes(nextImage, state.sourceName || "disk.d64", message);
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const startDiskMapDrag = function (event) {
     if (
       !state.image ||
@@ -2771,6 +2805,12 @@
       }
     });
     downloadButton.addEventListener("click", downloadCurrentImage);
+    fragmentButton.addEventListener("click", function () {
+      rebuildDiskLayout("fragmented");
+    });
+    defragmentButton.addEventListener("click", function () {
+      rebuildDiskLayout("sequential");
+    });
     diskMapZoomIn.addEventListener("click", function () {
       zoomDiskMap(1);
     });

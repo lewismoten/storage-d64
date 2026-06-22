@@ -1275,7 +1275,7 @@ Current limitations of this support layer:
 - Disk header customization is minimal and not exposed as a richer API for disk ID or DOS type variations.
 - This layer does not validate Commodore semantics beyond the structural image layout.
 - There is no visual disk-map API yet.
-- There is no sector fragmentation strategy beyond forward allocation.
+- Images can be rebuilt with either sequential allocation or an intentionally fragmented allocation strategy.
 
 ## Practical Limits
 

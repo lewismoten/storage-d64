@@ -1557,7 +1557,44 @@
     return entry;
   };
 
-  d64.allocateSectors = function (count, allocation) {
+  d64.normalizeAllocationMode = function (mode) {
+    return String(mode || "")
+      .trim()
+      .toLowerCase() === "fragmented"
+      ? "fragmented"
+      : "sequential";
+  };
+
+  d64.greatestCommonDivisor = function (left, right) {
+    let a = Math.abs(Math.floor(Number(left) || 0));
+    let b = Math.abs(Math.floor(Number(right) || 0));
+    while (b) {
+      const next = a % b;
+      a = b;
+      b = next;
+    }
+    return a || 1;
+  };
+
+  d64.collectAllocatableSectors = function (allocation) {
+    const result = [];
+    const trackLimit = d64.normalizeTrackCount(
+      allocation.trackCount || DEFAULT_TRACK_COUNT,
+    );
+    for (let track = 1; track <= trackLimit; track += 1) {
+      if (track === DIRECTORY_TRACK) continue;
+      const sectorCount = d64.trackSectorCount(track);
+      allocation.map[track] =
+        allocation.map[track] || new Array(sectorCount).fill(true);
+      for (let sector = 0; sector < sectorCount; sector += 1) {
+        if (!allocation.map[track][sector]) continue;
+        result.push({ track: track, sector: sector });
+      }
+    }
+    return result;
+  };
+
+  d64.allocateSequentialSectors = function (count, allocation) {
     const result = [];
     const trackLimit = d64.normalizeTrackCount(
       allocation.trackCount || DEFAULT_TRACK_COUNT,
@@ -1592,6 +1629,63 @@
       }
     }
     return result;
+  };
+
+  d64.allocateFragmentedSectors = function (count, allocation) {
+    const result = [];
+    const freePool = d64.collectAllocatableSectors(allocation);
+    if (!freePool.length || count <= 0) return result;
+    let stride = Math.max(
+      2,
+      Math.floor(Number(allocation.fragmentStride) || 29),
+    );
+    while (
+      freePool.length > 1 &&
+      d64.greatestCommonDivisor(stride, freePool.length) !== 1
+    ) {
+      stride += 1;
+    }
+    let cursor =
+      Math.max(0, Math.floor(Number(allocation.fragmentCursor) || 0)) %
+      freePool.length;
+    const used = new Array(freePool.length).fill(false);
+    const maxAttempts = freePool.length * 3;
+    let attempts = 0;
+    while (result.length < count && attempts < maxAttempts) {
+      if (!used[cursor]) {
+        const block = freePool[cursor];
+        used[cursor] = true;
+        allocation.map[block.track][block.sector] = false;
+        result.push(block);
+      }
+      cursor = (cursor + stride) % freePool.length;
+      attempts += 1;
+    }
+    if (result.length < count) {
+      for (
+        let index = 0;
+        index < freePool.length && result.length < count;
+        index += 1
+      ) {
+        if (used[index]) continue;
+        const block = freePool[index];
+        used[index] = true;
+        allocation.map[block.track][block.sector] = false;
+        result.push(block);
+      }
+    }
+    allocation.fragmentCursor = cursor;
+    return result;
+  };
+
+  d64.allocateSectors = function (count, allocation, options) {
+    const mode = d64.normalizeAllocationMode(
+      options && options.mode ? options.mode : allocation.mode,
+    );
+    if (mode === "fragmented") {
+      return d64.allocateFragmentedSectors(count, allocation);
+    }
+    return d64.allocateSequentialSectors(count, allocation);
   };
 
   d64.writeFile = function (image, data, allocation, unusedTailData) {
@@ -1794,6 +1888,15 @@
       track: 1,
       sector: 0,
       trackCount: geometry.trackCount,
+      mode: d64.normalizeAllocationMode(config.allocationMode),
+      fragmentStride: Math.max(
+        2,
+        Math.floor(Number(config.fragmentStride) || 29),
+      ),
+      fragmentCursor: Math.max(
+        0,
+        Math.floor(Number(config.fragmentCursor) || 0),
+      ),
       map: {},
       directorySectors: [],
     };
@@ -1869,6 +1972,23 @@
       options || {},
     );
     return d64.buildImage(files, config);
+  };
+
+  d64.defragmentImage = function (image, options) {
+    return d64.rebuildImage(image, d64.readFiles(image, options), {
+      allocationMode: "sequential",
+    });
+  };
+
+  d64.fragmentImage = function (image, options) {
+    const config = options || {};
+    return d64.rebuildImage(image, d64.readFiles(image, config), {
+      allocationMode: "fragmented",
+      fragmentStride: Math.max(
+        2,
+        Math.floor(Number(config.fragmentStride) || 29),
+      ),
+    });
   };
 
   d64.setDiskInfo = function (image, updates, options) {

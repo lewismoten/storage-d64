@@ -15,6 +15,9 @@ The support API reference lives in [support.md](./support.md).
 The local browser test lab lives in [index.html](./index.html) and
 [index.js](./index.js).
 
+The lab can also rebuild a loaded image into either a deliberately
+fragmented layout or a compact defragmented layout for visualization.
+
 When loaded, it calls:
 
 ```js
