@@ -2029,15 +2029,11 @@
       " Sector " +
       String(normalizedSector);
     sectorDataDialogBody.innerHTML =
-      '<div class="sector-inspector-dump">' +
-      '<div class="sector-inspector-dump-head"><strong>Sector Data</strong><span>Hex + printable view' +
       (tailDimStart != null
-        ? " · dimmed tail bytes are beyond used payload"
+        ? '<p class="sector-data-dialog-note">Dimmed tail bytes are beyond used payload.</p>'
         : "") +
-      "</span></div>" +
       '<div class="sector-hex-viewer">' +
       renderSectorHexDumpWithOptions(sectorBytes, { dimStart: tailDimStart }) +
-      "</div>" +
       "</div>";
     if (typeof sectorDataDialog.showModal === "function") {
       sectorDataDialog.showModal();
