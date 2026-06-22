@@ -2865,6 +2865,7 @@
       " sectors · " +
       formatNumber(layout.activeFiles) +
       " active files";
+    renderDiskMapLegend();
     if (
       state.heatMapVisible &&
       layout &&
