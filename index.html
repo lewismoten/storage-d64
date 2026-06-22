@@ -27,53 +27,12 @@
 
       <section class="layout">
         <aside class="panel controls">
-          <form id="create-form" class="stack" autocomplete="off">
+          <div class="stack">
             <fieldset class="field-group">
               <legend>Create New Image</legend>
-
-              <label class="field">
-                <span>Disk Name</span>
-                <input
-                  id="disk-name"
-                  name="diskName"
-                  type="text"
-                  maxlength="16"
-                  value="TEST LAB"
-                />
-              </label>
-
-              <label class="field">
-                <span>Disk ID</span>
-                <input
-                  id="disk-id"
-                  name="diskId"
-                  type="text"
-                  maxlength="2"
-                  value="TL"
-                />
-              </label>
-
-              <label class="field">
-                <span>Geometry</span>
-                <select id="disk-format" name="format">
-                  <option value="d64_35_track">35 track</option>
-                  <option value="d64_35_track_error_info">
-                    35 track + error info
-                  </option>
-                  <option value="d64_40_track">40 track</option>
-                  <option value="d64_40_track_error_info">
-                    40 track + error info
-                  </option>
-                  <option value="d64_42_track">42 track</option>
-                  <option value="d64_42_track_error_info">
-                    42 track + error info
-                  </option>
-                </select>
-              </label>
-
-              <button id="create-button" type="submit">Create New D64</button>
+              <button id="create-button" type="button">Create</button>
             </fieldset>
-          </form>
+          </div>
 
           <div class="stack">
             <fieldset class="field-group">
@@ -300,6 +259,56 @@
               <div class="dialog-actions">
                 <button id="file-name-cancel" type="button">Cancel</button>
                 <button id="file-name-save" type="submit">Save Name</button>
+              </div>
+            </form>
+          </dialog>
+
+          <dialog id="create-dialog" class="file-type-dialog">
+            <form id="create-form" method="dialog" class="file-type-form">
+              <div class="section-heading">
+                <h3>Create Disk Image</h3>
+                <p>Choose the disk name, ID, and geometry.</p>
+              </div>
+              <label class="field">
+                <span>Disk Name</span>
+                <input
+                  id="disk-name"
+                  name="diskName"
+                  type="text"
+                  maxlength="16"
+                  value="TEST LAB"
+                />
+              </label>
+              <label class="field">
+                <span>Disk ID</span>
+                <input
+                  id="disk-id"
+                  name="diskId"
+                  type="text"
+                  maxlength="2"
+                  value="TL"
+                />
+              </label>
+              <label class="field">
+                <span>Geometry</span>
+                <select id="disk-format" name="format">
+                  <option value="d64_35_track">35 track</option>
+                  <option value="d64_35_track_error_info">
+                    35 track + error info
+                  </option>
+                  <option value="d64_40_track">40 track</option>
+                  <option value="d64_40_track_error_info">
+                    40 track + error info
+                  </option>
+                  <option value="d64_42_track">42 track</option>
+                  <option value="d64_42_track_error_info">
+                    42 track + error info
+                  </option>
+                </select>
+              </label>
+              <div class="dialog-actions">
+                <button id="create-cancel" type="button">Cancel</button>
+                <button id="create-save" type="submit">Create</button>
               </div>
             </form>
           </dialog>

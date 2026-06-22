@@ -12,6 +12,9 @@
   };
 
   const createForm = document.getElementById("create-form");
+  const createDialog = document.getElementById("create-dialog");
+  const createButton = document.getElementById("create-button");
+  const createCancel = document.getElementById("create-cancel");
   const diskNameInput = document.getElementById("disk-name");
   const diskIdInput = document.getElementById("disk-id");
   const diskFormatSelect = document.getElementById("disk-format");
@@ -2812,8 +2815,25 @@
         d64.fileName(options),
         "Created a new blank D64 image.",
       );
+      closeCreateDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
+    }
+  };
+
+  const openCreateDialog = function () {
+    if (typeof createDialog.showModal === "function") {
+      createDialog.showModal();
+    } else {
+      createDialog.setAttribute("open", "open");
+    }
+  };
+
+  const closeCreateDialog = function () {
+    if (typeof createDialog.close === "function") {
+      createDialog.close();
+    } else {
+      createDialog.removeAttribute("open");
     }
   };
 
@@ -3141,11 +3161,15 @@
         "Missing D64 helpers: " + missing.join(", ") + ". Check support.js.",
         true,
       );
-      createForm.querySelector("button").disabled = true;
+      createButton.disabled = true;
       return;
     }
 
+    createButton.addEventListener("click", openCreateDialog);
     createForm.addEventListener("submit", createDiskImage);
+    createCancel.addEventListener("click", function () {
+      closeCreateDialog();
+    });
     imageUpload.addEventListener("change", function () {
       if (imageUpload.files && imageUpload.files[0]) {
         setStatus("Loading " + imageUpload.files[0].name + "...");
