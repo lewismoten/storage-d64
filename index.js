@@ -312,7 +312,11 @@
   const normalizeDroppedFileName = function (name) {
     const trimmed = String(name || "").trim();
     if (!trimmed) return "UNTITLED";
-    return trimmed.replace(/\.[^.]+$/, "").trim() || trimmed;
+    return (
+      d64.normalizeFileName(trimmed.replace(/\.[^.]+$/, "").trim(), 16) ||
+      d64.normalizeFileName(trimmed, 16) ||
+      "UNTITLED"
+    );
   };
 
   const toggleDiskDropTarget = function (isActive) {
@@ -2991,7 +2995,7 @@
     event.preventDefault();
     if (!state.image) return;
     const fileName = fileNameTarget.value;
-    const nextName = String(fileNameInput.value || "").trim();
+    const nextName = d64.normalizeFileName(fileNameInput.value, 16);
     if (!nextName) {
       setStatus("File name can not be empty.", true);
       return;
@@ -3253,13 +3257,18 @@
       closeFileTypeDialog();
     });
     fileNameInput.addEventListener("input", function () {
-      const upperValue = String(fileNameInput.value || "").toUpperCase();
-      if (fileNameInput.value !== upperValue) {
+      const normalizedValue = d64.normalizeFileName(fileNameInput.value, 16, {
+        trim: false,
+      });
+      if (fileNameInput.value !== normalizedValue) {
         const start = fileNameInput.selectionStart;
         const end = fileNameInput.selectionEnd;
-        fileNameInput.value = upperValue;
+        const delta = fileNameInput.value.length - normalizedValue.length;
+        fileNameInput.value = normalizedValue;
         if (typeof start === "number" && typeof end === "number") {
-          fileNameInput.setSelectionRange(start, end);
+          const nextStart = Math.max(0, start - delta);
+          const nextEnd = Math.max(0, end - delta);
+          fileNameInput.setSelectionRange(nextStart, nextEnd);
         }
       }
     });

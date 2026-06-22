@@ -347,9 +347,29 @@ Notes:
 
 - Output defaults to `16` bytes.
 - Names are uppercased.
-- Letters `A-Z`, digits `0-9`, spaces, and `.` are handled intentionally.
+- Unsupported characters are stripped before encoding.
+- Letters `A-Z`, digits `0-9`, spaces, `.`, `_`, and `-` are handled intentionally.
 - Spaces become `0xA0`.
-- Other characters are passed through as byte values from the JavaScript string.
+
+### `normalizeFileName(name, maxLength)`
+
+Normalizes a directory filename into the subset this implementation accepts.
+
+Parameters:
+
+- `name: string`
+- `maxLength?: number`
+
+Returns:
+
+- `string`
+
+Notes:
+
+- Output defaults to `16` characters.
+- Names are uppercased.
+- Only `A-Z`, `0-9`, space, `.`, `_`, and `-` are preserved.
+- Other characters, including quotes, are stripped.
 
 ### `decodeName(bytes)`
 
