@@ -4714,7 +4714,7 @@
             title: "Delete",
             ariaLabel: "Delete " + file.name,
             defaultIcon: "🗑️",
-            hoverIcon: "💥",
+            hoverIcon: "🚮",
             danger: true,
           }) +
           "</td>" +
