@@ -4648,6 +4648,61 @@
     }
   };
 
+  const repairDoctorSplatFiles = function () {
+    if (!state.image) return;
+    try {
+      let nextImage = state.image.slice();
+      let repairedCount = 0;
+      for (
+        let sectorIndex = 1;
+        sectorIndex < d64.trackSectorCount(18);
+        sectorIndex += 1
+      ) {
+        const sector = d64.readSector(nextImage, 18, sectorIndex);
+        if (!sector || sector.length < 256) continue;
+        for (let slot = 0; slot < 8; slot += 1) {
+          const offset = slot * 32;
+          const entry = d64.parseDirectoryEntryBytes(
+            sector.subarray(offset, offset + 32),
+            {
+              index: (sectorIndex - 1) * 8 + slot,
+              track: 18,
+              sector: sectorIndex,
+              slot: slot,
+            },
+          );
+          entry.deleted = d64.isDeletedDirectoryEntry(entry);
+          if (!entry.typeByte || entry.deleted || entry.closed !== false) {
+            continue;
+          }
+          const entryBytes = entry.raw.slice();
+          entryBytes[2] = entryBytes[2] | d64.directoryEntryFlags.closed;
+          nextImage = d64.writeDirectoryEntryBytes(
+            nextImage,
+            entry,
+            entryBytes,
+          );
+          repairedCount += 1;
+        }
+      }
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        repairedCount
+          ? "Closed " +
+              String(repairedCount) +
+              " splat/open file" +
+              (repairedCount === 1 ? "" : "s") +
+              "."
+          : "No splat files needed repair.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const renderDoctorReport = function (report) {
     const diagnosis = report || {
       summary: {
@@ -4716,6 +4771,15 @@
           '<div class="doctor-issue-actions">' +
           '<button type="button" class="file-type-button" data-action="rebuild-doctor-bam">' +
           "Rebuild" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "splat-files") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-splat-files">' +
+          "Repair" +
           "</button>" +
           "</div>"
         );
@@ -5738,6 +5802,10 @@
         openDoctorDiskIdDialog((header && header.diskId) || "00", {
           source: "doctor",
         });
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-splat-files") {
+        repairDoctorSplatFiles();
         return;
       }
       if (button.dataset.action === "repair-doctor-block-counts") {
