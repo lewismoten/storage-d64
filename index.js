@@ -4625,16 +4625,13 @@
           }) +
           "</td>" +
           "<td>" +
-          flagMarkup(file.locked, {
-            trueClass: "bad",
-            falseClass: "good",
-            trueText: "Locked",
-            falseText: "Unlocked",
-            action: "toggle-lock",
-            entryIndex: String((file.entry && file.entry.index) || ""),
-            fileName: file.name,
-            ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
-          }) +
+          '<button type="button" class="file-type-button" data-action="toggle-lock" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          '" aria-label="' +
+          escapeHtml((file.locked ? "Unlock " : "Lock ") + file.name) +
+          '">' +
+          escapeHtml(file.locked ? "Unlock" : "Lock") +
+          "</button>" +
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="download-file" data-entry-index="' +
