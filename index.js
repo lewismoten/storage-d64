@@ -4917,7 +4917,7 @@
           "Repair" +
           "</button>" +
           '<button type="button" class="file-type-button" data-action="set-doctor-disk-id">' +
-          "Set Disk ID" +
+          "Review" +
           "</button>" +
           "</div>"
         );
