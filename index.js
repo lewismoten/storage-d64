@@ -4491,6 +4491,38 @@
     }
   };
 
+  const normalizeDoctorDiskName = function () {
+    if (!state.image) return;
+    try {
+      const nextImage = state.image.slice();
+      const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
+      const length = d64.headerOffsets.diskNameLength;
+      for (let index = 0; index < length; index += 1) {
+        const absoluteOffset = start + index;
+        const value = nextImage[absoluteOffset];
+        if (value === 0x00 || value === 0xa0 || value === 0x20) continue;
+        const char = String.fromCharCode(value & 0xff);
+        if (!/^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]$/.test(char)) {
+          nextImage[absoluteOffset] = 0xa0;
+        }
+      }
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Normalized invalid disk name bytes to spaces.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReport(nextImage);
+      if (typeof doctorDialog.showModal === "function") {
+        doctorDialog.showModal();
+      } else {
+        doctorDialog.setAttribute("open", "open");
+      }
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const closeDoctorDialog = function () {
     if (typeof doctorDialog.close === "function") {
       doctorDialog.close();
@@ -4538,6 +4570,9 @@
       if (issue.code === "invalid-disk-name-field") {
         return (
           '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="normalize-doctor-disk-name">' +
+          "Normalize" +
+          "</button>" +
           '<button type="button" class="file-type-button" data-action="open-doctor-disk-name-hex">' +
           "Open Disk Name Hex" +
           "</button>" +
@@ -5503,6 +5538,10 @@
             return start + index;
           }),
         });
+        return;
+      }
+      if (button.dataset.action === "normalize-doctor-disk-name") {
+        normalizeDoctorDiskName();
         return;
       }
       if (button.dataset.action === "repair-doctor-block-counts") {
