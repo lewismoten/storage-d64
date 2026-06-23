@@ -1366,6 +1366,26 @@ tbody tr.is-dragging {
   opacity: 0.45;
 }
 
+tbody tr.is-successive-duplicate {
+  opacity: 0.62;
+}
+
+tbody tr.is-successive-duplicate td {
+  color: rgba(220, 230, 236, 0.72);
+}
+
+tbody tr.is-successive-duplicate .file-type-button,
+tbody tr.is-successive-duplicate .flag,
+tbody tr.is-successive-duplicate .delete-button,
+tbody tr.is-successive-duplicate .drag-handle {
+  filter: saturate(0.72);
+}
+
+tbody tr.is-successive-duplicate .file-type-button,
+tbody tr.is-successive-duplicate .drag-handle {
+  border-color: rgba(185, 227, 242, 0.1);
+}
+
 tbody tr.is-drop-target {
   background: rgba(142, 243, 230, 0.08);
 }

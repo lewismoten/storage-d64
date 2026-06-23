@@ -4524,15 +4524,28 @@
       return;
     }
 
+    const seenActiveNames = {};
     fileTableBody.innerHTML = files
       .map(function (file) {
         if (state.draggedFileName && state.draggedFileName === file.name) {
           return "";
         }
+        const normalizedName = String(file.name || "")
+          .trim()
+          .toUpperCase();
+        const isSuccessiveDuplicate =
+          Boolean(normalizedName) && Boolean(seenActiveNames[normalizedName]);
+        if (normalizedName) {
+          seenActiveNames[normalizedName] = true;
+        }
         return (
           '<tr data-file-name="' +
           escapeHtml(file.name) +
-          '">' +
+          '"' +
+          (isSuccessiveDuplicate
+            ? ' class="is-successive-duplicate" title="A previous active entry already uses this filename. Loading may prefer the earlier entry."'
+            : "") +
+          ">" +
           '<td class="drag-cell"><button type="button" class="drag-handle" draggable="true" data-drag-handle="true" data-name="' +
           escapeHtml(file.name) +
           '" aria-label="' +
