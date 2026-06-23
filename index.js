@@ -4674,8 +4674,8 @@
             ),
             title: file.closed ? "Open" : "Close",
             ariaLabel: (file.closed ? "Open " : "Close ") + file.name,
-            defaultIcon: file.closed ? "📁" : "📂",
-            hoverIcon: file.closed ? "📂" : "📁",
+            defaultIcon: file.closed ? "📄" : "✏️",
+            hoverIcon: file.closed ? "✏️" : "📄",
           }) +
           "</td>" +
           "<td>" +
@@ -4711,7 +4711,7 @@
             title: "Delete",
             ariaLabel: "Delete " + file.name,
             defaultIcon: "🗑️",
-            hoverIcon: "✖️",
+            hoverIcon: "💥",
             danger: true,
           }) +
           "</td>" +
