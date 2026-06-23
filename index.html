@@ -378,6 +378,40 @@
             </form>
           </dialog>
 
+          <dialog id="doctor-disk-id-dialog" class="file-type-dialog">
+            <form
+              id="doctor-disk-id-form"
+              method="dialog"
+              class="file-type-form"
+            >
+              <div class="section-heading">
+                <h3>Disk ID</h3>
+                <p id="doctor-disk-id-dialog-name">
+                  Set the two-character disk ID.
+                </p>
+              </div>
+              <label class="field">
+                <span>Disk ID</span>
+                <input
+                  id="doctor-disk-id-input"
+                  type="text"
+                  maxlength="2"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-1p-ignore="true"
+                />
+              </label>
+              <div class="dialog-actions">
+                <button id="doctor-disk-id-cancel" type="button">Cancel</button>
+                <button id="doctor-disk-id-save" type="submit">
+                  Save Disk ID
+                </button>
+              </div>
+            </form>
+          </dialog>
+
           <dialog id="create-dialog" class="file-type-dialog">
             <form id="create-form" method="dialog" class="file-type-form">
               <div class="section-heading">

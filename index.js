@@ -125,6 +125,13 @@
     "doctor-entry-record-length",
   );
   const doctorEntryCancel = document.getElementById("doctor-entry-cancel");
+  const doctorDiskIdDialog = document.getElementById("doctor-disk-id-dialog");
+  const doctorDiskIdForm = document.getElementById("doctor-disk-id-form");
+  const doctorDiskIdDialogName = document.getElementById(
+    "doctor-disk-id-dialog-name",
+  );
+  const doctorDiskIdInput = document.getElementById("doctor-disk-id-input");
+  const doctorDiskIdCancel = document.getElementById("doctor-disk-id-cancel");
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
     "sector-data-dialog-title",
@@ -386,6 +393,13 @@
         .trim()
         .toUpperCase() || "TL"
     ).slice(0, 2);
+  };
+
+  const normalizeDoctorDiskIdValue = function (value) {
+    return String(value || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 2);
   };
 
   const toDisplayValue = function (value) {
@@ -4218,10 +4232,14 @@
       { label: "Disk Name", value: toDisplayValue(header.diskName) },
       {
         label: "Disk ID / DOS",
-        value:
-          toDisplayValue(header.diskId) +
-          " / " +
-          toDisplayValue(header.dosType),
+        html:
+          '<button type="button" class="meta-inline-button" data-action="edit-disk-id" aria-label="Edit disk ID">' +
+          escapeHtml(toDisplayValue(header.diskId)) +
+          "</button>" +
+          '<span class="meta-inline-separator"> / </span>' +
+          '<span class="meta-inline-value">' +
+          escapeHtml(toDisplayValue(header.dosType)) +
+          "</span>",
       },
       { label: "Format", value: toDisplayValue(header.format) },
       {
@@ -4555,6 +4573,81 @@
     }
   };
 
+  const closeDoctorDiskIdDialog = function () {
+    if (typeof doctorDiskIdDialog.close === "function") {
+      doctorDiskIdDialog.close();
+    } else {
+      doctorDiskIdDialog.removeAttribute("open");
+    }
+  };
+
+  const openDoctorDiskIdDialog = function (value, options) {
+    const config = options || {};
+    const normalizedValue = normalizeDoctorDiskIdValue(value || "00") || "00";
+    doctorDiskIdDialogName.textContent =
+      "Set the two-character disk ID stored in the header.";
+    doctorDiskIdDialog.dataset.source = config.source || "header";
+    doctorDiskIdInput.value = normalizedValue;
+    doctorDiskIdInput.setCustomValidity("");
+    if (typeof doctorDiskIdDialog.showModal === "function") {
+      doctorDiskIdDialog.showModal();
+    } else {
+      doctorDiskIdDialog.setAttribute("open", "open");
+    }
+    doctorDiskIdInput.focus();
+    doctorDiskIdInput.select();
+  };
+
+  const writeDoctorDiskId = function (value, options) {
+    if (!state.image) return;
+    const config = options || {};
+    const diskId = normalizeDoctorDiskIdValue(value || "00") || "00";
+    const nextImage = state.image.slice();
+    const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskIdStart;
+    nextImage.set(d64.encodeFileName(diskId, 2), start);
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      'Updated disk ID to "' + diskId + '".',
+      { resetDeletedTypeHints: false },
+    );
+    if (config.refreshDoctor === true) {
+      refreshDoctorReportAfterImageChange();
+    }
+  };
+
+  const repairDoctorDiskId = function () {
+    try {
+      writeDoctorDiskId("00", { refreshDoctor: true });
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveDoctorDiskIdDialog = function (event) {
+    event.preventDefault();
+    const normalizedValue = normalizeDoctorDiskIdValue(doctorDiskIdInput.value);
+    if (doctorDiskIdInput.value !== normalizedValue) {
+      doctorDiskIdInput.value = normalizedValue;
+    }
+    if (normalizedValue.length !== 2) {
+      doctorDiskIdInput.setCustomValidity(
+        "Disk ID must be exactly two characters.",
+      );
+      doctorDiskIdInput.reportValidity();
+      return;
+    }
+    doctorDiskIdInput.setCustomValidity("");
+    try {
+      writeDoctorDiskId(normalizedValue, {
+        refreshDoctor: doctorDiskIdDialog.dataset.source === "doctor",
+      });
+      closeDoctorDiskIdDialog();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const renderDoctorReport = function (report) {
     const diagnosis = report || {
       summary: {
@@ -4602,6 +4695,18 @@
           "</button>" +
           '<button type="button" class="file-type-button" data-action="open-doctor-disk-name-hex">' +
           "Open Disk Name Hex" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "short-disk-id") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-disk-id">' +
+          "Repair" +
+          "</button>" +
+          '<button type="button" class="file-type-button" data-action="set-doctor-disk-id">' +
+          "Set Disk ID" +
           "</button>" +
           "</div>"
         );
@@ -5488,6 +5593,16 @@
     fileNameCancel.addEventListener("click", function () {
       closeFileNameDialog();
     });
+    headerSummary.addEventListener("click", function (event) {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      if (button.dataset.action === "edit-disk-id") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDiskIdDialog((header && header.diskId) || "00", {
+          source: "header",
+        });
+      }
+    });
     doctorEntryType.addEventListener("change", function () {
       syncDoctorEntryDialog();
       validateDoctorEntryDialog();
@@ -5530,6 +5645,19 @@
       } else {
         doctorDialog.setAttribute("open", "open");
       }
+    });
+    doctorDiskIdInput.addEventListener("input", function () {
+      const normalizedValue = normalizeDoctorDiskIdValue(
+        doctorDiskIdInput.value,
+      );
+      if (doctorDiskIdInput.value !== normalizedValue) {
+        doctorDiskIdInput.value = normalizedValue;
+      }
+      doctorDiskIdInput.setCustomValidity("");
+    });
+    doctorDiskIdForm.addEventListener("submit", saveDoctorDiskIdDialog);
+    doctorDiskIdCancel.addEventListener("click", function () {
+      closeDoctorDiskIdDialog();
     });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;
@@ -5599,6 +5727,17 @@
       }
       if (button.dataset.action === "normalize-doctor-disk-name") {
         normalizeDoctorDiskName();
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-disk-id") {
+        repairDoctorDiskId();
+        return;
+      }
+      if (button.dataset.action === "set-doctor-disk-id") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDiskIdDialog((header && header.diskId) || "00", {
+          source: "doctor",
+        });
         return;
       }
       if (button.dataset.action === "repair-doctor-block-counts") {

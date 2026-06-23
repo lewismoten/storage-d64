@@ -391,6 +391,30 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.meta-inline-button {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 999px;
+  background: rgba(63, 209, 194, 0.12);
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.meta-inline-separator,
+.meta-inline-value {
+  vertical-align: middle;
+}
+
 .usage-chart-panel {
   display: grid;
   grid-template-columns: 1fr;
