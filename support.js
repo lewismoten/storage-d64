@@ -2901,6 +2901,212 @@
     });
   };
 
+  d64.corruptImageForDoctor = function (image, options) {
+    const sourceHeader = image ? d64.readHeader(image) : null;
+    const config = options || {};
+    let bytes = d64.buildImage(
+      [
+        {
+          name: "LOCKEDA",
+          type: "prg",
+          locked: true,
+          data: new Uint8Array([1, 2, 3, 4]),
+        },
+        {
+          name: "SPLAT",
+          type: "prg",
+          closed: false,
+          data: new Uint8Array([5, 6, 7, 8]),
+        },
+        {
+          name: "RELBAD",
+          type: "rel",
+          recordLength: 32,
+          data: new Uint8Array(64),
+        },
+        {
+          name: "SLACK",
+          type: "prg",
+          data: new Uint8Array([9, 10, 11, 12]),
+        },
+      ],
+      {
+        format: "d64_40_track_error_info",
+        diskName:
+          (sourceHeader && sourceHeader.diskName) ||
+          String(config.diskName || "DOCTOR TRAP"),
+        diskId:
+          (sourceHeader && sourceHeader.diskId) ||
+          String(config.diskId || "DX"),
+      },
+    );
+
+    const writeSector = function (track, sector, values) {
+      const block = new Uint8Array(SECTOR_SIZE);
+      block.set(
+        values instanceof Uint8Array ? values : new Uint8Array(values || []),
+      );
+      bytes.set(block, d64.trackOffset(track, sector));
+    };
+
+    const readEntry = function (index) {
+      return d64.readDirectoryEntry(bytes, index);
+    };
+
+    const writeEntry = function (index, entryBytes) {
+      bytes = d64.writeDirectoryEntryBytes(bytes, readEntry(index), entryBytes);
+    };
+
+    const setBamSectorFlag = function (track, sector, isFree) {
+      if (track < 1 || track > DEFAULT_TRACK_COUNT) return;
+      if (sector < 0 || sector >= d64.trackSectorCount(track)) return;
+      const bamOffset = d64.headerOffsets.bamStart + (track - 1) * 4;
+      const byteOffset = bamOffset + 1 + (sector >> 3);
+      const mask = 1 << (sector & 7);
+      if (isFree) {
+        bytes[byteOffset] |= mask;
+      } else {
+        bytes[byteOffset] &= 0xff ^ mask;
+      }
+    };
+
+    const setBamTrackRow = function (track, freeCount, bit0, bit1, bit2) {
+      if (track < 1 || track > DEFAULT_TRACK_COUNT) return;
+      const bamOffset = d64.headerOffsets.bamStart + (track - 1) * 4;
+      bytes[bamOffset] = freeCount & 0xff;
+      bytes[bamOffset + 1] = bit0 & 0xff;
+      bytes[bamOffset + 2] = bit1 & 0xff;
+      bytes[bamOffset + 3] = bit2 & 0xff;
+    };
+
+    const headerOffset = d64.trackOffset(DIRECTORY_TRACK, BAM_SECTOR);
+    bytes[headerOffset + d64.headerOffsets.dosVersion] = 0x99;
+    bytes[headerOffset + d64.headerOffsets.diskNameStart + 5] = 0x19;
+    bytes[headerOffset + d64.headerOffsets.diskIdStart] = 0x44;
+    bytes[headerOffset + d64.headerOffsets.diskIdStart + 1] = 0xa0;
+    bytes[headerOffset + d64.headerOffsets.dosTypeStart] = 0x5a;
+    bytes[headerOffset + d64.headerOffsets.dosTypeStart + 1] = 0x5a;
+
+    const directorySector1 = d64.readSector(bytes, DIRECTORY_TRACK, 1).slice();
+    directorySector1[0] = DIRECTORY_TRACK;
+    directorySector1[1] = 1;
+    bytes.set(directorySector1, d64.trackOffset(DIRECTORY_TRACK, 1));
+
+    let entry0 = d64.createDirectoryEntry("LOCKEDA", "prg", 1, 0, 2, {
+      closed: true,
+      locked: true,
+      sideSectorTrack: 1,
+      sideSectorSector: 1,
+    });
+    writeEntry(0, entry0);
+    writeSector(1, 0, [0, 5, 1, 2, 3, 4]);
+
+    let entry1 = d64.createDirectoryEntry("SPLAT", "prg", 1, 1, 1, {
+      closed: false,
+      locked: false,
+    });
+    writeEntry(1, entry1);
+    writeSector(1, 1, [0, 5, 5, 6, 7, 8]);
+
+    let entry2 = d64.createDirectoryEntry("LOCKEDA", "usr", 1, 2, 1, {
+      closed: true,
+      locked: false,
+    });
+    writeEntry(2, entry2);
+    writeSector(1, 2, [0, 5, 9, 10, 11, 12]);
+
+    let entry3 = d64.createDirectoryEntry("NOSTART", "prg", 0, 0, 1, {
+      closed: true,
+    });
+    writeEntry(3, entry3);
+
+    let entry4 = d64.createDirectoryEntry("BADPTR", "prg", 99, 99, 1, {
+      closed: true,
+    });
+    writeEntry(4, entry4);
+
+    let entry5 = d64.createDirectoryEntry("RESERVE", "prg", 18, 2, 1, {
+      closed: true,
+    });
+    writeEntry(5, entry5);
+    writeSector(18, 2, [0, 5, 82, 69, 83, 86]);
+
+    let entry6 = d64.createDirectoryEntry("LOOP", "prg", 40, 0, 2, {
+      closed: true,
+    });
+    writeEntry(6, entry6);
+    writeSector(40, 0, [40, 1, 76, 79, 79, 80]);
+    writeSector(40, 1, [40, 0, 66, 65, 67, 75]);
+
+    let entry7 = d64.createDirectoryEntry("BROKEN", "prg", 39, 0, 1, {
+      closed: true,
+    });
+    writeEntry(7, entry7);
+    writeSector(39, 0, [99, 99, 66, 82, 75, 78]);
+
+    let entry8 = d64.createDirectoryEntry("RELBAD", "rel", 38, 0, 1, {
+      closed: true,
+      sideSectorTrack: 99,
+      sideSectorSector: 99,
+      recordLength: 0,
+    });
+    writeEntry(8, entry8);
+    writeSector(38, 0, [0, 5, 82, 69, 76, 33]);
+
+    let entry9 = d64.createDirectoryEntry("CROSSA", "prg", 1, 0, 1, {
+      closed: true,
+    });
+    writeEntry(9, entry9);
+
+    let entry10 = d64.createDirectoryEntry("SLACK", "prg", 37, 0, 1, {
+      closed: true,
+    });
+    writeEntry(10, entry10);
+    const slackSector = new Uint8Array(SECTOR_SIZE);
+    slackSector[0] = 0;
+    slackSector[1] = 4;
+    slackSector[2] = 0x53;
+    slackSector[3] = 0x4c;
+    slackSector[4] = 0x4b;
+    slackSector[5] = 0xaa;
+    slackSector[6] = 0xbb;
+    slackSector[7] = 0xcc;
+    bytes.set(slackSector, d64.trackOffset(37, 0));
+
+    let entry11 = d64.createDirectoryEntry("UNKNOWN", "prg", 36, 0, 1, {
+      closed: true,
+    });
+    entry11[2] = 0x87;
+    writeEntry(11, entry11);
+    writeSector(36, 0, [0, 5, 85, 78, 75, 33]);
+
+    let entry12 = d64.createDeletedDirectoryEntry("DELSAFE", 35, 0, 1);
+    writeEntry(12, entry12);
+    writeSector(35, 0, [0, 5, 68, 69, 76, 33]);
+
+    let entry13 = d64.createDeletedDirectoryEntry("DELUNSAFE", 1, 0, 1);
+    writeEntry(13, entry13);
+
+    bytes = d64.writeSectorError(bytes, 1, 0, 0x09, {
+      format: "d64_40_track_error_info",
+    });
+
+    const copiedBamSector = d64.readSector(bytes, DIRECTORY_TRACK, BAM_SECTOR);
+    bytes.set(copiedBamSector, d64.trackOffset(20, 0));
+
+    setBamTrackRow(1, 21, 0xff, 0xff, 0xff);
+    setBamTrackRow(18, 17, 0xfc, 0xff, 0x07);
+    setBamTrackRow(33, 0, 0x00, 0x00, 0x0a);
+    setBamTrackRow(34, 0x80, 0xff, 0x01, 0x11);
+    setBamTrackRow(35, 0xff, 0xff, 0x01, 0x53);
+
+    setBamSectorFlag(1, 0, true);
+    setBamSectorFlag(1, 1, true);
+    setBamSectorFlag(17, 5, false);
+
+    return bytes;
+  };
+
   d64.inspectImage = function (image, options) {
     return {
       header: d64.readHeader(image),

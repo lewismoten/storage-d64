@@ -31,6 +31,7 @@
   const validateButton = document.getElementById("validate-button");
   const fragmentButton = document.getElementById("fragment-button");
   const defragmentButton = document.getElementById("defragment-button");
+  const corruptButton = document.getElementById("corrupt-button");
   const heatmapButton = document.getElementById("heatmap-button");
   const currentFileName = document.getElementById("current-file-name");
   const status = document.getElementById("status");
@@ -182,6 +183,7 @@
     "validateImage",
     "fragmentImage",
     "defragmentImage",
+    "corruptImageForDoctor",
     "addFile",
     "reorderFiles",
     "trackSectorCount",
@@ -746,6 +748,7 @@
     validateButton.disabled = !state.image;
     fragmentButton.disabled = !state.image;
     defragmentButton.disabled = !state.image;
+    corruptButton.disabled = !state.image;
     heatmapButton.disabled = !state.image;
   };
 
@@ -4470,6 +4473,20 @@
     }
   };
 
+  const corruptCurrentImageForDoctor = function () {
+    if (!state.image) return;
+    try {
+      loadImageBytes(
+        d64.corruptImageForDoctor(state.image),
+        state.sourceName || "disk.d64",
+        "Corrupted the image to trigger a broad Doctor issue set.",
+        { resetDeletedTypeHints: false },
+      );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const rebuildBamFromDoctor = function () {
     if (!state.image) return;
     try {
@@ -5330,6 +5347,7 @@
     defragmentButton.addEventListener("click", function () {
       rebuildDiskLayout("sequential");
     });
+    corruptButton.addEventListener("click", corruptCurrentImageForDoctor);
     diskMapZoomIn.addEventListener("click", function () {
       zoomDiskMap(1);
     });
