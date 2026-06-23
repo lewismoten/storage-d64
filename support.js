@@ -4420,7 +4420,11 @@
             .toUpperCase();
     const index = files.findIndex(function (file) {
       if (targetIndex) {
-        return String((file.entry && file.entry.index) || "") === targetIndex;
+        return (
+          String(
+            file.entry && file.entry.index != null ? file.entry.index : "",
+          ) === targetIndex
+        );
       }
       return (
         String(file.name || "")
@@ -4516,7 +4520,9 @@
       const nameKey = String(file.name || "")
         .trim()
         .toUpperCase();
-      const entryIndexKey = String((file.entry && file.entry.index) || "");
+      const entryIndexKey = String(
+        file.entry && file.entry.index != null ? file.entry.index : "",
+      );
       if (!byName[nameKey]) {
         byName[nameKey] = [];
       }
@@ -4541,15 +4547,25 @@
         .toUpperCase();
       if (!nameKey || !Array.isArray(byName[nameKey])) return;
       const nextFile = byName[nameKey].find(function (file) {
-        const key = String((file.entry && file.entry.index) || "");
+        const key = String(
+          file.entry && file.entry.index != null ? file.entry.index : "",
+        );
         return !seen[key];
       });
       if (!nextFile) return;
       reordered.push(nextFile);
-      seen[String((nextFile.entry && nextFile.entry.index) || "")] = true;
+      seen[
+        String(
+          nextFile.entry && nextFile.entry.index != null
+            ? nextFile.entry.index
+            : "",
+        )
+      ] = true;
     });
     files.forEach(function (file) {
-      const key = String((file.entry && file.entry.index) || "");
+      const key = String(
+        file.entry && file.entry.index != null ? file.entry.index : "",
+      );
       if (seen[key]) return;
       reordered.push(file);
       seen[key] = true;

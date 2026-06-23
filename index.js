@@ -604,7 +604,11 @@
     if (!targetIndex) return null;
     return (
       d64.readFiles(state.image).find(function (file) {
-        return String((file.entry && file.entry.index) || "") === targetIndex;
+        return (
+          String(
+            file.entry && file.entry.index != null ? file.entry.index : "",
+          ) === targetIndex
+        );
       }) || null
     );
   };
@@ -774,7 +778,9 @@
       const entryName = d64.normalizeFileName(entry.name, 16);
       return (
         entryName === normalizedNextName &&
-        String((entry.entry && entry.entry.index) || "") !== targetIndex
+        String(
+          entry.entry && entry.entry.index != null ? entry.entry.index : "",
+        ) !== targetIndex
       );
     });
   };
@@ -4572,8 +4578,9 @@
       .map(function (file) {
         if (
           state.draggedEntryIndex !== "" &&
-          String((file.entry && file.entry.index) || "") ===
-            String(state.draggedEntryIndex)
+          String(
+            file.entry && file.entry.index != null ? file.entry.index : "",
+          ) === String(state.draggedEntryIndex)
         ) {
           return "";
         }
@@ -4589,7 +4596,11 @@
           '<tr data-file-name="' +
           escapeHtml(file.name) +
           '" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           '"' +
           (isSuccessiveDuplicate
             ? ' class="is-successive-duplicate" title="A previous active entry already uses this filename. Loading may prefer the earlier entry."'
@@ -4598,16 +4609,28 @@
           '<td class="drag-cell"><button type="button" class="drag-handle" draggable="true" data-drag-handle="true" data-name="' +
           escapeHtml(file.name) +
           '" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           '" aria-label="' +
           escapeHtml("Drag to reorder " + file.name) +
           '">::</button></td>' +
           "<td>" +
-          escapeHtml(String((file.entry && file.entry.index) || 0)) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-name" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           '" aria-label="' +
           escapeHtml("Rename " + file.name) +
           '">' +
@@ -4616,7 +4639,11 @@
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-type" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           '" aria-label="' +
           escapeHtml("Edit file type for " + file.name) +
           '">' +
@@ -4628,7 +4655,11 @@
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-bytes" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
           '" aria-label="' +
           escapeHtml("Edit bytes for " + file.name) +
           '">' +
@@ -4638,7 +4669,9 @@
           "<td>" +
           actionIconMarkup({
             action: "toggle-closed",
-            entryIndex: String((file.entry && file.entry.index) || ""),
+            entryIndex: String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
             title: file.closed ? "Open" : "Close",
             ariaLabel: (file.closed ? "Open " : "Close ") + file.name,
             defaultIcon: file.closed ? "📁" : "📂",
@@ -4648,7 +4681,9 @@
           "<td>" +
           actionIconMarkup({
             action: "toggle-lock",
-            entryIndex: String((file.entry && file.entry.index) || ""),
+            entryIndex: String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
             title: file.locked ? "Unlock" : "Lock",
             ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
             defaultIcon: file.locked ? "🔒" : "🔓",
@@ -4658,7 +4693,9 @@
           "<td>" +
           actionIconMarkup({
             action: "download-file",
-            entryIndex: String((file.entry && file.entry.index) || ""),
+            entryIndex: String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
             title: "Download",
             ariaLabel: "Download " + file.name,
             defaultIcon: "💾",
@@ -4668,7 +4705,9 @@
           "<td>" +
           actionIconMarkup({
             action: "delete-file",
-            entryIndex: String((file.entry && file.entry.index) || ""),
+            entryIndex: String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
             title: "Delete",
             ariaLabel: "Delete " + file.name,
             defaultIcon: "🗑️",
@@ -5833,7 +5872,9 @@
     try {
       const files = d64.readFiles(state.image);
       const entryIndexes = files.map(function (file) {
-        return String((file.entry && file.entry.index) || "");
+        return String(
+          file.entry && file.entry.index != null ? file.entry.index : "",
+        );
       });
       const fromIndex = entryIndexes.indexOf(String(draggedEntryIndex));
       const toIndex = entryIndexes.indexOf(String(targetEntryIndex));
@@ -5870,7 +5911,9 @@
       setStatus("File not found.", true);
       return;
     }
-    fileTypeTarget.value = String((file.entry && file.entry.index) || "");
+    fileTypeTarget.value = String(
+      file.entry && file.entry.index != null ? file.entry.index : "",
+    );
     fileTypeDialogName.textContent = file.name;
     fileTypeSelect.value = String(file.type || "prg").toLowerCase();
     fileRecordLengthInput.value = String(
@@ -5891,7 +5934,9 @@
       setStatus("File not found.", true);
       return;
     }
-    fileNameTarget.value = String((file.entry && file.entry.index) || "");
+    fileNameTarget.value = String(
+      file.entry && file.entry.index != null ? file.entry.index : "",
+    );
     fileNameDialogName.textContent = file.name;
     fileNameInput.value = file.name;
     validateFileNameInput();
