@@ -12,6 +12,7 @@
     heatMapVisible: false,
     hexViewContext: null,
     doctorReport: null,
+    returnToDoctorReport: false,
     draggedFileName: "",
     dropTargetName: "",
     dropPlacement: "before",
@@ -191,6 +192,7 @@
     "writeDirectoryEntryBytes",
     "encodeDirectoryEntryType",
     "encodeFileName",
+    "normalizeDiskNameFieldBytes",
   ];
   const DISK_MAP_COLORS = Object.freeze({
     free: "#6f5133",
@@ -2722,6 +2724,10 @@
     } else {
       sectorDataDialog.removeAttribute("open");
     }
+    if (state.returnToDoctorReport && state.image) {
+      state.returnToDoctorReport = false;
+      reopenDoctorReport();
+    }
   };
 
   const setSectorDataHoverIndex = function (byteIndex) {
@@ -4497,12 +4503,7 @@
         "Rebuilt the BAM from closed file chains.",
         { resetDeletedTypeHints: false },
       );
-      refreshDoctorReport(nextImage);
-      if (typeof doctorDialog.showModal === "function") {
-        doctorDialog.showModal();
-      } else {
-        doctorDialog.setAttribute("open", "open");
-      }
+      refreshDoctorReportAfterImageChange();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4514,33 +4515,28 @@
       const nextImage = state.image.slice();
       const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
       const length = d64.headerOffsets.diskNameLength;
-      for (let index = 0; index < length; index += 1) {
-        const absoluteOffset = start + index;
-        const value = nextImage[absoluteOffset];
-        if (value === 0x00 || value === 0xa0 || value === 0x20) continue;
-        const char = String.fromCharCode(value & 0xff);
-        if (!/^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]$/.test(char)) {
-          nextImage[absoluteOffset] = 0xa0;
-        }
-      }
+      const normalized = d64.normalizeDiskNameFieldBytes(
+        nextImage.subarray(start, start + length),
+        { length: length },
+      );
+      nextImage.set(normalized, start);
       loadImageBytes(
         nextImage,
         state.sourceName || "disk.d64",
-        "Normalized invalid disk name bytes to spaces.",
+        "Normalized disk name bytes to PETSCII spaces where needed.",
         { resetDeletedTypeHints: false },
       );
-      refreshDoctorReport(nextImage);
-      if (typeof doctorDialog.showModal === "function") {
-        doctorDialog.showModal();
-      } else {
-        doctorDialog.setAttribute("open", "open");
-      }
+      refreshDoctorReportAfterImageChange();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
   };
 
-  const closeDoctorDialog = function () {
+  const closeDoctorDialog = function (options) {
+    const config = options || {};
+    if (!config.preserveReturnTarget) {
+      state.returnToDoctorReport = false;
+    }
     if (typeof doctorDialog.close === "function") {
       doctorDialog.close();
     } else {
@@ -4678,20 +4674,13 @@
   const runDoctorDiagnosis = function () {
     if (!state.image) return;
     try {
-      const report = d64.diagnoseImage(state.image);
-      state.doctorReport = report;
-      doctorDialogName.textContent =
-        (state.sourceName || "Unsaved image") +
-        " · " +
-        String(report.summary.total || 0) +
-        " issue" +
-        (Number(report.summary.total || 0) === 1 ? "" : "s");
-      renderDoctorReport(report);
+      refreshDoctorReport();
       if (typeof doctorDialog.showModal === "function") {
         doctorDialog.showModal();
       } else {
         doctorDialog.setAttribute("open", "open");
       }
+      const report = state.doctorReport || { summary: { total: 0 } };
       setStatus(
         report.summary.total
           ? "Doctor completed a read-only diagnosis."
@@ -4716,6 +4705,37 @@
     renderDoctorReport(report);
   };
 
+  const reopenDoctorReport = function () {
+    if (!state.image) return;
+    runDoctorDiagnosis();
+  };
+
+  const refreshDoctorReportAfterImageChange = function (options) {
+    if (!state.image) return;
+    const config = options || {};
+    const isOpen = Boolean(
+      doctorDialog.open || doctorDialog.hasAttribute("open"),
+    );
+    if (config.inline !== false && isOpen) {
+      refreshDoctorReport();
+      return;
+    }
+    closeDoctorDialog();
+    const rerun = function () {
+      runDoctorDiagnosis();
+    };
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function"
+    ) {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(rerun);
+      });
+      return;
+    }
+    window.setTimeout(rerun, 16);
+  };
+
   const repairMismatchedBlockCounts = function (entryIndex) {
     if (!state.image) return;
     try {
@@ -4738,7 +4758,7 @@
           : "No mismatched block counts needed repair.",
         { resetDeletedTypeHints: false },
       );
-      refreshDoctorReport(result.image);
+      refreshDoctorReportAfterImageChange();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -5165,13 +5185,8 @@
         { resetDeletedTypeHints: false },
       );
       state.doctorReport = nextReport;
-      refreshDoctorReport(nextImage);
+      refreshDoctorReportAfterImageChange({ inline: false });
       closeDoctorEntryDialog();
-      if (typeof doctorDialog.showModal === "function") {
-        doctorDialog.showModal();
-      } else {
-        doctorDialog.setAttribute("open", "open");
-      }
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -5533,7 +5548,8 @@
           code: "invalid-disk-name-field",
         });
         const highlight = issue ? findDoctorIssueHighlight(issue, 18, 0) : null;
-        closeDoctorDialog();
+        state.returnToDoctorReport = true;
+        closeDoctorDialog({ preserveReturnTarget: true });
         const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
         const length = d64.headerOffsets.diskNameLength;
         openImageRangeDialog({

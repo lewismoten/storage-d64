@@ -254,6 +254,31 @@
     return result;
   };
 
+  d64.isAllowedDiskNameByte = function (value) {
+    const byte = Math.max(0, Math.min(255, Number(value) || 0));
+    if (byte === 0x00 || byte === 0x20 || byte === 0xa0) return true;
+    const char = String.fromCharCode(byte & 0xff);
+    return /^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]$/.test(char);
+  };
+
+  d64.normalizeDiskNameFieldBytes = function (bytes, options) {
+    const config = options || {};
+    const length = Math.max(1, Math.floor(Number(config.length) || 16));
+    const source =
+      bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    const result = new Uint8Array(length).fill(0xa0);
+    for (let index = 0; index < length; index += 1) {
+      const value = source[index];
+      if (value == null) break;
+      if (value === 0x00 || value === 0x20 || value === 0xa0) {
+        result[index] = 0xa0;
+        continue;
+      }
+      result[index] = d64.isAllowedDiskNameByte(value) ? value : 0xa0;
+    }
+    return result;
+  };
+
   d64.normalizeFileName = function (name, maxLength, options) {
     const limit = Math.max(1, Math.floor(Number(maxLength) || 16));
     const config = options || {};
@@ -1878,13 +1903,15 @@
           : new Uint8Array(fieldBytes || []);
       for (let index = 0; index < data.length; index += 1) {
         const value = data[index];
-        if (value === 0x00 || value === 0xa0 || value === 0x20) continue;
-        const ch = String.fromCharCode(value & 0xff);
-        if (!allowedPattern.test(ch)) {
-          invalid.push(
-            "0x" + value.toString(16).padStart(2, "0").toUpperCase(),
-          );
+        if (label === "disk-name") {
+          if (d64.isAllowedDiskNameByte(value)) continue;
+        } else if (value === 0x00 || value === 0xa0 || value === 0x20) {
+          continue;
+        } else {
+          const ch = String.fromCharCode(value & 0xff);
+          if (allowedPattern.test(ch)) continue;
         }
+        invalid.push("0x" + value.toString(16).padStart(2, "0").toUpperCase());
       }
       if (invalid.length) {
         addIssue(
