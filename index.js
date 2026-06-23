@@ -4743,6 +4743,115 @@
     }
   };
 
+  const autoRepairDoctorIssues = function () {
+    if (!state.image || !state.doctorReport) return;
+    try {
+      const issues = Array.isArray(state.doctorReport.issues)
+        ? state.doctorReport.issues
+        : [];
+      const hasIssue = function (code) {
+        return issues.some(function (issue) {
+          return issue && issue.code === code;
+        });
+      };
+      let nextImage = state.image.slice();
+      const steps = [];
+
+      if (hasIssue("invalid-disk-name-field")) {
+        const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
+        const length = d64.headerOffsets.diskNameLength;
+        const normalized = d64.normalizeDiskNameFieldBytes(
+          nextImage.subarray(start, start + length),
+          { length: length },
+        );
+        nextImage.set(normalized, start);
+        steps.push("normalized disk name");
+      }
+
+      if (hasIssue("short-disk-id")) {
+        const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskIdStart;
+        nextImage.set(d64.encodeFileName("00", 2), start);
+        steps.push('set disk ID to "00"');
+      }
+
+      if (hasIssue("splat-files")) {
+        let closedCount = 0;
+        for (
+          let sectorIndex = 1;
+          sectorIndex < d64.trackSectorCount(18);
+          sectorIndex += 1
+        ) {
+          const sector = d64.readSector(nextImage, 18, sectorIndex);
+          if (!sector || sector.length < 256) continue;
+          for (let slot = 0; slot < 8; slot += 1) {
+            const offset = slot * 32;
+            const entry = d64.parseDirectoryEntryBytes(
+              sector.subarray(offset, offset + 32),
+              {
+                index: (sectorIndex - 1) * 8 + slot,
+                track: 18,
+                sector: sectorIndex,
+                slot: slot,
+              },
+            );
+            entry.deleted = d64.isDeletedDirectoryEntry(entry);
+            if (!entry.typeByte || entry.deleted || entry.closed !== false) {
+              continue;
+            }
+            const entryBytes = entry.raw.slice();
+            entryBytes[2] = entryBytes[2] | d64.directoryEntryFlags.closed;
+            nextImage = d64.writeDirectoryEntryBytes(
+              nextImage,
+              entry,
+              entryBytes,
+            );
+            closedCount += 1;
+          }
+        }
+        if (closedCount) {
+          steps.push(
+            "closed " +
+              String(closedCount) +
+              " splat/open file" +
+              (closedCount === 1 ? "" : "s"),
+          );
+        }
+      }
+
+      if (hasIssue("directory-block-count-mismatch")) {
+        const repaired = d64.repairBlockCounts(nextImage);
+        if (repaired && repaired.image) {
+          nextImage = repaired.image;
+          if (repaired.repairedCount) {
+            steps.push(
+              "repaired " +
+                String(repaired.repairedCount) +
+                " block count" +
+                (repaired.repairedCount === 1 ? "" : "s"),
+            );
+          }
+        }
+      }
+
+      if (hasIssue("damaged-bam-or-header")) {
+        nextImage = d64.validateImage(nextImage);
+        steps.push("rebuilt BAM");
+      }
+
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        steps.length
+          ? "Auto repaired: " + steps.join(", ") + "."
+          : "No supported Doctor repairs were needed.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const renderDoctorReport = function (report) {
     const diagnosis = report || {
       summary: {
@@ -4773,8 +4882,15 @@
       escapeHtml(String(total)) +
       "</strong><span>Total</span></div>" +
       "</div>";
-    const blockCountIssues = diagnosis.issues.filter(function (issue) {
-      return issue.code === "directory-block-count-mismatch";
+    const supportedAutoRepairCodes = {
+      "invalid-disk-name-field": true,
+      "short-disk-id": true,
+      "damaged-bam-or-header": true,
+      "splat-files": true,
+      "directory-block-count-mismatch": true,
+    };
+    const autoRepairIssues = diagnosis.issues.filter(function (issue) {
+      return issue && supportedAutoRepairCodes[issue.code];
     });
     if (!total) {
       doctorReportBody.innerHTML =
@@ -4843,10 +4959,10 @@
       return "";
     };
     doctorReportBody.innerHTML =
-      (blockCountIssues.length
+      (autoRepairIssues.length
         ? '<div class="doctor-report-actions">' +
-          '<button type="button" class="file-type-button" data-action="repair-doctor-block-counts-all">' +
-          "Repair All Block Counts" +
+          '<button type="button" class="file-type-button" data-action="auto-repair-doctor">' +
+          "Auto Repair" +
           "</button>" +
           "</div>"
         : "") +
@@ -5861,6 +5977,10 @@
       }
       if (button.dataset.action === "repair-doctor-block-counts-all") {
         repairMismatchedBlockCounts();
+        return;
+      }
+      if (button.dataset.action === "auto-repair-doctor") {
+        autoRepairDoctorIssues();
         return;
       }
       if (button.dataset.action === "rebuild-doctor-bam") {
