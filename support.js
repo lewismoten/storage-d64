@@ -1717,7 +1717,15 @@
         "Deleted file not found: " + String(deletedEntryOrName || ""),
       );
     }
-    const restoredName = d64.normalizeFileName(entry.name, 16);
+    const restoredName = d64.normalizeFileName(
+      Object.prototype.hasOwnProperty.call(options, "name")
+        ? options.name
+        : entry.name,
+      16,
+    );
+    if (!restoredName) {
+      throw new Error("A restore file name must be chosen.");
+    }
     const existingActiveFile = d64
       .readFiles(image, options)
       .find(function (file) {
@@ -1754,6 +1762,7 @@
       closed: options.closed !== false,
       locked: Boolean(options.locked),
     });
+    entryBytes.set(d64.encodeFileName(restoredName, 16), 5);
     const withRestoredEntry = d64.writeDirectoryEntryBytes(
       image,
       entry,

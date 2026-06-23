@@ -219,6 +219,41 @@
             <div id="deleted-files-list" class="deleted-files-list"></div>
           </section>
 
+          <dialog id="restore-file-dialog" class="file-type-dialog">
+            <form id="restore-file-form" method="dialog" class="file-type-form">
+              <div class="section-heading">
+                <h3>Restore File</h3>
+                <p id="restore-file-dialog-name">Choose a type to restore</p>
+              </div>
+              <input id="restore-file-target" type="hidden" />
+              <label class="field">
+                <span>Name</span>
+                <input
+                  id="restore-file-name"
+                  type="text"
+                  maxlength="16"
+                  spellcheck="false"
+                  autocapitalize="characters"
+                  autocomplete="off"
+                  data-1p-ignore
+                />
+              </label>
+              <label class="field">
+                <span>Type</span>
+                <select id="restore-file-select">
+                  <option value="prg">PRG - Program</option>
+                  <option value="seq">SEQ - Sequential Data</option>
+                  <option value="usr">USR - User File</option>
+                  <option value="rel">REL - Relative Records</option>
+                </select>
+              </label>
+              <div class="dialog-actions">
+                <button id="restore-file-cancel" type="button">Cancel</button>
+                <button id="restore-file-save" type="submit">Restore</button>
+              </div>
+            </form>
+          </dialog>
+
           <dialog id="file-type-dialog" class="file-type-dialog">
             <form id="file-type-form" method="dialog" class="file-type-form">
               <div class="section-heading">

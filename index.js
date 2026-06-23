@@ -64,6 +64,15 @@
   const deletedFilesPanel = document.getElementById("deleted-files-panel");
   const deletedCount = document.getElementById("deleted-count");
   const deletedFilesList = document.getElementById("deleted-files-list");
+  const restoreFileDialog = document.getElementById("restore-file-dialog");
+  const restoreFileForm = document.getElementById("restore-file-form");
+  const restoreFileDialogName = document.getElementById(
+    "restore-file-dialog-name",
+  );
+  const restoreFileTarget = document.getElementById("restore-file-target");
+  const restoreFileName = document.getElementById("restore-file-name");
+  const restoreFileSelect = document.getElementById("restore-file-select");
+  const restoreFileCancel = document.getElementById("restore-file-cancel");
   const fileTypeDialog = document.getElementById("file-type-dialog");
   const fileTypeForm = document.getElementById("file-type-form");
   const fileTypeDialogName = document.getElementById("file-type-dialog-name");
@@ -4357,25 +4366,6 @@
           "</div>" +
           "</div>" +
           '<div class="restore-controls">' +
-          '<label class="restore-type-field"><span>Type</span><select data-restore-type="' +
-          String(entry.index) +
-          '">' +
-          '<option value=""' +
-          (hintedType ? "" : " selected") +
-          ">Unknown...</option>" +
-          '<option value="prg"' +
-          (hintedType === "prg" ? " selected" : "") +
-          ">PRG</option>" +
-          '<option value="seq"' +
-          (hintedType === "seq" ? " selected" : "") +
-          ">SEQ</option>" +
-          '<option value="usr"' +
-          (hintedType === "usr" ? " selected" : "") +
-          ">USR</option>" +
-          '<option value="rel"' +
-          (hintedType === "rel" ? " selected" : "") +
-          ">REL</option>" +
-          "</select></label>" +
           actionIconMarkup({
             action: "restore-file",
             entryIndex: String(entry.index),
@@ -5827,6 +5817,7 @@
   };
 
   const restoreDeletedFile = function (entryIndex, restoreType) {
+    const restoreName = d64.normalizeFileName(restoreFileName.value, 16);
     if (!state.image) return;
     try {
       const deletedEntry = d64
@@ -5836,19 +5827,85 @@
         });
       if (!deletedEntry) throw new Error("Deleted file not found.");
       loadImageBytes(
-        d64.undeleteFile(state.image, deletedEntry, { type: restoreType }),
+        d64.undeleteFile(state.image, deletedEntry, {
+          type: restoreType,
+          name: restoreName,
+        }),
         state.sourceName || "disk.d64",
-        "Restored " +
-          deletedEntry.name +
-          " as " +
-          restoreType.toUpperCase() +
-          ".",
+        "Restored " + restoreName + " as " + restoreType.toUpperCase() + ".",
         { resetDeletedTypeHints: false },
       );
       delete state.deletedTypeHints[deletedEntry.index];
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
+  };
+
+  const openRestoreDeletedFileDialog = function (entryIndex) {
+    if (!state.image) return;
+    const deletedEntry = d64
+      .readDeletedEntries(state.image)
+      .find(function (entry) {
+        return String(entry.index) === String(entryIndex);
+      });
+    if (!deletedEntry) {
+      setStatus("Deleted file not found.", true);
+      return;
+    }
+    const hintedType =
+      state.deletedTypeHints[deletedEntry.index] ||
+      (deletedEntry.sideSectorTrack ? "rel" : "prg");
+    restoreFileTarget.value = String(deletedEntry.index);
+    restoreFileDialogName.textContent = deletedEntry.name;
+    restoreFileName.value = String(deletedEntry.name || "");
+    restoreFileSelect.value = String(hintedType || "prg").toLowerCase();
+    validateRestoreFileDialog();
+    if (typeof restoreFileDialog.showModal === "function") {
+      restoreFileDialog.showModal();
+    } else {
+      restoreFileDialog.setAttribute("open", "open");
+    }
+  };
+
+  const closeRestoreFileDialog = function () {
+    if (typeof restoreFileDialog.close === "function") {
+      restoreFileDialog.close();
+    } else {
+      restoreFileDialog.removeAttribute("open");
+    }
+  };
+
+  const validateRestoreFileDialog = function () {
+    const nextName = d64.normalizeFileName(restoreFileName.value, 16);
+    if (!nextName) {
+      restoreFileName.setCustomValidity("File name can not be empty.");
+      return false;
+    }
+    if (!state.image) {
+      restoreFileName.setCustomValidity("");
+      return true;
+    }
+    const duplicateIndex = d64.readFiles(state.image).find(function (file) {
+      return d64.normalizeFileName(file.name, 16) === nextName;
+    });
+    if (duplicateIndex) {
+      restoreFileName.setCustomValidity(
+        "An active file with that name already exists.",
+      );
+      return false;
+    }
+    restoreFileName.setCustomValidity("");
+    return true;
+  };
+
+  const saveRestoreFileDialog = function (event) {
+    event.preventDefault();
+    if (!validateRestoreFileDialog()) {
+      restoreFileName.reportValidity();
+      return;
+    }
+    restoreDeletedFile(restoreFileTarget.value, restoreFileSelect.value);
+    closeRestoreFileDialog();
   };
 
   const destroyDeletedFile = function (entryIndex) {
@@ -6426,6 +6483,27 @@
       if (!diskMapView.dragging) return;
     });
     fileTypeSelect.addEventListener("change", syncFileTypeDialog);
+    restoreFileName.addEventListener("input", function () {
+      const normalizedValue = d64.normalizeFileName(restoreFileName.value, 16, {
+        trim: false,
+      });
+      if (restoreFileName.value !== normalizedValue) {
+        const start = restoreFileName.selectionStart;
+        const end = restoreFileName.selectionEnd;
+        const delta = restoreFileName.value.length - normalizedValue.length;
+        restoreFileName.value = normalizedValue;
+        if (typeof start === "number" && typeof end === "number") {
+          const nextStart = Math.max(0, start - delta);
+          const nextEnd = Math.max(0, end - delta);
+          restoreFileName.setSelectionRange(nextStart, nextEnd);
+        }
+      }
+      validateRestoreFileDialog();
+    });
+    restoreFileForm.addEventListener("submit", saveRestoreFileDialog);
+    restoreFileCancel.addEventListener("click", function () {
+      closeRestoreFileDialog();
+    });
     fileTypeForm.addEventListener("submit", saveFileTypeDialog);
     fileTypeCancel.addEventListener("click", function () {
       closeFileTypeDialog();
@@ -6840,13 +6918,7 @@
         return;
       }
       if (button.dataset.action !== "restore-file") return;
-      const select = deletedFilesList.querySelector(
-        "select[data-restore-type='" + button.dataset.entryIndex + "']",
-      );
-      restoreDeletedFile(
-        button.dataset.entryIndex,
-        select ? select.value : "prg",
-      );
+      openRestoreDeletedFileDialog(button.dataset.entryIndex);
     });
     diskMapLegend.addEventListener("click", function (event) {
       const jumpButton = event.target.closest('[data-action="jump-sector"]');
