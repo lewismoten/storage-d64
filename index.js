@@ -597,6 +597,14 @@
     return markup;
   };
 
+  const isDoctorSectorItemList = function (items) {
+    if (!Array.isArray(items) || !items.length) return false;
+    return items.every(function (item) {
+      const value = String(item || "").trim();
+      return /^T\s*\d{1,2}\s*S\s*\d{1,2}$/.test(value);
+    });
+  };
+
   const formatNumber = function (value) {
     return numberFormatter.format(Math.max(0, Math.round(Number(value) || 0)));
   };
@@ -5401,6 +5409,11 @@
                   issueIndex,
                 );
           };
+          const hasSectorItemGrid = isDoctorSectorItemList(issue.items);
+          const shouldCollapseSectorItems =
+            hasSectorItemGrid &&
+            Array.isArray(issue.items) &&
+            issue.items.length > 18;
           const items = Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
@@ -5427,7 +5440,20 @@
                 renderLinkedDoctorText(issue.details) +
                 "</p>"
               : "") +
-            (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
+            (items
+              ? shouldCollapseSectorItems
+                ? '<details class="doctor-issue-items-toggle"><summary>' +
+                  escapeHtml(String(issue.items.length)) +
+                  " sectors found</summary>" +
+                  '<ul class="doctor-issue-items doctor-issue-items-grid">' +
+                  items +
+                  "</ul></details>"
+                : '<ul class="doctor-issue-items' +
+                  (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
+                  '">' +
+                  items +
+                  "</ul>"
+              : "") +
             renderDoctorAction(issue) +
             "</article>"
           );

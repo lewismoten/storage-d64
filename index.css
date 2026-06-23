@@ -1742,6 +1742,66 @@ tbody tr.is-drop-target {
   margin-top: 4px;
 }
 
+.doctor-issue-items-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.doctor-issue-items-grid li + li {
+  margin-top: 0;
+}
+
+.doctor-issue-items-grid li {
+  min-width: 0;
+}
+
+.doctor-issue-items-grid .doctor-sector-link {
+  width: 100%;
+  justify-content: center;
+  margin: 0;
+}
+
+.doctor-issue-items-toggle {
+  margin-top: 10px;
+}
+
+.doctor-issue-items-toggle summary {
+  cursor: pointer;
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.doctor-issue-items-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.doctor-issue-items-toggle summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 8px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid currentColor;
+  transform: translateY(1px);
+  transform-origin: 35% 50%;
+  transition: transform 120ms ease;
+}
+
+.doctor-issue-items-toggle[open] summary::before {
+  transform: rotate(90deg) translateX(1px);
+}
+
+.doctor-issue-items-toggle .doctor-issue-items-grid {
+  margin-top: 10px;
+}
+
 .doctor-sector-link {
   display: inline-flex;
   align-items: center;
