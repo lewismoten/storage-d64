@@ -204,6 +204,7 @@
   ];
   const DISK_MAP_COLORS = Object.freeze({
     free: "#6f5133",
+    suspiciousFree: "#111111",
     unknownUsed: "#6c8ea3",
     reservedTrack: "#7d8c98",
     reservedTrackFree: "#4f3823",
@@ -2387,8 +2388,41 @@
 
     Object.keys(sectorMap).forEach(function (key) {
       const sectorInfo = sectorMap[key];
+      if (!sectorInfo) return;
       if (
-        /^(free|reservedFree|header|directory)$/.test(
+        sectorInfo.category !== "free" &&
+        sectorInfo.category !== "reservedFree"
+      ) {
+        return;
+      }
+      const sectorBytes = d64.readSector(
+        image,
+        sectorInfo.track,
+        sectorInfo.sector,
+      );
+      let hasNonZeroData = false;
+      for (let index = 0; index < sectorBytes.length; index += 1) {
+        if ((Number(sectorBytes[index]) || 0) !== 0) {
+          hasNonZeroData = true;
+          break;
+        }
+      }
+      if (!hasNonZeroData) return;
+      sectorInfo.category = "suspiciousFree";
+      sectorInfo.color = DISK_MAP_COLORS.suspiciousFree;
+      sectorInfo.stroke = DISK_MAP_COLORS.trackStroke;
+      sectorInfo.label =
+        sectorInfo.track === 18
+          ? "Reserved free sector with unexpected nonzero data"
+          : "Free sector with unexpected nonzero data";
+      sectorInfo.usedFraction = 1;
+      sectorInfo.unusedFraction = 0;
+    });
+
+    Object.keys(sectorMap).forEach(function (key) {
+      const sectorInfo = sectorMap[key];
+      if (
+        /^(free|reservedFree|suspiciousFree|header|directory)$/.test(
           String(sectorInfo.category || ""),
         )
       ) {
@@ -2483,6 +2517,12 @@
             DISK_MAP_COLORS.free,
             null,
             "Free sectors according to the BAM",
+          ],
+          [
+            "Suspicious",
+            DISK_MAP_COLORS.suspiciousFree,
+            null,
+            "BAM-free sectors that still contain nonzero bytes",
           ],
           [
             "Directory",
