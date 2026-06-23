@@ -4376,12 +4376,23 @@
           (hintedType === "rel" ? " selected" : "") +
           ">REL</option>" +
           "</select></label>" +
-          '<button type="button" class="restore-button" data-action="restore-file" data-entry-index="' +
-          String(entry.index) +
-          '">Restore</button>' +
-          '<button type="button" class="delete-button" data-action="destroy-deleted-file" data-entry-index="' +
-          String(entry.index) +
-          '">Destroy</button>' +
+          actionIconMarkup({
+            action: "restore-file",
+            entryIndex: String(entry.index),
+            title: "Restore",
+            ariaLabel: "Restore " + entry.name,
+            defaultIcon: "↩️",
+            hoverIcon: "♻️",
+          }) +
+          actionIconMarkup({
+            action: "destroy-deleted-file",
+            entryIndex: String(entry.index),
+            title: "Destroy",
+            ariaLabel: "Destroy " + entry.name,
+            defaultIcon: "💣",
+            hoverIcon: "💥",
+            danger: true,
+          }) +
           "</div>" +
           "</article>"
         );
