@@ -15,7 +15,8 @@
     doctorRunCount: 0,
     returnToDoctorReport: false,
     draggedFileName: "",
-    dropTargetName: "",
+    draggedEntryIndex: "",
+    dropTargetEntryIndex: "",
     dropPlacement: "before",
   };
 
@@ -597,6 +598,17 @@
     return markup;
   };
 
+  const findActiveFileByEntryIndex = function (entryIndex) {
+    if (!state.image) return null;
+    const targetIndex = String(entryIndex == null ? "" : entryIndex);
+    if (!targetIndex) return null;
+    return (
+      d64.readFiles(state.image).find(function (file) {
+        return String((file.entry && file.entry.index) || "") === targetIndex;
+      }) || null
+    );
+  };
+
   const renderDuplicateDoctorGroups = function (groups, issueIndex) {
     return (Array.isArray(groups) ? groups : [])
       .map(function (group) {
@@ -752,14 +764,17 @@
     );
   };
 
-  const hasDuplicateFileName = function (nextName, currentName) {
+  const hasDuplicateFileName = function (nextName, currentEntryIndex) {
     if (!state.image) return false;
     const normalizedNextName = d64.normalizeFileName(nextName, 16);
-    const normalizedCurrentName = d64.normalizeFileName(currentName, 16);
+    const targetIndex = String(
+      currentEntryIndex == null ? "" : currentEntryIndex,
+    );
     return d64.readFiles(state.image).some(function (entry) {
       const entryName = d64.normalizeFileName(entry.name, 16);
       return (
-        entryName === normalizedNextName && entryName !== normalizedCurrentName
+        entryName === normalizedNextName &&
+        String((entry.entry && entry.entry.index) || "") !== targetIndex
       );
     });
   };
@@ -1228,8 +1243,8 @@
       className +
       '" data-action="' +
       labels.action +
-      '" data-name="' +
-      escapeHtml(labels.fileName) +
+      '" data-entry-index="' +
+      escapeHtml(String(labels.entryIndex || "")) +
       '" aria-label="' +
       escapeHtml(labels.ariaLabel) +
       '">' +
@@ -3054,15 +3069,19 @@
     sectorByteText.setCustomValidity("");
   };
 
-  const openFileDataDialog = function (fileName) {
+  const openFileDataDialog = function (entryIndex) {
     if (!state.image) return;
-    const file = d64.readFile(state.image, fileName);
+    const fileInfo = findActiveFileByEntryIndex(entryIndex);
+    const file =
+      fileInfo && fileInfo.entry
+        ? d64.readFile(state.image, fileInfo.entry)
+        : null;
     if (!file) {
-      setStatus("File not found: " + fileName, true);
+      setStatus("File not found.", true);
       return;
     }
     const displayName =
-      file.entry && file.entry.name ? file.entry.name : String(fileName);
+      file.entry && file.entry.name ? file.entry.name : "File";
     state.hexViewContext = {
       mode: "file",
       fileName: displayName,
@@ -4527,7 +4546,11 @@
     const seenActiveNames = {};
     fileTableBody.innerHTML = files
       .map(function (file) {
-        if (state.draggedFileName && state.draggedFileName === file.name) {
+        if (
+          state.draggedEntryIndex !== "" &&
+          String((file.entry && file.entry.index) || "") ===
+            String(state.draggedEntryIndex)
+        ) {
           return "";
         }
         const normalizedName = String(file.name || "")
@@ -4541,6 +4564,8 @@
         return (
           '<tr data-file-name="' +
           escapeHtml(file.name) +
+          '" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '"' +
           (isSuccessiveDuplicate
             ? ' class="is-successive-duplicate" title="A previous active entry already uses this filename. Loading may prefer the earlier entry."'
@@ -4548,12 +4573,14 @@
           ">" +
           '<td class="drag-cell"><button type="button" class="drag-handle" draggable="true" data-drag-handle="true" data-name="' +
           escapeHtml(file.name) +
+          '" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Drag to reorder " + file.name) +
           '">::</button></td>' +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-name" data-name="' +
-          escapeHtml(file.name) +
+          '<button type="button" class="file-type-button" data-action="edit-name" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Rename " + file.name) +
           '">' +
@@ -4561,8 +4588,8 @@
           "</button>" +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-type" data-name="' +
-          escapeHtml(file.name) +
+          '<button type="button" class="file-type-button" data-action="edit-type" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Edit file type for " + file.name) +
           '">' +
@@ -4573,8 +4600,8 @@
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-bytes" data-name="' +
-          escapeHtml(file.name) +
+          '<button type="button" class="file-type-button" data-action="edit-bytes" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Edit bytes for " + file.name) +
           '">' +
@@ -4588,6 +4615,7 @@
             trueText: "Closed",
             falseText: "Open",
             action: "toggle-closed",
+            entryIndex: String((file.entry && file.entry.index) || ""),
             fileName: file.name,
             ariaLabel:
               (file.closed ? "Mark open " : "Mark closed ") + file.name,
@@ -4600,20 +4628,21 @@
             trueText: "Locked",
             falseText: "Unlocked",
             action: "toggle-lock",
+            entryIndex: String((file.entry && file.entry.index) || ""),
             fileName: file.name,
             ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
           }) +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="download-file" data-name="' +
-          escapeHtml(file.name) +
+          '<button type="button" class="file-type-button" data-action="download-file" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Download " + file.name) +
           '">Save</button>' +
           "</td>" +
           "<td>" +
-          '<button type="button" class="delete-button" data-action="delete-file" data-name="' +
-          escapeHtml(file.name) +
+          '<button type="button" class="delete-button" data-action="delete-file" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
           '" aria-label="' +
           escapeHtml("Delete " + file.name) +
           '">Delete</button>' +
@@ -4647,7 +4676,7 @@
   };
 
   const moveDropGhost = function (targetRow, placement) {
-    if (!state.draggedFileName || !targetRow) return;
+    if (state.draggedEntryIndex === "" || !targetRow) return;
     const ghost = ensureDropGhost();
     const label = ghost.querySelector(".drop-ghost-name");
     if (label) {
@@ -5636,13 +5665,11 @@
     }
   };
 
-  const downloadDiskFile = function (fileName) {
+  const downloadDiskFile = function (entryIndex) {
     if (!state.image) return;
-    const file = d64.readFiles(state.image).find(function (entry) {
-      return entry.name === fileName;
-    });
+    const file = findActiveFileByEntryIndex(entryIndex);
     if (!file) {
-      setStatus("File not found: " + fileName, true);
+      setStatus("File not found.", true);
       return;
     }
     const extension =
@@ -5670,53 +5697,49 @@
     setStatus("Downloaded " + file.name + ".");
   };
 
-  const updateFileFlag = function (action, fileName) {
+  const updateFileFlag = function (action, entryIndex) {
     if (!state.image) return;
     try {
       let nextImage = state.image;
+      const file = findActiveFileByEntryIndex(entryIndex);
+      if (!file || !file.entry) {
+        throw new Error("File not found.");
+      }
       if (action === "toggle-lock") {
-        const file = d64.readFiles(state.image).find(function (entry) {
-          return entry.name === fileName;
-        });
         nextImage =
           file && file.locked
-            ? d64.unlockFile(state.image, fileName)
-            : d64.lockFile(state.image, fileName);
+            ? d64.unlockFile(state.image, file.entry)
+            : d64.lockFile(state.image, file.entry);
       } else if (action === "toggle-closed") {
-        const file = d64.readFiles(state.image).find(function (entry) {
-          return entry.name === fileName;
-        });
         nextImage =
           file && file.closed
-            ? d64.openFile(state.image, fileName)
-            : d64.closeFile(state.image, fileName);
+            ? d64.openFile(state.image, file.entry)
+            : d64.closeFile(state.image, file.entry);
       }
       loadImageBytes(
         nextImage,
         state.sourceName || "disk.d64",
-        "Updated file flags for " + fileName + ".",
+        "Updated file flags for " + file.name + ".",
       );
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
   };
 
-  const deleteFile = function (fileName) {
+  const deleteFile = function (entryIndex) {
     if (!state.image) return;
     try {
-      const file = d64.readFiles(state.image).find(function (entry) {
-        return entry.name === fileName;
-      });
+      const file = findActiveFileByEntryIndex(entryIndex);
       if (!file || !file.entry) {
-        throw new Error("File not found: " + fileName);
+        throw new Error("File not found.");
       }
       state.deletedTypeHints[file.entry.index] = String(file.type || "")
         .trim()
         .toLowerCase();
       loadImageBytes(
-        d64.scratchFile(state.image, fileName),
+        d64.scratchFile(state.image, file.entry),
         state.sourceName || "disk.d64",
-        "Deleted " + fileName + ".",
+        "Deleted " + file.name + ".",
         { resetDeletedTypeHints: false },
       );
     } catch (error) {
@@ -5770,23 +5793,23 @@
     }
   };
 
-  const reorderDirectoryFiles = function (draggedName, targetName) {
+  const reorderDirectoryFiles = function (draggedEntryIndex, targetEntryIndex) {
     if (
       !state.image ||
-      !draggedName ||
-      !targetName ||
-      draggedName === targetName
+      draggedEntryIndex === "" ||
+      targetEntryIndex === "" ||
+      String(draggedEntryIndex) === String(targetEntryIndex)
     )
       return;
     try {
       const files = d64.readFiles(state.image);
-      const names = files.map(function (file) {
-        return file.name;
+      const entryIndexes = files.map(function (file) {
+        return String((file.entry && file.entry.index) || "");
       });
-      const fromIndex = names.indexOf(draggedName);
-      const toIndex = names.indexOf(targetName);
+      const fromIndex = entryIndexes.indexOf(String(draggedEntryIndex));
+      const toIndex = entryIndexes.indexOf(String(targetEntryIndex));
       if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-      const reordered = names.slice();
+      const reordered = entryIndexes.slice();
       const moved = reordered.splice(fromIndex, 1)[0];
       let insertIndex = toIndex;
       if (state.dropPlacement === "after") {
@@ -5797,7 +5820,8 @@
       }
       reordered.splice(insertIndex, 0, moved);
       state.draggedFileName = "";
-      state.dropTargetName = "";
+      state.draggedEntryIndex = "";
+      state.dropTargetEntryIndex = "";
       state.dropPlacement = "before";
       loadImageBytes(
         d64.reorderFiles(state.image, reordered),
@@ -5810,16 +5834,14 @@
     }
   };
 
-  const openFileTypeDialog = function (fileName) {
+  const openFileTypeDialog = function (entryIndex) {
     if (!state.image) return;
-    const file = d64.readFiles(state.image).find(function (entry) {
-      return entry.name === fileName;
-    });
+    const file = findActiveFileByEntryIndex(entryIndex);
     if (!file) {
-      setStatus("File not found: " + fileName, true);
+      setStatus("File not found.", true);
       return;
     }
-    fileTypeTarget.value = file.name;
+    fileTypeTarget.value = String((file.entry && file.entry.index) || "");
     fileTypeDialogName.textContent = file.name;
     fileTypeSelect.value = String(file.type || "prg").toLowerCase();
     fileRecordLengthInput.value = String(
@@ -5833,16 +5855,14 @@
     }
   };
 
-  const openFileNameDialog = function (fileName) {
+  const openFileNameDialog = function (entryIndex) {
     if (!state.image) return;
-    const file = d64.readFiles(state.image).find(function (entry) {
-      return entry.name === fileName;
-    });
+    const file = findActiveFileByEntryIndex(entryIndex);
     if (!file) {
-      setStatus("File not found: " + fileName, true);
+      setStatus("File not found.", true);
       return;
     }
-    fileNameTarget.value = file.name;
+    fileNameTarget.value = String((file.entry && file.entry.index) || "");
     fileNameDialogName.textContent = file.name;
     fileNameInput.value = file.name;
     validateFileNameInput();
@@ -5921,7 +5941,11 @@
   const saveFileTypeDialog = function (event) {
     event.preventDefault();
     if (!state.image) return;
-    const fileName = fileTypeTarget.value;
+    const file = findActiveFileByEntryIndex(fileTypeTarget.value);
+    if (!file || !file.entry) {
+      setStatus("File not found.", true);
+      return;
+    }
     const nextType = fileTypeSelect.value;
     const updates = {
       type: nextType,
@@ -5933,11 +5957,11 @@
       );
     }
     try {
-      const nextImage = d64.updateFile(state.image, fileName, updates);
+      const nextImage = d64.updateFile(state.image, file.entry, updates);
       loadImageBytes(
         nextImage,
         state.sourceName || "disk.d64",
-        "Updated file type for " + fileName + ".",
+        "Updated file type for " + file.name + ".",
       );
       closeFileTypeDialog();
     } catch (error) {
@@ -5948,18 +5972,22 @@
   const saveFileNameDialog = function (event) {
     event.preventDefault();
     if (!state.image) return;
-    const fileName = fileNameTarget.value;
+    const file = findActiveFileByEntryIndex(fileNameTarget.value);
+    if (!file || !file.entry) {
+      setStatus("File not found.", true);
+      return;
+    }
     const nextName = d64.normalizeFileName(fileNameInput.value, 16);
     if (!validateFileNameInput()) {
       fileNameInput.reportValidity();
       return;
     }
     try {
-      const nextImage = d64.renameFile(state.image, fileName, nextName);
+      const nextImage = d64.renameFile(state.image, file.entry, nextName);
       loadImageBytes(
         nextImage,
         state.sourceName || "disk.d64",
-        "Renamed " + fileName + " to " + nextName + ".",
+        "Renamed " + file.name + " to " + nextName + ".",
       );
       closeFileNameDialog();
     } catch (error) {
@@ -6628,27 +6656,28 @@
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      const entryIndex = button.dataset.entryIndex;
       if (button.dataset.action === "edit-name") {
-        openFileNameDialog(button.dataset.name);
+        openFileNameDialog(entryIndex);
         return;
       }
       if (button.dataset.action === "edit-type") {
-        openFileTypeDialog(button.dataset.name);
+        openFileTypeDialog(entryIndex);
         return;
       }
       if (button.dataset.action === "edit-bytes") {
-        openFileDataDialog(button.dataset.name);
+        openFileDataDialog(entryIndex);
         return;
       }
       if (button.dataset.action === "download-file") {
-        downloadDiskFile(button.dataset.name);
+        downloadDiskFile(entryIndex);
         return;
       }
       if (button.dataset.action === "delete-file") {
-        deleteFile(button.dataset.name);
+        deleteFile(entryIndex);
         return;
       }
-      updateFileFlag(button.dataset.action, button.dataset.name);
+      updateFileFlag(button.dataset.action, entryIndex);
     });
     fileTableBody.addEventListener("dragstart", function (event) {
       const handle = event.target.closest("[data-drag-handle='true']");
@@ -6656,28 +6685,29 @@
         event.preventDefault();
         return;
       }
-      const row = handle.closest("tr[data-file-name]");
+      const row = handle.closest("tr[data-entry-index]");
       if (!row) return;
       state.draggedFileName = row.dataset.fileName || "";
-      state.dropTargetName = "";
+      state.draggedEntryIndex = row.dataset.entryIndex || "";
+      state.dropTargetEntryIndex = "";
       state.dropPlacement = "before";
       renderDirectory();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", state.draggedFileName);
+        event.dataTransfer.setData("text/plain", state.draggedEntryIndex);
       }
     });
     fileTableBody.addEventListener("dragover", function (event) {
-      if (!state.draggedFileName) return;
+      if (state.draggedEntryIndex === "") return;
       event.preventDefault();
-      const row = event.target.closest("tr[data-file-name]");
+      const row = event.target.closest("tr[data-entry-index]");
       if (!row) {
         const rows = Array.from(
-          fileTableBody.querySelectorAll("tr[data-file-name]"),
+          fileTableBody.querySelectorAll("tr[data-entry-index]"),
         );
         const lastRow = rows.length ? rows[rows.length - 1] : null;
         if (!lastRow) return;
-        state.dropTargetName = lastRow.dataset.fileName || "";
+        state.dropTargetEntryIndex = lastRow.dataset.entryIndex || "";
         state.dropPlacement = "after";
         moveDropGhost(lastRow, "after");
         if (event.dataTransfer) {
@@ -6687,7 +6717,7 @@
       }
       const rect = row.getBoundingClientRect();
       const before = event.clientY < rect.top + rect.height / 2;
-      state.dropTargetName = row.dataset.fileName || "";
+      state.dropTargetEntryIndex = row.dataset.entryIndex || "";
       state.dropPlacement = before ? "before" : "after";
       moveDropGhost(row, state.dropPlacement);
       if (event.dataTransfer) {
@@ -6695,20 +6725,25 @@
       }
     });
     fileTableBody.addEventListener("dragleave", function (event) {
-      const row = event.target.closest("tr[data-file-name]");
+      const row = event.target.closest("tr[data-entry-index]");
       if (!row) return;
       row.classList.remove("is-drop-target");
     });
     fileTableBody.addEventListener("drop", function (event) {
-      if (!state.draggedFileName || !state.dropTargetName) return;
+      if (state.draggedEntryIndex === "" || state.dropTargetEntryIndex === "")
+        return;
       event.preventDefault();
       clearDropGhost();
-      reorderDirectoryFiles(state.draggedFileName, state.dropTargetName);
+      reorderDirectoryFiles(
+        state.draggedEntryIndex,
+        state.dropTargetEntryIndex,
+      );
     });
     fileTableBody.addEventListener("dragend", function () {
       clearDropGhost();
       state.draggedFileName = "";
-      state.dropTargetName = "";
+      state.draggedEntryIndex = "";
+      state.dropTargetEntryIndex = "";
       state.dropPlacement = "before";
       renderDirectory();
     });

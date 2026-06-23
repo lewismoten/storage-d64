@@ -4406,6 +4406,12 @@
 
   d64.updateFile = function (image, entryOrName, updates, options) {
     const files = d64.readFiles(image, options);
+    const targetIndex =
+      entryOrName &&
+      typeof entryOrName === "object" &&
+      entryOrName.index != null
+        ? String(entryOrName.index)
+        : "";
     const targetName =
       typeof entryOrName === "string"
         ? String(entryOrName).trim().toUpperCase()
@@ -4413,6 +4419,9 @@
             .trim()
             .toUpperCase();
     const index = files.findIndex(function (file) {
+      if (targetIndex) {
+        return String((file.entry && file.entry.index) || "") === targetIndex;
+      }
       return (
         String(file.name || "")
           .trim()
@@ -4499,27 +4508,45 @@
     const files = d64.readFiles(image, options);
     const order = Array.isArray(orderedNames) ? orderedNames.slice() : [];
     const byName = {};
+    const byEntryIndex = {};
     files.forEach(function (file) {
-      byName[
-        String(file.name || "")
-          .trim()
-          .toUpperCase()
-      ] = file;
+      const nameKey = String(file.name || "")
+        .trim()
+        .toUpperCase();
+      const entryIndexKey = String((file.entry && file.entry.index) || "");
+      if (!byName[nameKey]) {
+        byName[nameKey] = [];
+      }
+      byName[nameKey].push(file);
+      byEntryIndex[entryIndexKey] = file;
     });
     const reordered = [];
     const seen = {};
-    order.forEach(function (name) {
-      const key = String(name || "")
+    order.forEach(function (value) {
+      const entryIndexKey = String(value || "");
+      if (
+        entryIndexKey &&
+        !seen[entryIndexKey] &&
+        byEntryIndex[entryIndexKey]
+      ) {
+        reordered.push(byEntryIndex[entryIndexKey]);
+        seen[entryIndexKey] = true;
+        return;
+      }
+      const nameKey = String(value || "")
         .trim()
         .toUpperCase();
-      if (!key || seen[key] || !byName[key]) return;
-      reordered.push(byName[key]);
-      seen[key] = true;
+      if (!nameKey || !Array.isArray(byName[nameKey])) return;
+      const nextFile = byName[nameKey].find(function (file) {
+        const key = String((file.entry && file.entry.index) || "");
+        return !seen[key];
+      });
+      if (!nextFile) return;
+      reordered.push(nextFile);
+      seen[String((nextFile.entry && nextFile.entry.index) || "")] = true;
     });
     files.forEach(function (file) {
-      const key = String(file.name || "")
-        .trim()
-        .toUpperCase();
+      const key = String((file.entry && file.entry.index) || "");
       if (seen[key]) return;
       reordered.push(file);
       seen[key] = true;
