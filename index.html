@@ -359,16 +359,7 @@
               </p>
               <input id="doctor-entry-index" type="hidden" />
               <div class="doctor-entry-grid">
-                <label class="field">
-                  <span>Type</span>
-                  <select id="doctor-entry-type">
-                    <option value="prg">PRG - Program</option>
-                    <option value="seq">SEQ - Sequential Data</option>
-                    <option value="usr">USR - User File</option>
-                    <option value="rel">REL - Relative Records</option>
-                  </select>
-                </label>
-                <label class="field">
+                <label class="field doctor-entry-span-2">
                   <span>File Name</span>
                   <input
                     id="doctor-entry-name"
@@ -382,24 +373,16 @@
                   />
                 </label>
                 <label class="field">
-                  <span>Start Track</span>
-                  <input id="doctor-entry-start-track" type="number" min="0" />
+                  <span>Type</span>
+                  <select id="doctor-entry-type">
+                    <option value="prg">PRG - Program</option>
+                    <option value="seq">SEQ - Sequential Data</option>
+                    <option value="usr">USR - User File</option>
+                    <option value="rel">REL - Relative Records</option>
+                  </select>
                 </label>
-                <label class="field">
-                  <span>Start Sector</span>
-                  <input id="doctor-entry-start-sector" type="number" min="0" />
-                </label>
-                <label id="doctor-entry-block-count-field" class="field">
-                  <span>Block Count</span>
-                  <input
-                    id="doctor-entry-block-count"
-                    type="number"
-                    min="0"
-                    max="65535"
-                  />
-                </label>
-                <label class="field">
-                  <span>Status</span>
+                <fieldset class="field doctor-entry-subgroup">
+                  <legend>Status</legend>
                   <div class="doctor-entry-flags">
                     <label class="doctor-entry-flag">
                       <input id="doctor-entry-closed" type="checkbox" />
@@ -410,36 +393,79 @@
                       <span>Locked</span>
                     </label>
                   </div>
-                </label>
-                <label
-                  id="doctor-entry-side-track-field"
-                  class="field doctor-entry-rel-field"
-                  hidden
-                >
-                  <span>REL Side Track</span>
-                  <input id="doctor-entry-side-track" type="number" min="0" />
-                </label>
-                <label
-                  id="doctor-entry-side-sector-field"
-                  class="field doctor-entry-rel-field"
-                  hidden
-                >
-                  <span>REL Side Sector</span>
-                  <input id="doctor-entry-side-sector" type="number" min="0" />
-                </label>
-                <label
-                  id="doctor-entry-record-length-field"
-                  class="field doctor-entry-rel-field"
-                  hidden
-                >
-                  <span>REL Record Length</span>
+                </fieldset>
+                <fieldset class="field doctor-entry-subgroup">
+                  <legend>Start</legend>
+                  <div class="doctor-entry-subgrid">
+                    <label class="field">
+                      <span>Track</span>
+                      <input
+                        id="doctor-entry-start-track"
+                        type="number"
+                        min="0"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Sector</span>
+                      <input
+                        id="doctor-entry-start-sector"
+                        type="number"
+                        min="0"
+                      />
+                    </label>
+                  </div>
+                </fieldset>
+                <label id="doctor-entry-block-count-field" class="field">
+                  <span>Block Count</span>
                   <input
-                    id="doctor-entry-record-length"
+                    id="doctor-entry-block-count"
                     type="number"
-                    min="1"
-                    max="254"
+                    min="0"
+                    max="65535"
                   />
                 </label>
+                <fieldset
+                  id="doctor-entry-rel-group"
+                  class="field doctor-entry-subgroup doctor-entry-rel-field doctor-entry-span-2"
+                  hidden
+                >
+                  <legend>REL</legend>
+                  <div class="doctor-entry-rel-grid">
+                    <fieldset class="field doctor-entry-subgroup">
+                      <legend>Side</legend>
+                      <div class="doctor-entry-subgrid">
+                        <label id="doctor-entry-side-track-field" class="field">
+                          <span>Track</span>
+                          <input
+                            id="doctor-entry-side-track"
+                            type="number"
+                            min="0"
+                          />
+                        </label>
+                        <label
+                          id="doctor-entry-side-sector-field"
+                          class="field"
+                        >
+                          <span>Sector</span>
+                          <input
+                            id="doctor-entry-side-sector"
+                            type="number"
+                            min="0"
+                          />
+                        </label>
+                      </div>
+                    </fieldset>
+                    <label id="doctor-entry-record-length-field" class="field">
+                      <span>Record Length</span>
+                      <input
+                        id="doctor-entry-record-length"
+                        type="number"
+                        min="1"
+                        max="254"
+                      />
+                    </label>
+                  </div>
+                </fieldset>
               </div>
               <div class="dialog-actions">
                 <button id="doctor-entry-cancel" type="button">Cancel</button>

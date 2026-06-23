@@ -128,6 +128,7 @@
   );
   const doctorEntryClosed = document.getElementById("doctor-entry-closed");
   const doctorEntryLocked = document.getElementById("doctor-entry-locked");
+  const doctorEntryRelGroup = document.getElementById("doctor-entry-rel-group");
   const doctorEntrySideTrackField = document.getElementById(
     "doctor-entry-side-track-field",
   );
@@ -909,9 +910,7 @@
 
   const syncDoctorEntryDialog = function () {
     const isRel = String(doctorEntryType.value || "").toLowerCase() === "rel";
-    doctorEntrySideTrackField.hidden = !isRel;
-    doctorEntrySideSectorField.hidden = !isRel;
-    doctorEntryRecordLengthField.hidden = !isRel;
+    doctorEntryRelGroup.hidden = !isRel;
   };
 
   const toggleDiskDropTarget = function (isActive) {

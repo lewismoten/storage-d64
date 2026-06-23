@@ -1598,6 +1598,34 @@ tbody tr.is-drop-target {
   margin-top: 0;
 }
 
+.doctor-entry-span-2 {
+  grid-column: 1 / -1;
+}
+
+.doctor-entry-subgroup {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(185, 227, 242, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.doctor-entry-subgroup legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.doctor-entry-subgrid,
+.doctor-entry-rel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .doctor-entry-grid .field.is-significant {
   padding: 10px 12px;
   border-radius: 12px;
@@ -1627,6 +1655,11 @@ tbody tr.is-drop-target {
 
 @media (max-width: 640px) {
   .doctor-entry-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doctor-entry-subgrid,
+  .doctor-entry-rel-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
