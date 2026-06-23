@@ -81,6 +81,17 @@
   const fileNameTarget = document.getElementById("file-name-target");
   const fileNameInput = document.getElementById("file-name-input");
   const fileNameCancel = document.getElementById("file-name-cancel");
+  const headerDiskNameDialog = document.getElementById(
+    "header-disk-name-dialog",
+  );
+  const headerDiskNameForm = document.getElementById("header-disk-name-form");
+  const headerDiskNameDialogName = document.getElementById(
+    "header-disk-name-dialog-name",
+  );
+  const headerDiskNameInput = document.getElementById("header-disk-name-input");
+  const headerDiskNameCancel = document.getElementById(
+    "header-disk-name-cancel",
+  );
   const doctorEntryDialog = document.getElementById("doctor-entry-dialog");
   const doctorEntryForm = document.getElementById("doctor-entry-form");
   const doctorEntryDialogName = document.getElementById(
@@ -4296,7 +4307,13 @@
     );
 
     renderDefinitionList(headerSummary, [
-      { label: "Disk Name", value: toDisplayValue(header.diskName) },
+      {
+        label: "Disk Name",
+        html:
+          '<button type="button" class="meta-inline-button" data-action="edit-disk-name" aria-label="Edit disk name">' +
+          escapeHtml(toDisplayValue(header.diskName)) +
+          "</button>",
+      },
       {
         label: "Disk ID",
         html:
@@ -4680,6 +4697,29 @@
     doctorDiskIdInput.select();
   };
 
+  const closeHeaderDiskNameDialog = function () {
+    if (typeof headerDiskNameDialog.close === "function") {
+      headerDiskNameDialog.close();
+    } else {
+      headerDiskNameDialog.removeAttribute("open");
+    }
+  };
+
+  const openHeaderDiskNameDialog = function (value) {
+    const normalizedValue = normalizeDiskNameText(value || "");
+    headerDiskNameDialogName.textContent =
+      "Set the 16-character disk name stored in the header.";
+    headerDiskNameInput.value = normalizedValue;
+    headerDiskNameInput.setCustomValidity("");
+    if (typeof headerDiskNameDialog.showModal === "function") {
+      headerDiskNameDialog.showModal();
+    } else {
+      headerDiskNameDialog.setAttribute("open", "open");
+    }
+    headerDiskNameInput.focus();
+    headerDiskNameInput.select();
+  };
+
   const closeDoctorDosTypeDialog = function () {
     if (typeof doctorDosTypeDialog.close === "function") {
       doctorDosTypeDialog.close();
@@ -4746,6 +4786,20 @@
     }
   };
 
+  const writeHeaderDiskName = function (value) {
+    if (!state.image) return;
+    const diskName = normalizeDiskNameText(value || "").slice(0, 16);
+    const nextImage = state.image.slice();
+    const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
+    nextImage.set(d64.encodeFileName(diskName, 16), start);
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      'Updated disk name to "' + (diskName || "UNTITLED") + '".',
+      { resetDeletedTypeHints: false },
+    );
+  };
+
   const writeDoctorDosType = function (value) {
     if (!state.image) return;
     const dosType =
@@ -4800,6 +4854,21 @@
         refreshDoctor: doctorDiskIdDialog.dataset.source === "doctor",
       });
       closeDoctorDiskIdDialog();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveHeaderDiskNameDialog = function (event) {
+    event.preventDefault();
+    const normalizedValue = normalizeDiskNameText(headerDiskNameInput.value);
+    if (headerDiskNameInput.value !== normalizedValue) {
+      headerDiskNameInput.value = normalizedValue;
+    }
+    headerDiskNameInput.setCustomValidity("");
+    try {
+      writeHeaderDiskName(normalizedValue);
+      closeHeaderDiskNameDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -5964,9 +6033,32 @@
     fileNameCancel.addEventListener("click", function () {
       closeFileNameDialog();
     });
+    headerDiskNameInput.addEventListener("input", function () {
+      const normalizedValue = normalizeDiskNameText(headerDiskNameInput.value);
+      if (headerDiskNameInput.value !== normalizedValue) {
+        const start = headerDiskNameInput.selectionStart;
+        const end = headerDiskNameInput.selectionEnd;
+        const delta = headerDiskNameInput.value.length - normalizedValue.length;
+        headerDiskNameInput.value = normalizedValue;
+        if (typeof start === "number" && typeof end === "number") {
+          const nextStart = Math.max(0, start - delta);
+          const nextEnd = Math.max(0, end - delta);
+          headerDiskNameInput.setSelectionRange(nextStart, nextEnd);
+        }
+      }
+    });
+    headerDiskNameForm.addEventListener("submit", saveHeaderDiskNameDialog);
+    headerDiskNameCancel.addEventListener("click", function () {
+      closeHeaderDiskNameDialog();
+    });
     headerSummary.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "edit-disk-name") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openHeaderDiskNameDialog((header && header.diskName) || "");
+        return;
+      }
       if (button.dataset.action === "edit-disk-id") {
         const header = state.image ? d64.readHeader(state.image) : null;
         openDoctorDiskIdDialog((header && header.diskId) || "00", {

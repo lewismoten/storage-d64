@@ -278,6 +278,40 @@
             </form>
           </dialog>
 
+          <dialog id="header-disk-name-dialog" class="file-type-dialog">
+            <form
+              id="header-disk-name-form"
+              method="dialog"
+              class="file-type-form"
+            >
+              <div class="section-heading">
+                <h3>Disk Name</h3>
+                <p id="header-disk-name-dialog-name">Rename the disk header</p>
+              </div>
+              <label class="field">
+                <span>Name</span>
+                <input
+                  id="header-disk-name-input"
+                  type="text"
+                  maxlength="16"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-1p-ignore="true"
+                />
+              </label>
+              <div class="dialog-actions">
+                <button id="header-disk-name-cancel" type="button">
+                  Cancel
+                </button>
+                <button id="header-disk-name-save" type="submit">
+                  Save Name
+                </button>
+              </div>
+            </form>
+          </dialog>
+
           <dialog id="doctor-entry-dialog" class="file-type-dialog">
             <form id="doctor-entry-form" method="dialog" class="file-type-form">
               <div class="section-heading">
