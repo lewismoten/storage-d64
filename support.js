@@ -1273,7 +1273,13 @@
 
   d64.readFiles = function (image, options) {
     return d64.readDirectoryEntries(image, options).map(function (entry) {
-      const file = d64.readFile(image, entry, options);
+      let file = null;
+      let readError = "";
+      try {
+        file = d64.readFile(image, entry, options);
+      } catch (error) {
+        readError = String(error && error.message ? error.message : error);
+      }
       return {
         name: entry.name,
         type: entry.fileType,
@@ -1282,6 +1288,7 @@
         recordLength: entry.recordLength || undefined,
         data: file ? file.payload.slice() : new Uint8Array(0),
         unusedTailData: file ? file.unusedTailData.slice() : new Uint8Array(0),
+        readError: readError,
         entry: entry,
       };
     });
@@ -1734,6 +1741,49 @@
       image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
     const entries = d64.readDirectoryEntries(nextImage, config);
     let repairedCount = 0;
+    const countReachableFileChainBlocks = function (sourceImage, entry) {
+      const geometry = d64.describeGeometry(sourceImage);
+      const refs = [];
+      const visited = {};
+      let track = Math.max(0, Math.floor(Number(entry.startTrack) || 0));
+      let sector = Math.max(0, Math.floor(Number(entry.startSector) || 0));
+      while (track) {
+        if (
+          track < 1 ||
+          track > geometry.trackCount ||
+          sector < 0 ||
+          sector >= d64.trackSectorCount(track)
+        ) {
+          break;
+        }
+        const key = String(track) + ":" + String(sector);
+        if (visited[key]) {
+          break;
+        }
+        visited[key] = true;
+        refs.push({ track: track, sector: sector });
+        const block = d64.readSector(sourceImage, track, sector);
+        if (!block || block.length < SECTOR_SIZE) {
+          break;
+        }
+        const nextTrack = block[0];
+        const nextSector = block[1];
+        if (!nextTrack) {
+          break;
+        }
+        if (
+          nextTrack < 1 ||
+          nextTrack > geometry.trackCount ||
+          nextSector < 0 ||
+          nextSector >= d64.trackSectorCount(nextTrack)
+        ) {
+          break;
+        }
+        track = nextTrack;
+        sector = nextSector;
+      }
+      return refs.length;
+    };
     entries.forEach(function (entry) {
       if (!entry || entry.deleted || !entry.startTrack) return;
       if (target != null) {
@@ -1753,12 +1803,8 @@
         }
       }
       try {
-        const chain = d64.readFileChain(
-          nextImage,
-          entry.startTrack,
-          entry.startSector,
-        );
-        const expectedCount = chain.blocks.length;
+        const expectedCount = countReachableFileChainBlocks(nextImage, entry);
+        if (!expectedCount) return;
         const currentCount = Math.max(0, Number(entry.blockCount) || 0);
         if (currentCount === expectedCount) return;
         const entryBytes = entry.raw.slice();
@@ -1767,7 +1813,7 @@
         nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
         repairedCount += 1;
       } catch (error) {
-        // Leave invalid chains untouched; this repair only fixes counts for readable chains.
+        // Leave unreadable entries untouched.
       }
     });
     return {
@@ -3016,7 +3062,7 @@
 
     const directorySector1 = d64.readSector(bytes, DIRECTORY_TRACK, 1).slice();
     directorySector1[0] = DIRECTORY_TRACK;
-    directorySector1[1] = 1;
+    directorySector1[1] = 2;
     bytes.set(directorySector1, d64.trackOffset(DIRECTORY_TRACK, 1));
 
     let entry0 = d64.createDirectoryEntry("LOCKEDA", "prg", 1, 0, 2, {
@@ -3052,11 +3098,11 @@
     });
     writeEntry(4, entry4);
 
-    let entry5 = d64.createDirectoryEntry("RESERVE", "prg", 18, 2, 1, {
+    let entry5 = d64.createDirectoryEntry("RESERVE", "prg", 18, 3, 1, {
       closed: true,
     });
     writeEntry(5, entry5);
-    writeSector(18, 2, [0, 5, 82, 69, 83, 86]);
+    writeSector(18, 3, [0, 5, 82, 69, 83, 86]);
 
     let entry6 = d64.createDirectoryEntry("LOOP", "prg", 40, 0, 2, {
       closed: true,
@@ -3113,6 +3159,11 @@
 
     let entry13 = d64.createDeletedDirectoryEntry("DELUNSAFE", 1, 0, 1);
     writeEntry(13, entry13);
+
+    const directorySector2 = d64.readSector(bytes, DIRECTORY_TRACK, 2).slice();
+    directorySector2[0] = DIRECTORY_TRACK;
+    directorySector2[1] = 1;
+    bytes.set(directorySector2, d64.trackOffset(DIRECTORY_TRACK, 2));
 
     bytes = d64.writeSectorError(bytes, 1, 0, 0x09, {
       format: "d64_40_track_error_info",
