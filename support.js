@@ -2130,15 +2130,22 @@
           : "Track 18 sector 0 does not strongly resemble a valid BAM/header sector.",
         headerAnalysis
           ? {
-              details:
+              details: [
                 String(headerAnalysis.validTrackEntries || 0) +
-                " of " +
-                String(DEFAULT_TRACK_COUNT) +
-                " BAM track entries look valid; " +
+                  " of " +
+                  String(DEFAULT_TRACK_COUNT) +
+                  " BAM track entries are populated and internally consistent.",
                 String(headerAnalysis.invalidTrackEntries || 0) +
-                " look invalid and " +
+                  " populated entr" +
+                  (Number(headerAnalysis.invalidTrackEntries || 0) === 1
+                    ? "y looks invalid."
+                    : "ies look invalid."),
                 String(headerAnalysis.zeroTrackEntries || 0) +
-                " are all zero.",
+                  " entr" +
+                  (Number(headerAnalysis.zeroTrackEntries || 0) === 1
+                    ? "y is blank (all zero)."
+                    : "ies are blank (all zero)."),
+              ].join(" "),
             }
           : null,
       );
