@@ -573,6 +573,8 @@
       isReadableIdentityValue(diskId) ||
       isReadableIdentityValue(dosType);
     const hasExpectedDosType = dosType === d64.dosTypes.dos2a;
+    const hasStrongHeaderIdentity =
+      hasRecognizedDosVersion || hasExpectedDosType || hasReadableIdentity;
     const directoryPointerLooksValid =
       nextDirectoryTrack === 0 ||
       (nextDirectoryTrack <= MAX_TRACK_COUNT &&
@@ -583,6 +585,8 @@
       hasReadableIdentity ||
       hasExpectedDosType ||
       nonZeroTrackEntries >= 6;
+    const plausibleTrackEntries =
+      validTrackEntries + (hasStrongHeaderIdentity ? zeroTrackEntries : 0);
     let confidence = 0;
     if (validTrackEntries >= 24) confidence += 3;
     else if (validTrackEntries >= 12) confidence += 2;
@@ -592,18 +596,32 @@
     if (hasExpectedDosType) confidence += 1;
     if (directoryPointerLooksValid) confidence += 1;
     if (nonZeroTrackEntries >= 20) confidence += 1;
+    if (
+      hasStrongHeaderIdentity &&
+      invalidTrackEntries === 0 &&
+      plausibleTrackEntries >= DEFAULT_TRACK_COUNT
+    ) {
+      confidence += 2;
+    }
     if (invalidTrackEntries > 10) confidence -= 2;
     if (config.requireScore && confidence < config.requireScore) return null;
     return {
       confidence: confidence,
       looksLikeBam:
-        hasHeaderSignal && confidence >= 4 && validTrackEntries >= 6,
+        hasHeaderSignal &&
+        confidence >= 4 &&
+        (validTrackEntries >= 6 ||
+          (hasStrongHeaderIdentity &&
+            invalidTrackEntries === 0 &&
+            plausibleTrackEntries >= DEFAULT_TRACK_COUNT)),
       validTrackEntries: validTrackEntries,
       invalidTrackEntries: invalidTrackEntries,
       nonZeroTrackEntries: nonZeroTrackEntries,
       zeroTrackEntries: zeroTrackEntries,
+      plausibleTrackEntries: plausibleTrackEntries,
       hasRecognizedDosVersion: hasRecognizedDosVersion,
       hasExpectedDosType: hasExpectedDosType,
+      hasStrongHeaderIdentity: hasStrongHeaderIdentity,
       hasHeaderSignal: hasHeaderSignal,
       dosVersionByte: dosVersionByte,
       nextDirectoryTrack: nextDirectoryTrack,
@@ -2143,8 +2161,9 @@
                 String(headerAnalysis.zeroTrackEntries || 0) +
                   " entr" +
                   (Number(headerAnalysis.zeroTrackEntries || 0) === 1
-                    ? "y is blank (all zero)."
-                    : "ies are blank (all zero)."),
+                    ? "y is 00/00/00/00."
+                    : "ies are 00/00/00/00.") +
+                  " With a strong header, those can represent fully allocated tracks rather than missing BAM rows.",
               ].join(" "),
             }
           : null,

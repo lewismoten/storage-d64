@@ -4470,6 +4470,27 @@
     }
   };
 
+  const rebuildBamFromDoctor = function () {
+    if (!state.image) return;
+    try {
+      const nextImage = d64.validateImage(state.image);
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Rebuilt the BAM from closed file chains.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReport(nextImage);
+      if (typeof doctorDialog.showModal === "function") {
+        doctorDialog.showModal();
+      } else {
+        doctorDialog.setAttribute("open", "open");
+      }
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const closeDoctorDialog = function () {
     if (typeof doctorDialog.close === "function") {
       doctorDialog.close();
@@ -4519,6 +4540,15 @@
           '<div class="doctor-issue-actions">' +
           '<button type="button" class="file-type-button" data-action="open-doctor-disk-name-hex">' +
           "Open Disk Name Hex" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "damaged-bam-or-header") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="rebuild-doctor-bam">' +
+          "Rebuild" +
           "</button>" +
           "</div>"
         );
@@ -5488,6 +5518,10 @@
       }
       if (button.dataset.action === "repair-doctor-block-counts-all") {
         repairMismatchedBlockCounts();
+        return;
+      }
+      if (button.dataset.action === "rebuild-doctor-bam") {
+        rebuildBamFromDoctor();
         return;
       }
       if (button.dataset.action === "open-doctor-sector") {
