@@ -4902,10 +4902,10 @@
         return (
           '<div class="doctor-issue-actions">' +
           '<button type="button" class="file-type-button" data-action="normalize-doctor-disk-name">' +
-          "Normalize" +
+          "Repair" +
           "</button>" +
           '<button type="button" class="file-type-button" data-action="open-doctor-disk-name-hex">' +
-          "Open Disk Name Hex" +
+          "Review" +
           "</button>" +
           "</div>"
         );
