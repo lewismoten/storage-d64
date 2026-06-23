@@ -40,6 +40,29 @@
 
   d64.dosTypes = Object.freeze({
     dos2a: "2A",
+    dos2c: "2C",
+    dos3d: "3D",
+  });
+
+  d64.dosTypeInfo = Object.freeze({
+    "2A": Object.freeze({
+      code: "2A",
+      label: "2A",
+      description: "Standard 1541-style CBM DOS disk",
+      is1541Valid: true,
+    }),
+    "2C": Object.freeze({
+      code: "2C",
+      label: "2C",
+      description: "Higher-capacity CBM 8050/8250-style family",
+      is1541Valid: false,
+    }),
+    "3D": Object.freeze({
+      code: "3D",
+      label: "3D",
+      description: "1581 3.5-inch disk format",
+      is1541Valid: false,
+    }),
   });
 
   d64.directoryEntryFlags = Object.freeze({
@@ -314,7 +337,25 @@
     const value = String(dosType || d64.dosTypes.dos2a)
       .trim()
       .toUpperCase();
-    return value || d64.dosTypes.dos2a;
+    if (!value) return d64.dosTypes.dos2a;
+    return d64.dosTypeInfo[value] ? value : d64.dosTypes.dos2a;
+  };
+
+  d64.readStoredDosType = function (dosType) {
+    return String(dosType || "")
+      .trim()
+      .toUpperCase();
+  };
+
+  d64.isValid1541DosType = function (dosType) {
+    const stored = d64.readStoredDosType(dosType);
+    const info = d64.dosTypeInfo[stored];
+    return Boolean(info && info.is1541Valid);
+  };
+
+  d64.describeDosType = function (dosType) {
+    const stored = d64.readStoredDosType(dosType);
+    return d64.dosTypeInfo[stored] || null;
   };
 
   d64.normalizeDosVersion = function (dosVersion) {
@@ -597,7 +638,7 @@
       isReadableIdentityValue(diskName) ||
       isReadableIdentityValue(diskId) ||
       isReadableIdentityValue(dosType);
-    const hasExpectedDosType = dosType === d64.dosTypes.dos2a;
+    const hasExpectedDosType = d64.isValid1541DosType(dosType);
     const hasStrongHeaderIdentity =
       hasRecognizedDosVersion || hasExpectedDosType || hasReadableIdentity;
     const directoryPointerLooksValid =
@@ -2307,13 +2348,20 @@
         },
       );
     }
-    if (header.dosType !== d64.dosTypes.dos2a) {
+    if (!d64.isValid1541DosType(header.dosType)) {
+      const dosTypeInfo = d64.describeDosType(header.dosType);
       addIssue(
         "repairable",
         "unexpected-dos-type",
         "Header DOS type field is not the expected 1541 DOS type.",
         {
-          details: 'Found "' + String(header.dosType || "") + '".',
+          details:
+            'Found "' +
+            String(header.dosType || "") +
+            '"' +
+            (dosTypeInfo && dosTypeInfo.description
+              ? " (" + dosTypeInfo.description + ")."
+              : "."),
           sectorHighlights: [
             {
               track: DIRECTORY_TRACK,

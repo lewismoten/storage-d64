@@ -132,6 +132,13 @@
   );
   const doctorDiskIdInput = document.getElementById("doctor-disk-id-input");
   const doctorDiskIdCancel = document.getElementById("doctor-disk-id-cancel");
+  const doctorDosTypeDialog = document.getElementById("doctor-dos-type-dialog");
+  const doctorDosTypeForm = document.getElementById("doctor-dos-type-form");
+  const doctorDosTypeDialogName = document.getElementById(
+    "doctor-dos-type-dialog-name",
+  );
+  const doctorDosTypeSelect = document.getElementById("doctor-dos-type-select");
+  const doctorDosTypeCancel = document.getElementById("doctor-dos-type-cancel");
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
     "sector-data-dialog-title",
@@ -401,6 +408,25 @@
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 2);
+  };
+
+  const doctorDosTypeOptions = Object.values(
+    (d64 && d64.dosTypeInfo) || {
+      "2A": {
+        code: "2A",
+        label: "2A",
+        description: "Standard 1541-style CBM DOS disk",
+        is1541Valid: true,
+      },
+    },
+  );
+
+  const formatDosTypeChipLabel = function (dosTypeInfo) {
+    const code = String((dosTypeInfo && dosTypeInfo.code) || "").toUpperCase();
+    if (code === "2A") return "1541 / D64";
+    if (code === "2C") return "8050 / 8250";
+    if (code === "3D") return "1581";
+    return "Unknown";
   };
 
   const toDisplayValue = function (value) {
@@ -4221,7 +4247,8 @@
     if (!state.image) {
       renderDefinitionList(headerSummary, [
         { label: "Disk Name", value: "-" },
-        { label: "Disk ID / DOS", value: "-" },
+        { label: "Disk ID", value: "-" },
+        { label: "DOS Type", value: "-" },
         { label: "Format", value: "-" },
         { label: "Tracks / Sectors", value: "-" },
         { label: "DOS Version", value: "-" },
@@ -4271,15 +4298,30 @@
     renderDefinitionList(headerSummary, [
       { label: "Disk Name", value: toDisplayValue(header.diskName) },
       {
-        label: "Disk ID / DOS",
+        label: "Disk ID",
         html:
           '<button type="button" class="meta-inline-button" data-action="edit-disk-id" aria-label="Edit disk ID">' +
           escapeHtml(toDisplayValue(header.diskId)) +
-          "</button>" +
-          '<span class="meta-inline-separator"> / </span>' +
-          '<span class="meta-inline-value">' +
-          escapeHtml(toDisplayValue(header.dosType)) +
-          "</span>",
+          "</button>",
+      },
+      {
+        label: "DOS Type",
+        html: (() => {
+          const dosTypeInfo =
+            d64 && d64.describeDosType
+              ? d64.describeDosType(header.dosType)
+              : null;
+          const dosTypeLabel = formatDosTypeChipLabel(dosTypeInfo);
+          const dosTypeDescription =
+            (dosTypeInfo && dosTypeInfo.description) || "Unknown";
+          return (
+            '<button type="button" class="meta-inline-button" data-action="edit-dos-type" aria-label="Edit DOS type" title="' +
+            escapeHtml(dosTypeDescription) +
+            '">' +
+            escapeHtml(dosTypeLabel) +
+            "</button>"
+          );
+        })(),
       },
       { label: "Format", value: toDisplayValue(header.format) },
       {
@@ -4638,6 +4680,46 @@
     doctorDiskIdInput.select();
   };
 
+  const closeDoctorDosTypeDialog = function () {
+    if (typeof doctorDosTypeDialog.close === "function") {
+      doctorDosTypeDialog.close();
+    } else {
+      doctorDosTypeDialog.removeAttribute("open");
+    }
+  };
+
+  const openDoctorDosTypeDialog = function (value) {
+    const normalizedValue =
+      (d64 && d64.normalizeDosType ? d64.normalizeDosType(value) : "2A") ||
+      "2A";
+    doctorDosTypeDialogName.textContent =
+      "Choose a known DOS type. Only 2A is valid for a 1541-style disk.";
+    doctorDosTypeSelect.innerHTML = doctorDosTypeOptions
+      .map(function (option) {
+        const optionValue = option.code || option.label || "2A";
+        return (
+          '<option value="' +
+          escapeHtml(String(optionValue)) +
+          '"' +
+          (String(optionValue) === String(normalizedValue) ? " selected" : "") +
+          ">" +
+          escapeHtml(
+            String(optionValue) +
+              " - " +
+              String(option.description || optionValue),
+          ) +
+          "</option>"
+        );
+      })
+      .join("");
+    if (typeof doctorDosTypeDialog.showModal === "function") {
+      doctorDosTypeDialog.showModal();
+    } else {
+      doctorDosTypeDialog.setAttribute("open", "open");
+    }
+    doctorDosTypeSelect.focus();
+  };
+
   const writeDoctorDiskId = function (value, options) {
     if (!state.image) return;
     const config = options || {};
@@ -4659,6 +4741,41 @@
   const repairDoctorDiskId = function () {
     try {
       writeDoctorDiskId("00", { refreshDoctor: true });
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const writeDoctorDosType = function (value) {
+    if (!state.image) return;
+    const dosType =
+      (d64 && d64.normalizeDosType ? d64.normalizeDosType(value) : "2A") ||
+      "2A";
+    const nextImage = state.image.slice();
+    const start = d64.trackOffset(18, 0) + d64.headerOffsets.dosTypeStart;
+    nextImage.set(d64.encodeFileName(dosType, 2), start);
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      'Updated DOS type to "' + dosType + '".',
+      { resetDeletedTypeHints: false },
+    );
+    refreshDoctorReportAfterImageChange();
+  };
+
+  const repairDoctorDosType = function () {
+    try {
+      writeDoctorDosType((d64 && d64.dosTypes && d64.dosTypes.dos2a) || "2A");
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveDoctorDosTypeDialog = function (event) {
+    event.preventDefault();
+    try {
+      writeDoctorDosType(doctorDosTypeSelect.value || "2A");
+      closeDoctorDosTypeDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4774,6 +4891,18 @@
         steps.push('set disk ID to "00"');
       }
 
+      if (hasIssue("unexpected-dos-type")) {
+        const start = d64.trackOffset(18, 0) + d64.headerOffsets.dosTypeStart;
+        nextImage.set(
+          d64.encodeFileName(
+            (d64 && d64.dosTypes && d64.dosTypes.dos2a) || "2A",
+            2,
+          ),
+          start,
+        );
+        steps.push('set DOS type to "2A"');
+      }
+
       if (hasIssue("splat-files")) {
         let closedCount = 0;
         for (
@@ -4885,6 +5014,7 @@
     const supportedAutoRepairCodes = {
       "invalid-disk-name-field": true,
       "short-disk-id": true,
+      "unexpected-dos-type": true,
       "damaged-bam-or-header": true,
       "splat-files": true,
       "directory-block-count-mismatch": true,
@@ -4917,6 +5047,18 @@
           "Repair" +
           "</button>" +
           '<button type="button" class="file-type-button" data-action="set-doctor-disk-id">' +
+          "Review" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "unexpected-dos-type") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-dos-type">' +
+          "Repair" +
+          "</button>" +
+          '<button type="button" class="file-type-button" data-action="review-doctor-dos-type">' +
           "Review" +
           "</button>" +
           "</div>"
@@ -5053,11 +5195,18 @@
     runDoctorDiagnosis();
   };
 
+  const isDoctorDialogOpen = function () {
+    if (!doctorDialog) return false;
+    if (typeof doctorDialog.open === "boolean") {
+      return doctorDialog.open;
+    }
+    return doctorDialog.hasAttribute("open");
+  };
+
   const refreshDoctorReportAfterImageChange = function (options) {
     if (!state.image) return;
     const config = options || {};
-    const shouldRefreshInline =
-      config.inline !== false && Boolean(state.doctorReport);
+    const shouldRefreshInline = config.inline !== false && isDoctorDialogOpen();
     if (shouldRefreshInline) {
       refreshDoctorReport();
       setStatus(
@@ -5067,20 +5216,22 @@
       );
       return;
     }
-    closeDoctorDialog();
-    const rerun = function () {
-      runDoctorDiagnosis();
-    };
-    if (
-      typeof window !== "undefined" &&
-      typeof window.requestAnimationFrame === "function"
-    ) {
-      window.requestAnimationFrame(function () {
-        window.requestAnimationFrame(rerun);
-      });
-      return;
+    if (state.returnToDoctorReport) {
+      closeDoctorDialog();
+      const rerun = function () {
+        runDoctorDiagnosis();
+      };
+      if (
+        typeof window !== "undefined" &&
+        typeof window.requestAnimationFrame === "function"
+      ) {
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(rerun);
+        });
+        return;
+      }
+      window.setTimeout(rerun, 16);
     }
-    window.setTimeout(rerun, 16);
   };
 
   const repairMismatchedBlockCounts = function (entryIndex) {
@@ -5821,6 +5972,15 @@
         openDoctorDiskIdDialog((header && header.diskId) || "00", {
           source: "header",
         });
+        return;
+      }
+      if (button.dataset.action === "edit-dos-type") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDosTypeDialog(
+          (header && header.dosType) ||
+            (d64 && d64.dosTypes && d64.dosTypes.dos2a) ||
+            "2A",
+        );
       }
     });
     doctorEntryType.addEventListener("change", function () {
@@ -5878,6 +6038,10 @@
     doctorDiskIdForm.addEventListener("submit", saveDoctorDiskIdDialog);
     doctorDiskIdCancel.addEventListener("click", function () {
       closeDoctorDiskIdDialog();
+    });
+    doctorDosTypeForm.addEventListener("submit", saveDoctorDosTypeDialog);
+    doctorDosTypeCancel.addEventListener("click", function () {
+      closeDoctorDosTypeDialog();
     });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;
@@ -5958,6 +6122,19 @@
         openDoctorDiskIdDialog((header && header.diskId) || "00", {
           source: "doctor",
         });
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-dos-type") {
+        repairDoctorDosType();
+        return;
+      }
+      if (button.dataset.action === "review-doctor-dos-type") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDosTypeDialog(
+          (header && header.dosType) ||
+            (d64 && d64.dosTypes && d64.dosTypes.dos2a) ||
+            "2A",
+        );
         return;
       }
       if (button.dataset.action === "repair-doctor-splat-files") {
