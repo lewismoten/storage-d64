@@ -150,6 +150,21 @@
   );
   const doctorDosTypeSelect = document.getElementById("doctor-dos-type-select");
   const doctorDosTypeCancel = document.getElementById("doctor-dos-type-cancel");
+  const doctorDosVersionDialog = document.getElementById(
+    "doctor-dos-version-dialog",
+  );
+  const doctorDosVersionForm = document.getElementById(
+    "doctor-dos-version-form",
+  );
+  const doctorDosVersionDialogName = document.getElementById(
+    "doctor-dos-version-dialog-name",
+  );
+  const doctorDosVersionSelect = document.getElementById(
+    "doctor-dos-version-select",
+  );
+  const doctorDosVersionCancel = document.getElementById(
+    "doctor-dos-version-cancel",
+  );
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
     "sector-data-dialog-title",
@@ -219,6 +234,7 @@
     "encodeDirectoryEntryType",
     "encodeFileName",
     "normalizeDiskNameFieldBytes",
+    "describeDosVersion",
   ];
   const DISK_MAP_COLORS = Object.freeze({
     free: "#6f5133",
@@ -432,12 +448,49 @@
     },
   );
 
+  const doctorDosVersionOptions = Object.values(
+    (d64 && d64.dosVersionInfo) || {
+      65: {
+        key: "dos2_6",
+        code: 0x41,
+        ascii: "A",
+        label: "1541 / D64",
+        description: "1541 / D64 DOS version byte",
+        is1541Valid: true,
+      },
+    },
+  ).sort(function (left, right) {
+    const order = { 65: 0, 0: 1, 67: 2, 68: 3 };
+    const leftOrder =
+      order[left && left.code] != null
+        ? order[left.code]
+        : 999 + (left.code || 0);
+    const rightOrder =
+      order[right && right.code] != null
+        ? order[right.code]
+        : 999 + (right.code || 0);
+    return leftOrder - rightOrder;
+  });
+
   const formatDosTypeChipLabel = function (dosTypeInfo) {
     const code = String((dosTypeInfo && dosTypeInfo.code) || "").toUpperCase();
     if (code === "2A") return "1541 / D64";
     if (code === "2C") return "8050 / 8250";
     if (code === "3D") return "1581";
     return "Unknown";
+  };
+
+  const formatDosVersionChipLabel = function (dosVersionInfo, dosVersionByte) {
+    if (dosVersionInfo && dosVersionInfo.label) {
+      return dosVersionInfo.label;
+    }
+    return (
+      "0x" +
+      Math.max(0, Math.min(255, Number(dosVersionByte) || 0))
+        .toString(16)
+        .toUpperCase()
+        .padStart(2, "0")
+    );
   };
 
   const toDisplayValue = function (value) {
@@ -4348,7 +4401,29 @@
           " / " +
           toDisplayValue(header.sectorCount),
       },
-      { label: "DOS Version", value: toDisplayValue(header.dosVersionName) },
+      {
+        label: "DOS Version",
+        html: (() => {
+          const dosVersionInfo =
+            d64 && d64.describeDosVersion
+              ? d64.describeDosVersion(header.dosVersionByte)
+              : null;
+          const dosVersionLabel = formatDosVersionChipLabel(
+            dosVersionInfo,
+            header.dosVersionByte,
+          );
+          const dosVersionDescription =
+            (dosVersionInfo && dosVersionInfo.description) ||
+            "Unknown DOS version byte";
+          return (
+            '<button type="button" class="meta-inline-button" data-action="edit-dos-version" aria-label="Edit DOS version" title="' +
+            escapeHtml(dosVersionDescription) +
+            '">' +
+            escapeHtml(dosVersionLabel) +
+            "</button>"
+          );
+        })(),
+      },
       { label: "Error Info", value: header.hasErrorInfo ? "Yes" : "No" },
     ]);
 
@@ -4728,6 +4803,14 @@
     }
   };
 
+  const closeDoctorDosVersionDialog = function () {
+    if (typeof doctorDosVersionDialog.close === "function") {
+      doctorDosVersionDialog.close();
+    } else {
+      doctorDosVersionDialog.removeAttribute("open");
+    }
+  };
+
   const openDoctorDosTypeDialog = function (value) {
     const normalizedValue =
       (d64 && d64.normalizeDosType ? d64.normalizeDosType(value) : "2A") ||
@@ -4758,6 +4841,51 @@
       doctorDosTypeDialog.setAttribute("open", "open");
     }
     doctorDosTypeSelect.focus();
+  };
+
+  const openDoctorDosVersionDialog = function (value, options) {
+    const config = options || {};
+    const numericValue = Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          Number(value) ||
+            (d64 && d64.dosVersions ? d64.dosVersions.dos2_6 : 0x41),
+        ),
+      ),
+    );
+    doctorDosVersionDialogName.textContent =
+      "Choose a known DOS version byte. 0x41 is the normal 1541 / D64 value.";
+    doctorDosVersionDialog.dataset.source = config.source || "doctor";
+    doctorDosVersionSelect.innerHTML = doctorDosVersionOptions
+      .map(function (option) {
+        const optionValue = Number(option.code) & 0xff;
+        return (
+          '<option value="' +
+          escapeHtml(String(optionValue)) +
+          '"' +
+          (optionValue === numericValue ? " selected" : "") +
+          ">" +
+          escapeHtml(
+            "0x" +
+              optionValue.toString(16).toUpperCase().padStart(2, "0") +
+              " - " +
+              String(option.label || option.key || optionValue) +
+              " (" +
+              String(option.description || "") +
+              ")",
+          ) +
+          "</option>"
+        );
+      })
+      .join("");
+    if (typeof doctorDosVersionDialog.showModal === "function") {
+      doctorDosVersionDialog.showModal();
+    } else {
+      doctorDosVersionDialog.setAttribute("open", "open");
+    }
+    doctorDosVersionSelect.focus();
   };
 
   const writeDoctorDiskId = function (value, options) {
@@ -4817,9 +4945,48 @@
     refreshDoctorReportAfterImageChange();
   };
 
+  const writeDoctorDosVersion = function (value, options) {
+    if (!state.image) return;
+    const config = options || {};
+    const dosVersion = Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(typeof value === "number" ? value : Number(value)) ||
+          (d64 && d64.dosVersions && d64.dosVersions.dos2_6) ||
+          0x41,
+      ),
+    );
+    const nextImage = state.image.slice();
+    const start = d64.trackOffset(18, 0) + d64.headerOffsets.dosVersion;
+    nextImage[start] = dosVersion & 0xff;
+    loadImageBytes(
+      nextImage,
+      state.sourceName || "disk.d64",
+      "Updated DOS version to 0x" +
+        dosVersion.toString(16).toUpperCase().padStart(2, "0") +
+        ".",
+      { resetDeletedTypeHints: false },
+    );
+    if (config.refreshDoctor === true) {
+      refreshDoctorReportAfterImageChange();
+    }
+  };
+
   const repairDoctorDosType = function () {
     try {
       writeDoctorDosType((d64 && d64.dosTypes && d64.dosTypes.dos2a) || "2A");
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const repairDoctorDosVersion = function () {
+    try {
+      writeDoctorDosVersion(
+        (d64 && d64.dosVersions && d64.dosVersions.dos2_6) || 0x41,
+        { refreshDoctor: true },
+      );
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4830,6 +4997,18 @@
     try {
       writeDoctorDosType(doctorDosTypeSelect.value || "2A");
       closeDoctorDosTypeDialog();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveDoctorDosVersionDialog = function (event) {
+    event.preventDefault();
+    try {
+      writeDoctorDosVersion(doctorDosVersionSelect.value, {
+        refreshDoctor: doctorDosVersionDialog.dataset.source === "doctor",
+      });
+      closeDoctorDosVersionDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -4960,6 +5139,13 @@
         steps.push('set disk ID to "00"');
       }
 
+      if (hasIssue("unknown-dos-version")) {
+        const start = d64.trackOffset(18, 0) + d64.headerOffsets.dosVersion;
+        nextImage[start] =
+          (d64 && d64.dosVersions && d64.dosVersions.dos2_6) || 0x41;
+        steps.push("set DOS version to 0x41");
+      }
+
       if (hasIssue("unexpected-dos-type")) {
         const start = d64.trackOffset(18, 0) + d64.headerOffsets.dosTypeStart;
         nextImage.set(
@@ -5083,6 +5269,7 @@
     const supportedAutoRepairCodes = {
       "invalid-disk-name-field": true,
       "short-disk-id": true,
+      "unknown-dos-version": true,
       "unexpected-dos-type": true,
       "damaged-bam-or-header": true,
       "splat-files": true,
@@ -5116,6 +5303,18 @@
           "Repair" +
           "</button>" +
           '<button type="button" class="file-type-button" data-action="set-doctor-disk-id">' +
+          "Review" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "unknown-dos-version") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-dos-version">' +
+          "Repair" +
+          "</button>" +
+          '<button type="button" class="file-type-button" data-action="review-doctor-dos-version">' +
           "Review" +
           "</button>" +
           "</div>"
@@ -6066,6 +6265,16 @@
         });
         return;
       }
+      if (button.dataset.action === "edit-dos-version") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDosVersionDialog(
+          (header && header.dosVersionByte) != null
+            ? header.dosVersionByte
+            : (d64 && d64.dosVersions && d64.dosVersions.dos2_6) || 0x41,
+          { source: "header" },
+        );
+        return;
+      }
       if (button.dataset.action === "edit-dos-type") {
         const header = state.image ? d64.readHeader(state.image) : null;
         openDoctorDosTypeDialog(
@@ -6134,6 +6343,10 @@
     doctorDosTypeForm.addEventListener("submit", saveDoctorDosTypeDialog);
     doctorDosTypeCancel.addEventListener("click", function () {
       closeDoctorDosTypeDialog();
+    });
+    doctorDosVersionForm.addEventListener("submit", saveDoctorDosVersionDialog);
+    doctorDosVersionCancel.addEventListener("click", function () {
+      closeDoctorDosVersionDialog();
     });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;
@@ -6214,6 +6427,20 @@
         openDoctorDiskIdDialog((header && header.diskId) || "00", {
           source: "doctor",
         });
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-dos-version") {
+        repairDoctorDosVersion();
+        return;
+      }
+      if (button.dataset.action === "review-doctor-dos-version") {
+        const header = state.image ? d64.readHeader(state.image) : null;
+        openDoctorDosVersionDialog(
+          (header && header.dosVersionByte) != null
+            ? header.dosVersionByte
+            : (d64 && d64.dosVersions && d64.dosVersions.dos2_6) || 0x41,
+          { source: "doctor" },
+        );
         return;
       }
       if (button.dataset.action === "repair-doctor-dos-type") {

@@ -35,7 +35,10 @@
   });
 
   d64.dosVersions = Object.freeze({
+    null: 0x00,
     dos2_6: 0x41,
+    dos8050_8250: 0x43,
+    dos1581: 0x44,
   });
 
   d64.dosTypes = Object.freeze({
@@ -62,6 +65,45 @@
       label: "3D",
       description: "1581 3.5-inch disk format",
       is1541Valid: false,
+    }),
+  });
+
+  d64.dosVersionInfo = Object.freeze({
+    0: Object.freeze({
+      key: "null",
+      code: 0x00,
+      ascii: "NUL",
+      label: "Null",
+      description: "Null or tolerated special-case DOS version byte",
+      is1541Valid: true,
+      isPreferred1541: false,
+    }),
+    65: Object.freeze({
+      key: "dos2_6",
+      code: 0x41,
+      ascii: "A",
+      label: "1541 / D64",
+      description: "1541 / D64 DOS version byte",
+      is1541Valid: true,
+      isPreferred1541: true,
+    }),
+    67: Object.freeze({
+      key: "dos8050_8250",
+      code: 0x43,
+      ascii: "C",
+      label: "8050 / 8250",
+      description: "8050 / 8250 DOS version byte",
+      is1541Valid: false,
+      isPreferred1541: false,
+    }),
+    68: Object.freeze({
+      key: "dos1581",
+      code: 0x44,
+      ascii: "D",
+      label: "1581 / D81",
+      description: "1581 / D81 DOS version byte",
+      is1541Valid: false,
+      isPreferred1541: false,
     }),
   });
 
@@ -362,13 +404,34 @@
     if (typeof dosVersion === "number" && Number.isFinite(dosVersion)) {
       return Math.max(0, Math.min(255, Math.round(dosVersion)));
     }
-    const key = String(dosVersion || "")
-      .trim()
-      .toLowerCase();
+    const value = String(dosVersion || "").trim();
+    if (/^0x[0-9a-f]{1,2}$/i.test(value)) {
+      return parseInt(value, 16) & 0xff;
+    }
+    if (/^[0-9a-f]{2}$/i.test(value)) {
+      return parseInt(value, 16) & 0xff;
+    }
+    if (value.length === 1) {
+      return value.toUpperCase().charCodeAt(0) & 0xff;
+    }
+    const key = value.trim().toLowerCase();
     if (Object.prototype.hasOwnProperty.call(d64.dosVersions, key)) {
       return d64.dosVersions[key];
     }
     return d64.dosVersions.dos2_6;
+  };
+
+  d64.describeDosVersion = function (dosVersion) {
+    const code =
+      typeof dosVersion === "number" && Number.isFinite(dosVersion)
+        ? Math.max(0, Math.min(255, Math.round(dosVersion)))
+        : d64.normalizeDosVersion(dosVersion);
+    return d64.dosVersionInfo[code] || null;
+  };
+
+  d64.isExpected1541DosVersion = function (dosVersion) {
+    const info = d64.describeDosVersion(dosVersion);
+    return Boolean(info && info.is1541Valid);
   };
 
   d64.normalizeDiskInfo = function (options) {
@@ -460,10 +523,19 @@
       nextDirectoryTrack: sector[offsets.nextDirectoryTrack],
       nextDirectorySector: sector[offsets.nextDirectorySector],
       dosVersionByte: sector[offsets.dosVersion],
-      dosVersionName:
-        sector[offsets.dosVersion] === d64.dosVersions.dos2_6
-          ? "dos2_6"
-          : "unknown",
+      dosVersionName: d64.describeDosVersion(sector[offsets.dosVersion])
+        ? d64.describeDosVersion(sector[offsets.dosVersion]).key
+        : "unknown",
+      dosVersionLabel: d64.describeDosVersion(sector[offsets.dosVersion])
+        ? d64.describeDosVersion(sector[offsets.dosVersion]).label
+        : "0x" +
+          sector[offsets.dosVersion]
+            .toString(16)
+            .toUpperCase()
+            .padStart(2, "0"),
+      dosVersionDescription: d64.describeDosVersion(sector[offsets.dosVersion])
+        ? d64.describeDosVersion(sector[offsets.dosVersion]).description
+        : "",
       diskName: d64.decodeName(
         sector.subarray(
           offsets.diskNameStart,
@@ -624,10 +696,8 @@
         d64.headerOffsets.dosTypeStart + d64.headerOffsets.dosTypeLength,
       ),
     );
-    const hasRecognizedDosVersion = Object.keys(d64.dosVersions).some(
-      function (key) {
-        return d64.dosVersions[key] === dosVersionByte;
-      },
+    const hasRecognizedDosVersion = Boolean(
+      d64.describeDosVersion(dosVersionByte),
     );
     const isReadableIdentityValue = function (value) {
       const text = String(value || "");
@@ -2325,11 +2395,12 @@
         },
       );
     }
-    if (header.dosVersionName === "unknown") {
+    if (!d64.isExpected1541DosVersion(header.dosVersionByte)) {
+      const dosVersionInfo = d64.describeDosVersion(header.dosVersionByte);
       addIssue(
         "repairable",
         "unknown-dos-version",
-        "Header DOS version byte is not recognized.",
+        "Header DOS version byte is not the expected 1541 value.",
         {
           details:
             "Byte value is 0x" +
@@ -2337,7 +2408,9 @@
               .toString(16)
               .padStart(2, "0")
               .toUpperCase() +
-            ".",
+            (dosVersionInfo && dosVersionInfo.description
+              ? " (" + dosVersionInfo.description + ")."
+              : "."),
           sectorHighlights: [
             {
               track: DIRECTORY_TRACK,
