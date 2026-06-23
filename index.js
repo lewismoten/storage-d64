@@ -149,6 +149,10 @@
   );
   const doctorEntryCancel = document.getElementById("doctor-entry-cancel");
   const doctorEntrySave = document.getElementById("doctor-entry-save");
+  const doctorEntryBitmaskButton = document.getElementById(
+    "doctor-entry-bitmask-button",
+  );
+  const doctorEntryBitmask = document.getElementById("doctor-entry-bitmask");
   const doctorDiskIdDialog = document.getElementById("doctor-disk-id-dialog");
   const doctorDiskIdForm = document.getElementById("doctor-disk-id-form");
   const doctorDiskIdDialogName = document.getElementById(
@@ -911,6 +915,162 @@
   const syncDoctorEntryDialog = function () {
     const isRel = String(doctorEntryType.value || "").toLowerCase() === "rel";
     doctorEntryRelGroup.hidden = !isRel;
+  };
+
+  const getDoctorEntrySourceEntry = function () {
+    if (!state.image) return null;
+    const entryIndexValue = Math.max(
+      0,
+      Math.floor(Number(doctorEntryIndex.value) || 0),
+    );
+    const context = state.doctorEntryContext || { mode: "edit-entry" };
+    return context.mode === "restore-deleted"
+      ? d64.readDeletedEntries(state.image).find(function (candidate) {
+          return String(candidate.index) === String(entryIndexValue);
+        }) || null
+      : d64.readDirectoryEntry(state.image, entryIndexValue);
+  };
+
+  const buildDoctorEntryPreviewBytes = function (entry) {
+    if (!entry) return null;
+    const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
+    const nextType = String(doctorEntryType.value || "prg").toLowerCase();
+    const nextStartTrack = Math.max(
+      0,
+      Math.floor(Number(doctorEntryStartTrack.value) || 0),
+    );
+    const nextStartSector = Math.max(
+      0,
+      Math.floor(Number(doctorEntryStartSector.value) || 0),
+    );
+    const nextBlockCount = Math.max(
+      0,
+      Math.min(65535, Math.floor(Number(doctorEntryBlockCount.value) || 0)),
+    );
+    const nextSideTrack =
+      nextType === "rel"
+        ? Math.max(0, Math.floor(Number(doctorEntrySideTrack.value) || 0))
+        : 0;
+    const nextSideSector =
+      nextType === "rel"
+        ? Math.max(0, Math.floor(Number(doctorEntrySideSector.value) || 0))
+        : 0;
+    const nextRecordLength =
+      nextType === "rel"
+        ? Math.max(
+            1,
+            Math.min(
+              254,
+              Math.floor(Number(doctorEntryRecordLength.value) || 32),
+            ),
+          )
+        : 0;
+    const context = state.doctorEntryContext || { mode: "edit-entry" };
+    const nextEntryBytes = entry.raw.slice();
+    nextEntryBytes[2] =
+      context.mode === "restore-deleted"
+        ? d64.encodeDirectoryEntryType(nextType, {
+            closed: doctorEntryClosed.checked,
+            locked: doctorEntryLocked.checked,
+          })
+        : d64.encodeDirectoryEntryType(nextType, {
+            closed: doctorEntryClosed.checked,
+            locked: doctorEntryLocked.checked,
+          });
+    nextEntryBytes[3] = nextStartTrack & 0xff;
+    nextEntryBytes[4] = nextStartSector & 0xff;
+    nextEntryBytes.set(d64.encodeFileName(nextName, 16), 5);
+    nextEntryBytes[21] = nextSideTrack & 0xff;
+    nextEntryBytes[22] = nextSideSector & 0xff;
+    nextEntryBytes[23] = nextRecordLength & 0xff;
+    nextEntryBytes[28] = nextBlockCount & 0xff;
+    nextEntryBytes[29] = (nextBlockCount >> 8) & 0xff;
+    return nextEntryBytes;
+  };
+
+  const getDoctorEntryByteRole = function (byteIndex) {
+    if (byteIndex === 2) return "type-status";
+    if (byteIndex === 3 || byteIndex === 4) return "start";
+    if (byteIndex >= 5 && byteIndex <= 20) return "name";
+    if (byteIndex === 21 || byteIndex === 22) return "side";
+    if (byteIndex === 23) return "record";
+    if (byteIndex === 28 || byteIndex === 29) return "blocks";
+    return "unused";
+  };
+
+  const renderDoctorEntryBitmask = function () {
+    if (!doctorEntryBitmask) return;
+    const entry = getDoctorEntrySourceEntry();
+    const bytes = buildDoctorEntryPreviewBytes(entry);
+    if (!entry || !bytes) {
+      doctorEntryBitmask.innerHTML = "";
+      doctorEntryBitmaskButton.disabled = true;
+      return;
+    }
+    doctorEntryBitmaskButton.disabled = false;
+    const zones = [];
+    const zeroColumns = [];
+    const pixels = [];
+    for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
+      const role = getDoctorEntryByteRole(byteIndex);
+      const value = bytes[byteIndex];
+      zones.push(
+        '<rect class="doctor-entry-bitmask-zone is-' +
+          role +
+          '" x="' +
+          String(byteIndex) +
+          '" y="0" width="1" height="8"></rect>',
+      );
+      if ((Number(value) || 0) === 0) {
+        zeroColumns.push(
+          '<rect class="doctor-entry-bitmask-zero-column" x="' +
+            String(byteIndex) +
+            '" y="0" width="1" height="8"></rect>',
+        );
+      }
+      for (let bit = 0; bit < 8; bit += 1) {
+        if (((value >> (7 - bit)) & 1) === 0) continue;
+        pixels.push(
+          '<rect class="doctor-entry-bitmask-pixel is-' +
+            role +
+            '" x="' +
+            String(byteIndex) +
+            '" y="' +
+            String(bit) +
+            '" width="1" height="1"></rect>',
+        );
+      }
+    }
+    doctorEntryBitmask.innerHTML =
+      zones.join("") + zeroColumns.join("") + pixels.join("");
+  };
+
+  const openDoctorEntryHexDialog = function () {
+    if (!state.image) return;
+    const entry = getDoctorEntrySourceEntry();
+    if (!entry) return;
+    const entryOffset =
+      d64.trackOffset(entry.track, entry.sector) + entry.slot * 32;
+    const byteRoleMap = {};
+    for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
+      byteRoleMap[byteIndex] = getDoctorEntryByteRole(byteIndex);
+    }
+    openImageRangeDialog({
+      title:
+        "Directory Entry T" +
+        String(entry.track) +
+        " S" +
+        String(entry.sector) +
+        " Slot " +
+        String(entry.slot),
+      dialogTitle: "Directory Entry Bytes",
+      note: "This is the 32-byte directory entry record.",
+      absoluteOffsets: Array.from({ length: 32 }, function (_, index) {
+        return entryOffset + index;
+      }),
+      highlightLinkBytes: false,
+      byteRoleMap: byteRoleMap,
+    });
   };
 
   const toggleDiskDropTarget = function (isActive) {
@@ -1753,6 +1913,7 @@
           return result;
         }, {})
       : {};
+    const byteRoleMap = config.byteRoleMap || {};
     const selectionStart = Number.isFinite(config.selectionStart)
       ? Math.max(0, Math.floor(config.selectionStart))
       : null;
@@ -1812,6 +1973,9 @@
           if (significantByteIndexes[absoluteIndex]) {
             classes.push("is-significant");
           }
+          if (byteRoleMap[absoluteIndex]) {
+            classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
+          }
           if (
             selectedMin != null &&
             absoluteIndex >= selectedMin &&
@@ -1848,6 +2012,9 @@
           }
           if (significantByteIndexes[absoluteIndex]) {
             classes.push("is-significant");
+          }
+          if (byteRoleMap[absoluteIndex]) {
+            classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
           }
           if (
             selectedMin != null &&
@@ -3208,6 +3375,7 @@
         showOffsets: options.showOffsets !== false,
         highlightLinkBytes: options.highlightLinkBytes !== false,
         invalidByteIndexes: invalidByteIndexes,
+        byteRoleMap: options.byteRoleMap || {},
         highlightByteIndexes: Array.isArray(options.highlightByteIndexes)
           ? options.highlightByteIndexes.slice()
           : [],
@@ -5982,6 +6150,7 @@
     doctorEntryRecordLength.value = String(Number(entry.recordLength) || 32);
     syncDoctorEntryDialog();
     validateDoctorEntryDialog();
+    renderDoctorEntryBitmask();
     if (typeof doctorEntryDialog.showModal === "function") {
       doctorEntryDialog.showModal();
     } else {
@@ -6527,6 +6696,7 @@
     doctorEntryType.addEventListener("change", function () {
       syncDoctorEntryDialog();
       validateDoctorEntryDialog();
+      renderDoctorEntryBitmask();
     });
     doctorEntryName.addEventListener("input", function () {
       const normalizedValue = d64.normalizeFileName(doctorEntryName.value, 16, {
@@ -6545,6 +6715,7 @@
         }
       }
       validateDoctorEntryDialog();
+      renderDoctorEntryBitmask();
     });
     [
       doctorEntryStartTrack,
@@ -6556,7 +6727,13 @@
     ].forEach(function (input) {
       input.addEventListener("input", function () {
         validateDoctorEntryDialog();
+        renderDoctorEntryBitmask();
       });
+    });
+    doctorEntryClosed.addEventListener("change", renderDoctorEntryBitmask);
+    doctorEntryLocked.addEventListener("change", renderDoctorEntryBitmask);
+    doctorEntryBitmaskButton.addEventListener("click", function () {
+      openDoctorEntryHexDialog();
     });
     doctorEntryForm.addEventListener("submit", saveDoctorEntryDialog);
     doctorEntryCancel.addEventListener("click", function () {

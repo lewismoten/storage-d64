@@ -1251,6 +1251,36 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(94, 219, 255, 0.28);
 }
 
+.sector-hex-byte.is-role-name,
+.sector-ascii-char.is-role-name {
+  color: #8ef3e6;
+}
+
+.sector-hex-byte.is-role-type-status,
+.sector-ascii-char.is-role-type-status {
+  color: #f2a65a;
+}
+
+.sector-hex-byte.is-role-start,
+.sector-ascii-char.is-role-start {
+  color: #74b9ff;
+}
+
+.sector-hex-byte.is-role-side,
+.sector-ascii-char.is-role-side {
+  color: #d0a5ff;
+}
+
+.sector-hex-byte.is-role-record,
+.sector-ascii-char.is-role-record {
+  color: #ffd166;
+}
+
+.sector-hex-byte.is-role-blocks,
+.sector-ascii-char.is-role-blocks {
+  color: #ff8e90;
+}
+
 .sector-hex-byte[data-byte-index],
 .sector-ascii-char[data-byte-index] {
   cursor: pointer;
@@ -1639,6 +1669,104 @@ tbody tr.is-drop-target {
   gap: 12px;
   min-height: 44px;
   align-items: center;
+}
+
+.doctor-entry-bitmask-button {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(185, 227, 242, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%),
+    rgba(255, 255, 255, 0.03);
+  text-align: left;
+}
+
+.doctor-entry-bitmask-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--muted);
+}
+
+.doctor-entry-bitmask-head strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.doctor-entry-bitmask-head span {
+  font-size: 0.8rem;
+}
+
+.doctor-entry-bitmask {
+  width: 100%;
+  height: 96px;
+  border-radius: 8px;
+  background: rgba(5, 16, 24, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(185, 227, 242, 0.08);
+}
+
+.doctor-entry-bitmask-zone.is-name {
+  fill: rgba(142, 243, 230, 0.18);
+}
+
+.doctor-entry-bitmask-zone.is-type-status {
+  fill: rgba(255, 166, 77, 0.2);
+}
+
+.doctor-entry-bitmask-zone.is-start {
+  fill: rgba(95, 168, 255, 0.22);
+}
+
+.doctor-entry-bitmask-zone.is-side {
+  fill: rgba(194, 126, 255, 0.2);
+}
+
+.doctor-entry-bitmask-zone.is-record {
+  fill: rgba(255, 209, 102, 0.2);
+}
+
+.doctor-entry-bitmask-zone.is-blocks {
+  fill: rgba(255, 120, 120, 0.2);
+}
+
+.doctor-entry-bitmask-zone.is-unused {
+  fill: rgba(255, 255, 255, 0.03);
+}
+
+.doctor-entry-bitmask-zero-column {
+  fill: rgba(0, 0, 0, 0.22);
+}
+
+.doctor-entry-bitmask-pixel.is-name {
+  fill: #8ef3e6;
+}
+
+.doctor-entry-bitmask-pixel.is-type-status {
+  fill: #f2a65a;
+}
+
+.doctor-entry-bitmask-pixel.is-start {
+  fill: #74b9ff;
+}
+
+.doctor-entry-bitmask-pixel.is-side {
+  fill: #d0a5ff;
+}
+
+.doctor-entry-bitmask-pixel.is-record {
+  fill: #ffd166;
+}
+
+.doctor-entry-bitmask-pixel.is-blocks {
+  fill: #ff8e90;
+}
+
+.doctor-entry-bitmask-pixel.is-unused {
+  fill: rgba(185, 227, 242, 0.48);
 }
 
 .doctor-entry-flag {
