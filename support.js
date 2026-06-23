@@ -499,6 +499,7 @@
     let validTrackEntries = 0;
     let invalidTrackEntries = 0;
     let nonZeroTrackEntries = 0;
+    let zeroTrackEntries = 0;
     for (let track = 1; track <= DEFAULT_TRACK_COUNT; track += 1) {
       const bamOffset = d64.headerOffsets.bamStart + (track - 1) * 4;
       const sectorCount = d64.trackSectorCount(track);
@@ -506,8 +507,12 @@
       const bit0 = bytes[bamOffset + 1];
       const bit1 = bytes[bamOffset + 2];
       const bit2 = bytes[bamOffset + 3];
-      if (freeCount || bit0 || bit1 || bit2) {
+      const hasTrackEntrySignal = Boolean(freeCount || bit0 || bit1 || bit2);
+      if (hasTrackEntrySignal) {
         nonZeroTrackEntries += 1;
+      } else {
+        zeroTrackEntries += 1;
+        continue;
       }
       let computedFreeCount = 0;
       let impossibleBits = false;
@@ -558,7 +563,15 @@
         return d64.dosVersions[key] === dosVersionByte;
       },
     );
-    const hasReadableIdentity = Boolean(diskName || diskId || dosType);
+    const isReadableIdentityValue = function (value) {
+      const text = String(value || "");
+      if (!text) return false;
+      return /^[A-Z0-9 !"#$%&'()*+\-./:;<=>?@]+$/.test(text);
+    };
+    const hasReadableIdentity =
+      isReadableIdentityValue(diskName) ||
+      isReadableIdentityValue(diskId) ||
+      isReadableIdentityValue(dosType);
     const hasExpectedDosType = dosType === d64.dosTypes.dos2a;
     const directoryPointerLooksValid =
       nextDirectoryTrack === 0 ||
@@ -588,6 +601,7 @@
       validTrackEntries: validTrackEntries,
       invalidTrackEntries: invalidTrackEntries,
       nonZeroTrackEntries: nonZeroTrackEntries,
+      zeroTrackEntries: zeroTrackEntries,
       hasRecognizedDosVersion: hasRecognizedDosVersion,
       hasExpectedDosType: hasExpectedDosType,
       hasHeaderSignal: hasHeaderSignal,
