@@ -634,6 +634,31 @@
         : new Uint8Array(sectorBytes || []);
     const config = options || {};
     if (bytes.length < SECTOR_SIZE) return null;
+    const hasAnyNonZeroByte = bytes.some(function (value) {
+      return value !== 0;
+    });
+    if (!hasAnyNonZeroByte) {
+      return {
+        confidence: 0,
+        looksLikeBam: false,
+        validTrackEntries: 0,
+        invalidTrackEntries: 0,
+        nonZeroTrackEntries: 0,
+        zeroTrackEntries: DEFAULT_TRACK_COUNT,
+        plausibleTrackEntries: 0,
+        hasRecognizedDosVersion: false,
+        hasExpectedDosType: false,
+        hasStrongHeaderIdentity: false,
+        hasHeaderSignal: false,
+        dosVersionByte: 0,
+        nextDirectoryTrack: 0,
+        nextDirectorySector: 0,
+        diskName: "",
+        diskId: "",
+        dosType: "",
+        directoryPointerLooksValid: true,
+      };
+    }
     let validTrackEntries = 0;
     let invalidTrackEntries = 0;
     let nonZeroTrackEntries = 0;
@@ -696,8 +721,9 @@
         d64.headerOffsets.dosTypeStart + d64.headerOffsets.dosTypeLength,
       ),
     );
+    const dosVersionInfo = d64.describeDosVersion(dosVersionByte);
     const hasRecognizedDosVersion = Boolean(
-      d64.describeDosVersion(dosVersionByte),
+      dosVersionInfo && dosVersionInfo.code !== d64.dosVersions.null,
     );
     const isReadableIdentityValue = function (value) {
       const text = String(value || "");
@@ -2534,10 +2560,18 @@
       );
     }
 
-    const unexpectedBamSectors = d64.scanForUnexpectedBamSectors(bytes, {
-      validateContents: false,
-      minConfidence: 4,
-    });
+    const unexpectedBamSectors = d64
+      .scanForUnexpectedBamSectors(bytes, {
+        validateContents: true,
+        minConfidence: 4,
+      })
+      .filter(function (candidate) {
+        return Boolean(
+          candidate &&
+          candidate.validation &&
+          candidate.validation.looksConsistent,
+        );
+      });
     if (unexpectedBamSectors.length) {
       addIssue(
         "warning",
