@@ -18,6 +18,7 @@
     draggedEntryIndex: "",
     dropTargetEntryIndex: "",
     dropPlacement: "before",
+    doctorEntryContext: null,
   };
 
   const createForm = document.getElementById("create-form");
@@ -146,6 +147,7 @@
     "doctor-entry-record-length",
   );
   const doctorEntryCancel = document.getElementById("doctor-entry-cancel");
+  const doctorEntrySave = document.getElementById("doctor-entry-save");
   const doctorDiskIdDialog = document.getElementById("doctor-disk-id-dialog");
   const doctorDiskIdForm = document.getElementById("doctor-disk-id-form");
   const doctorDiskIdDialogName = document.getElementById(
@@ -5816,98 +5818,6 @@
     }
   };
 
-  const restoreDeletedFile = function (entryIndex, restoreType) {
-    const restoreName = d64.normalizeFileName(restoreFileName.value, 16);
-    if (!state.image) return;
-    try {
-      const deletedEntry = d64
-        .readDeletedEntries(state.image)
-        .find(function (entry) {
-          return String(entry.index) === String(entryIndex);
-        });
-      if (!deletedEntry) throw new Error("Deleted file not found.");
-      loadImageBytes(
-        d64.undeleteFile(state.image, deletedEntry, {
-          type: restoreType,
-          name: restoreName,
-        }),
-        state.sourceName || "disk.d64",
-        "Restored " + restoreName + " as " + restoreType.toUpperCase() + ".",
-        { resetDeletedTypeHints: false },
-      );
-      delete state.deletedTypeHints[deletedEntry.index];
-    } catch (error) {
-      setStatus(error.message || String(error), true);
-    }
-  };
-
-  const openRestoreDeletedFileDialog = function (entryIndex) {
-    if (!state.image) return;
-    const deletedEntry = d64
-      .readDeletedEntries(state.image)
-      .find(function (entry) {
-        return String(entry.index) === String(entryIndex);
-      });
-    if (!deletedEntry) {
-      setStatus("Deleted file not found.", true);
-      return;
-    }
-    const hintedType =
-      state.deletedTypeHints[deletedEntry.index] ||
-      (deletedEntry.sideSectorTrack ? "rel" : "prg");
-    restoreFileTarget.value = String(deletedEntry.index);
-    restoreFileDialogName.textContent = deletedEntry.name;
-    restoreFileName.value = String(deletedEntry.name || "");
-    restoreFileSelect.value = String(hintedType || "prg").toLowerCase();
-    validateRestoreFileDialog();
-    if (typeof restoreFileDialog.showModal === "function") {
-      restoreFileDialog.showModal();
-    } else {
-      restoreFileDialog.setAttribute("open", "open");
-    }
-  };
-
-  const closeRestoreFileDialog = function () {
-    if (typeof restoreFileDialog.close === "function") {
-      restoreFileDialog.close();
-    } else {
-      restoreFileDialog.removeAttribute("open");
-    }
-  };
-
-  const validateRestoreFileDialog = function () {
-    const nextName = d64.normalizeFileName(restoreFileName.value, 16);
-    if (!nextName) {
-      restoreFileName.setCustomValidity("File name can not be empty.");
-      return false;
-    }
-    if (!state.image) {
-      restoreFileName.setCustomValidity("");
-      return true;
-    }
-    const duplicateIndex = d64.readFiles(state.image).find(function (file) {
-      return d64.normalizeFileName(file.name, 16) === nextName;
-    });
-    if (duplicateIndex) {
-      restoreFileName.setCustomValidity(
-        "An active file with that name already exists.",
-      );
-      return false;
-    }
-    restoreFileName.setCustomValidity("");
-    return true;
-  };
-
-  const saveRestoreFileDialog = function (event) {
-    event.preventDefault();
-    if (!validateRestoreFileDialog()) {
-      restoreFileName.reportValidity();
-      return;
-    }
-    restoreDeletedFile(restoreFileTarget.value, restoreFileSelect.value);
-    closeRestoreFileDialog();
-  };
-
   const destroyDeletedFile = function (entryIndex) {
     if (!state.image) return;
     try {
@@ -6034,11 +5944,20 @@
   const openDoctorEntryDialog = function (entryIndexValue, options) {
     const config = options || {};
     if (!state.image) return;
-    const entry = d64.readDirectoryEntry(state.image, entryIndexValue);
-    if (!entry || !entry.typeByte) {
+    const entry = config.restoreDeleted
+      ? d64.readDeletedEntries(state.image).find(function (candidate) {
+          return String(candidate.index) === String(entryIndexValue);
+        }) || null
+      : d64.readDirectoryEntry(state.image, entryIndexValue);
+    if (!entry || (!entry.typeByte && !config.restoreDeleted)) {
       setStatus("Directory entry not found.", true);
       return;
     }
+    state.doctorEntryContext = {
+      mode: config.restoreDeleted ? "restore-deleted" : "edit-entry",
+      entryIndex: String(entry.index),
+      returnToDoctor: Boolean(config.returnToDoctor),
+    };
     doctorEntryIndex.value = String(entry.index);
     doctorEntryDialogName.textContent =
       "Track " +
@@ -6047,9 +5966,18 @@
       String(entry.sector) +
       " Slot " +
       String(entry.slot);
-    doctorEntryDialogMeta.textContent =
-      "Edit the fields stored in this directory entry record.";
-    doctorEntryType.value = String(entry.fileType || "prg").toLowerCase();
+    doctorEntryDialogMeta.textContent = config.restoreDeleted
+      ? "Review the deleted entry fields, then restore the file from this directory slot."
+      : "Edit the fields stored in this directory entry record.";
+    doctorEntrySave.textContent = config.restoreDeleted
+      ? "Restore File"
+      : "Save Entry";
+    doctorEntryType.value = String(
+      config.restoreDeleted
+        ? state.deletedTypeHints[entry.index] ||
+            (entry.sideSectorTrack ? "rel" : "prg")
+        : entry.fileType || "prg",
+    ).toLowerCase();
     doctorEntryName.value = String(entry.name || "");
     doctorEntryStartTrack.value = String(Number(entry.startTrack) || 0);
     doctorEntryStartSector.value = String(Number(entry.startSector) || 0);
@@ -6073,6 +6001,7 @@
   };
 
   const closeDoctorEntryDialog = function () {
+    state.doctorEntryContext = null;
     if (typeof doctorEntryDialog.close === "function") {
       doctorEntryDialog.close();
     } else {
@@ -6153,11 +6082,21 @@
       return;
     }
     try {
-      const entry = d64.readDirectoryEntry(
-        state.image,
-        Math.max(0, Math.floor(Number(doctorEntryIndex.value) || 0)),
+      const entryIndexValue = Math.max(
+        0,
+        Math.floor(Number(doctorEntryIndex.value) || 0),
       );
-      if (!entry || !entry.typeByte) {
+      const context = state.doctorEntryContext || {
+        mode: "edit-entry",
+        returnToDoctor: false,
+      };
+      const entry =
+        context.mode === "restore-deleted"
+          ? d64.readDeletedEntries(state.image).find(function (candidate) {
+              return String(candidate.index) === String(entryIndexValue);
+            }) || null
+          : d64.readDirectoryEntry(state.image, entryIndexValue);
+      if (!entry || (!entry.typeByte && context.mode !== "restore-deleted")) {
         throw new Error("Directory entry not found.");
       }
       const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
@@ -6193,10 +6132,13 @@
             )
           : 0;
       const nextEntryBytes = entry.raw.slice();
-      nextEntryBytes[2] = d64.encodeDirectoryEntryType(nextType, {
-        closed: doctorEntryClosed.checked,
-        locked: doctorEntryLocked.checked,
-      });
+      nextEntryBytes[2] =
+        context.mode === "restore-deleted"
+          ? 0x00
+          : d64.encodeDirectoryEntryType(nextType, {
+              closed: doctorEntryClosed.checked,
+              locked: doctorEntryLocked.checked,
+            });
       nextEntryBytes[3] = nextStartTrack & 0xff;
       nextEntryBytes[4] = nextStartSector & 0xff;
       nextEntryBytes.set(d64.encodeFileName(nextName, 16), 5);
@@ -6205,30 +6147,63 @@
       nextEntryBytes[23] = nextRecordLength & 0xff;
       nextEntryBytes[28] = nextBlockCount & 0xff;
       nextEntryBytes[29] = (nextBlockCount >> 8) & 0xff;
-      const nextImage = d64.writeDirectoryEntryBytes(
-        state.image,
-        entry,
-        nextEntryBytes,
-      );
-      const issueResolved = !findMatchingDoctorIssue(
-        d64.diagnoseImage(nextImage),
-        {
-          code: "directory-block-count-mismatch",
-          entryIndex: entry.index,
-        },
-      );
-      loadImageBytes(
-        nextImage,
-        state.sourceName || "disk.d64",
-        "Updated directory entry for " +
-          nextName +
-          "." +
-          (issueResolved
-            ? " Doctor issue resolved."
-            : " Doctor issue still present."),
-        { resetDeletedTypeHints: false },
-      );
-      refreshDoctorReportAfterImageChange({ inline: false });
+      if (context.mode === "restore-deleted") {
+        const stagedImage = d64.writeDirectoryEntryBytes(
+          state.image,
+          entry,
+          nextEntryBytes,
+        );
+        const stagedDeletedEntry = d64
+          .readDeletedEntries(stagedImage)
+          .find(function (candidate) {
+            return String(candidate.index) === String(entry.index);
+          });
+        if (!stagedDeletedEntry) {
+          throw new Error("Deleted file not found.");
+        }
+        const restoredImage = d64.undeleteFile(
+          stagedImage,
+          stagedDeletedEntry,
+          {
+            type: nextType,
+            name: nextName,
+            closed: doctorEntryClosed.checked,
+            locked: doctorEntryLocked.checked,
+          },
+        );
+        loadImageBytes(
+          restoredImage,
+          state.sourceName || "disk.d64",
+          "Restored " + nextName + " as " + nextType.toUpperCase() + ".",
+          { resetDeletedTypeHints: false },
+        );
+        delete state.deletedTypeHints[stagedDeletedEntry.index];
+      } else {
+        const nextImage = d64.writeDirectoryEntryBytes(
+          state.image,
+          entry,
+          nextEntryBytes,
+        );
+        const issueResolved = !findMatchingDoctorIssue(
+          d64.diagnoseImage(nextImage),
+          {
+            code: "directory-block-count-mismatch",
+            entryIndex: entry.index,
+          },
+        );
+        loadImageBytes(
+          nextImage,
+          state.sourceName || "disk.d64",
+          "Updated directory entry for " +
+            nextName +
+            "." +
+            (issueResolved
+              ? " Doctor issue resolved."
+              : " Doctor issue still present."),
+          { resetDeletedTypeHints: false },
+        );
+        refreshDoctorReportAfterImageChange({ inline: false });
+      }
       closeDoctorEntryDialog();
     } catch (error) {
       setStatus(error.message || String(error), true);
@@ -6483,27 +6458,6 @@
       if (!diskMapView.dragging) return;
     });
     fileTypeSelect.addEventListener("change", syncFileTypeDialog);
-    restoreFileName.addEventListener("input", function () {
-      const normalizedValue = d64.normalizeFileName(restoreFileName.value, 16, {
-        trim: false,
-      });
-      if (restoreFileName.value !== normalizedValue) {
-        const start = restoreFileName.selectionStart;
-        const end = restoreFileName.selectionEnd;
-        const delta = restoreFileName.value.length - normalizedValue.length;
-        restoreFileName.value = normalizedValue;
-        if (typeof start === "number" && typeof end === "number") {
-          const nextStart = Math.max(0, start - delta);
-          const nextEnd = Math.max(0, end - delta);
-          restoreFileName.setSelectionRange(nextStart, nextEnd);
-        }
-      }
-      validateRestoreFileDialog();
-    });
-    restoreFileForm.addEventListener("submit", saveRestoreFileDialog);
-    restoreFileCancel.addEventListener("click", function () {
-      closeRestoreFileDialog();
-    });
     fileTypeForm.addEventListener("submit", saveFileTypeDialog);
     fileTypeCancel.addEventListener("click", function () {
       closeFileTypeDialog();
@@ -6617,10 +6571,16 @@
     });
     doctorEntryForm.addEventListener("submit", saveDoctorEntryDialog);
     doctorEntryCancel.addEventListener("click", function () {
+      const shouldReturnToDoctor = Boolean(
+        state.doctorEntryContext && state.doctorEntryContext.returnToDoctor,
+      );
       closeDoctorEntryDialog();
-      if (typeof doctorDialog.showModal === "function") {
+      if (
+        shouldReturnToDoctor &&
+        typeof doctorDialog.showModal === "function"
+      ) {
         doctorDialog.showModal();
-      } else {
+      } else if (shouldReturnToDoctor) {
         doctorDialog.setAttribute("open", "open");
       }
     });
@@ -6765,6 +6725,7 @@
         closeDoctorDialog();
         openDoctorEntryDialog(button.dataset.entryIndex, {
           highlightBlockCount: true,
+          returnToDoctor: true,
         });
         return;
       }
@@ -6918,7 +6879,10 @@
         return;
       }
       if (button.dataset.action !== "restore-file") return;
-      openRestoreDeletedFileDialog(button.dataset.entryIndex);
+      openDoctorEntryDialog(button.dataset.entryIndex, {
+        restoreDeleted: true,
+        returnToDoctor: false,
+      });
     });
     diskMapLegend.addEventListener("click", function (event) {
       const jumpButton = event.target.closest('[data-action="jump-sector"]');
