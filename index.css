@@ -1649,6 +1649,30 @@ tbody tr.is-drop-target {
   text-transform: uppercase;
 }
 
+.doctor-entry-role-name {
+  color: #8ef3e6;
+}
+
+.doctor-entry-role-type-status {
+  color: #f2a65a;
+}
+
+.doctor-entry-role-start {
+  color: #74b9ff;
+}
+
+.doctor-entry-role-side {
+  color: #d0a5ff;
+}
+
+.doctor-entry-role-record {
+  color: #ffd166;
+}
+
+.doctor-entry-role-blocks {
+  color: #ff8e90;
+}
+
 .doctor-entry-subgrid,
 .doctor-entry-rel-grid {
   display: grid;
@@ -1749,6 +1773,14 @@ tbody tr.is-drop-target {
   fill: #f2a65a;
 }
 
+.doctor-entry-bitmask-pixel.is-closed {
+  fill: #ffbf7a;
+}
+
+.doctor-entry-bitmask-pixel.is-locked {
+  fill: #ff8f5c;
+}
+
 .doctor-entry-bitmask-pixel.is-start {
   fill: #74b9ff;
 }
@@ -1766,7 +1798,51 @@ tbody tr.is-drop-target {
 }
 
 .doctor-entry-bitmask-pixel.is-unused {
-  fill: rgba(185, 227, 242, 0.48);
+  fill: rgba(0, 0, 0, 0.72);
+}
+
+.doctor-entry-bitmask-digit {
+  font-size: 0.72px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.doctor-entry-bitmask-digit.is-name {
+  fill: #2f857b;
+}
+
+.doctor-entry-bitmask-digit.is-type-status {
+  fill: #8c5d23;
+}
+
+.doctor-entry-bitmask-digit.is-closed {
+  fill: #8c5d23;
+}
+
+.doctor-entry-bitmask-digit.is-locked {
+  fill: #8c5d23;
+}
+
+.doctor-entry-bitmask-digit.is-start {
+  fill: #275f9f;
+}
+
+.doctor-entry-bitmask-digit.is-side {
+  fill: #7d4cb3;
+}
+
+.doctor-entry-bitmask-digit.is-record {
+  fill: #8f7024;
+}
+
+.doctor-entry-bitmask-digit.is-blocks {
+  fill: #9c3f41;
+}
+
+.doctor-entry-bitmask-digit.is-unused {
+  fill: rgba(0, 0, 0, 0.72);
 }
 
 .doctor-entry-flag {
@@ -1774,6 +1850,27 @@ tbody tr.is-drop-target {
   gap: 8px;
   align-items: center;
   cursor: pointer;
+}
+
+.doctor-entry-bit-label {
+  display: inline-block;
+  margin-left: 0.28rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: super;
+}
+
+.doctor-entry-bit-label.is-type-status {
+  color: #f2a65a;
+}
+
+.doctor-entry-bit-label.is-closed {
+  color: #f2a65a;
+}
+
+.doctor-entry-bit-label.is-locked {
+  color: #f2a65a;
 }
 
 .doctor-entry-flag input {

@@ -998,6 +998,20 @@
     return "unused";
   };
 
+  const getDoctorEntryBitRole = function (byteIndex, bitIndex) {
+    if (byteIndex === 2) {
+      if (bitIndex === 0) return "closed";
+      if (bitIndex === 1) return "locked";
+      if (bitIndex >= 2 && bitIndex <= 4) return "unused";
+      return "type-status";
+    }
+    return getDoctorEntryByteRole(byteIndex);
+  };
+
+  const doctorEntryByteUsesBitLabels = function (byteIndex) {
+    return byteIndex === 2;
+  };
+
   const renderDoctorEntryBitmask = function () {
     if (!doctorEntryBitmask) return;
     const entry = getDoctorEntrySourceEntry();
@@ -1011,6 +1025,7 @@
     const zones = [];
     const zeroColumns = [];
     const pixels = [];
+    const digits = [];
     for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
       const role = getDoctorEntryByteRole(byteIndex);
       const value = bytes[byteIndex];
@@ -1029,20 +1044,44 @@
         );
       }
       for (let bit = 0; bit < 8; bit += 1) {
+        const bitRole = getDoctorEntryBitRole(byteIndex, bit);
+        if (bitRole === "unused") {
+          pixels.push(
+            '<rect class="doctor-entry-bitmask-pixel is-unused" x="' +
+              String(byteIndex) +
+              '" y="' +
+              String(bit) +
+              '" width="1" height="1"></rect>',
+          );
+          continue;
+        }
         if (((value >> (7 - bit)) & 1) === 0) continue;
         pixels.push(
           '<rect class="doctor-entry-bitmask-pixel is-' +
-            role +
+            bitRole +
             '" x="' +
             String(byteIndex) +
             '" y="' +
             String(bit) +
             '" width="1" height="1"></rect>',
         );
+        if (doctorEntryByteUsesBitLabels(byteIndex)) {
+          digits.push(
+            '<text class="doctor-entry-bitmask-digit is-' +
+              bitRole +
+              '" x="' +
+              (byteIndex + 0.5).toFixed(3) +
+              '" y="' +
+              (bit + 0.56).toFixed(3) +
+              '">' +
+              String(bit) +
+              "</text>",
+          );
+        }
       }
     }
     doctorEntryBitmask.innerHTML =
-      zones.join("") + zeroColumns.join("") + pixels.join("");
+      zones.join("") + zeroColumns.join("") + pixels.join("") + digits.join("");
   };
 
   const openDoctorEntryHexDialog = function () {

@@ -360,7 +360,7 @@
               <input id="doctor-entry-index" type="hidden" />
               <div class="doctor-entry-grid">
                 <label class="field doctor-entry-span-2">
-                  <span>File Name</span>
+                  <span class="doctor-entry-role-name">File Name</span>
                   <input
                     id="doctor-entry-name"
                     type="text"
@@ -373,7 +373,12 @@
                   />
                 </label>
                 <label class="field">
-                  <span>Type</span>
+                  <span
+                    >Type
+                    <strong class="doctor-entry-bit-label is-type-status"
+                      >567</strong
+                    ></span
+                  >
                   <select id="doctor-entry-type">
                     <option value="prg">PRG - Program</option>
                     <option value="seq">SEQ - Sequential Data</option>
@@ -382,23 +387,33 @@
                   </select>
                 </label>
                 <fieldset class="field doctor-entry-subgroup">
-                  <legend>Status</legend>
+                  <legend class="doctor-entry-role-type-status">Status</legend>
                   <div class="doctor-entry-flags">
                     <label class="doctor-entry-flag">
                       <input id="doctor-entry-closed" type="checkbox" />
-                      <span>Closed</span>
+                      <span
+                        >Closed
+                        <strong class="doctor-entry-bit-label is-closed"
+                          >0</strong
+                        ></span
+                      >
                     </label>
                     <label class="doctor-entry-flag">
                       <input id="doctor-entry-locked" type="checkbox" />
-                      <span>Locked</span>
+                      <span
+                        >Locked
+                        <strong class="doctor-entry-bit-label is-locked"
+                          >1</strong
+                        ></span
+                      >
                     </label>
                   </div>
                 </fieldset>
                 <fieldset class="field doctor-entry-subgroup">
-                  <legend>Start</legend>
+                  <legend class="doctor-entry-role-start">Start</legend>
                   <div class="doctor-entry-subgrid">
                     <label class="field">
-                      <span>Track</span>
+                      <span class="doctor-entry-role-start">Track</span>
                       <input
                         id="doctor-entry-start-track"
                         type="number"
@@ -406,7 +421,7 @@
                       />
                     </label>
                     <label class="field">
-                      <span>Sector</span>
+                      <span class="doctor-entry-role-start">Sector</span>
                       <input
                         id="doctor-entry-start-sector"
                         type="number"
@@ -416,7 +431,7 @@
                   </div>
                 </fieldset>
                 <label id="doctor-entry-block-count-field" class="field">
-                  <span>Block Count</span>
+                  <span class="doctor-entry-role-blocks">Block Count</span>
                   <input
                     id="doctor-entry-block-count"
                     type="number"
@@ -432,10 +447,10 @@
                   <legend>REL</legend>
                   <div class="doctor-entry-rel-grid">
                     <fieldset class="field doctor-entry-subgroup">
-                      <legend>Side</legend>
+                      <legend class="doctor-entry-role-side">Side</legend>
                       <div class="doctor-entry-subgrid">
                         <label id="doctor-entry-side-track-field" class="field">
-                          <span>Track</span>
+                          <span class="doctor-entry-role-side">Track</span>
                           <input
                             id="doctor-entry-side-track"
                             type="number"
@@ -446,7 +461,7 @@
                           id="doctor-entry-side-sector-field"
                           class="field"
                         >
-                          <span>Sector</span>
+                          <span class="doctor-entry-role-side">Sector</span>
                           <input
                             id="doctor-entry-side-sector"
                             type="number"
@@ -456,7 +471,9 @@
                       </div>
                     </fieldset>
                     <label id="doctor-entry-record-length-field" class="field">
-                      <span>Record Length</span>
+                      <span class="doctor-entry-role-record"
+                        >Record Length</span
+                      >
                       <input
                         id="doctor-entry-record-length"
                         type="number"
