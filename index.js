@@ -4539,7 +4539,7 @@
 
     if (!files.length) {
       fileTableBody.innerHTML =
-        '<tr><td colspan="9" class="empty-state">This disk has no directory entries.</td></tr>';
+        '<tr><td colspan="10" class="empty-state">This disk has no directory entries.</td></tr>';
       return;
     }
 
@@ -4578,6 +4578,9 @@
           '" aria-label="' +
           escapeHtml("Drag to reorder " + file.name) +
           '">::</button></td>' +
+          "<td>" +
+          escapeHtml(String((file.entry && file.entry.index) || 0)) +
+          "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="edit-name" data-entry-index="' +
           escapeHtml(String((file.entry && file.entry.index) || "")) +
