@@ -1253,6 +1253,30 @@
     );
   };
 
+  const actionIconMarkup = function (options) {
+    const config = options || {};
+    return (
+      '<button type="button" class="file-type-button file-action-button' +
+      (config.danger ? " is-danger" : "") +
+      '" data-action="' +
+      escapeHtml(String(config.action || "")) +
+      '" data-entry-index="' +
+      escapeHtml(String(config.entryIndex || "")) +
+      '" aria-label="' +
+      escapeHtml(String(config.ariaLabel || config.title || "")) +
+      '" title="' +
+      escapeHtml(String(config.title || "")) +
+      '">' +
+      '<span class="file-action-icon file-action-icon-default" aria-hidden="true">' +
+      escapeHtml(String(config.defaultIcon || "")) +
+      "</span>" +
+      '<span class="file-action-icon file-action-icon-hover" aria-hidden="true">' +
+      escapeHtml(String(config.hoverIcon || config.defaultIcon || "")) +
+      "</span>" +
+      "</button>"
+    );
+  };
+
   const formatDirectoryTypeLabel = function (file) {
     const base = String((file && file.type) || "").toUpperCase();
     if (!base) return "";
@@ -4612,36 +4636,45 @@
           "</button>" +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="toggle-closed" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
-          '" aria-label="' +
-          escapeHtml((file.closed ? "Open " : "Close ") + file.name) +
-          '">' +
-          escapeHtml(file.closed ? "Open" : "Close") +
-          "</button>" +
+          actionIconMarkup({
+            action: "toggle-closed",
+            entryIndex: String((file.entry && file.entry.index) || ""),
+            title: file.closed ? "Open" : "Close",
+            ariaLabel: (file.closed ? "Open " : "Close ") + file.name,
+            defaultIcon: file.closed ? "📁" : "📂",
+            hoverIcon: file.closed ? "📂" : "📁",
+          }) +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="toggle-lock" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
-          '" aria-label="' +
-          escapeHtml((file.locked ? "Unlock " : "Lock ") + file.name) +
-          '">' +
-          escapeHtml(file.locked ? "Unlock" : "Lock") +
-          "</button>" +
+          actionIconMarkup({
+            action: "toggle-lock",
+            entryIndex: String((file.entry && file.entry.index) || ""),
+            title: file.locked ? "Unlock" : "Lock",
+            ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
+            defaultIcon: file.locked ? "🔒" : "🔓",
+            hoverIcon: file.locked ? "🔓" : "🔒",
+          }) +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="download-file" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
-          '" aria-label="' +
-          escapeHtml("Download " + file.name) +
-          '">Save</button>' +
+          actionIconMarkup({
+            action: "download-file",
+            entryIndex: String((file.entry && file.entry.index) || ""),
+            title: "Download",
+            ariaLabel: "Download " + file.name,
+            defaultIcon: "💾",
+            hoverIcon: "⬇️",
+          }) +
           "</td>" +
           "<td>" +
-          '<button type="button" class="delete-button" data-action="delete-file" data-entry-index="' +
-          escapeHtml(String((file.entry && file.entry.index) || "")) +
-          '" aria-label="' +
-          escapeHtml("Delete " + file.name) +
-          '">Delete</button>' +
+          actionIconMarkup({
+            action: "delete-file",
+            entryIndex: String((file.entry && file.entry.index) || ""),
+            title: "Delete",
+            ariaLabel: "Delete " + file.name,
+            defaultIcon: "🗑️",
+            hoverIcon: "✖️",
+            danger: true,
+          }) +
           "</td>" +
           "</tr>"
         );

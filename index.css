@@ -1511,6 +1511,50 @@ tbody tr.is-drop-target {
   font-weight: 700;
 }
 
+.file-action-button {
+  min-width: 38px;
+  padding: 6px 8px;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.file-action-button.is-danger {
+  border-color: rgba(255, 142, 144, 0.2);
+  background: rgba(255, 142, 144, 0.08);
+  color: #ffd7db;
+}
+
+.file-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 1rem;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.file-action-icon-hover {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.file-action-button:hover .file-action-icon-default,
+.file-action-button:focus-visible .file-action-icon-default {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.file-action-button:hover .file-action-icon-hover,
+.file-action-button:focus-visible .file-action-icon-hover {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .file-type-dialog {
   width: min(420px, calc(100vw - 28px));
   padding: 0;
