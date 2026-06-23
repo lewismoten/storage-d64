@@ -78,6 +78,50 @@
   const fileNameTarget = document.getElementById("file-name-target");
   const fileNameInput = document.getElementById("file-name-input");
   const fileNameCancel = document.getElementById("file-name-cancel");
+  const doctorEntryDialog = document.getElementById("doctor-entry-dialog");
+  const doctorEntryForm = document.getElementById("doctor-entry-form");
+  const doctorEntryDialogName = document.getElementById(
+    "doctor-entry-dialog-name",
+  );
+  const doctorEntryDialogMeta = document.getElementById(
+    "doctor-entry-dialog-meta",
+  );
+  const doctorEntryIndex = document.getElementById("doctor-entry-index");
+  const doctorEntryType = document.getElementById("doctor-entry-type");
+  const doctorEntryName = document.getElementById("doctor-entry-name");
+  const doctorEntryStartTrack = document.getElementById(
+    "doctor-entry-start-track",
+  );
+  const doctorEntryStartSector = document.getElementById(
+    "doctor-entry-start-sector",
+  );
+  const doctorEntryBlockCount = document.getElementById(
+    "doctor-entry-block-count",
+  );
+  const doctorEntryBlockCountField = document.getElementById(
+    "doctor-entry-block-count-field",
+  );
+  const doctorEntryClosed = document.getElementById("doctor-entry-closed");
+  const doctorEntryLocked = document.getElementById("doctor-entry-locked");
+  const doctorEntrySideTrackField = document.getElementById(
+    "doctor-entry-side-track-field",
+  );
+  const doctorEntrySideTrack = document.getElementById(
+    "doctor-entry-side-track",
+  );
+  const doctorEntrySideSectorField = document.getElementById(
+    "doctor-entry-side-sector-field",
+  );
+  const doctorEntrySideSector = document.getElementById(
+    "doctor-entry-side-sector",
+  );
+  const doctorEntryRecordLengthField = document.getElementById(
+    "doctor-entry-record-length-field",
+  );
+  const doctorEntryRecordLength = document.getElementById(
+    "doctor-entry-record-length",
+  );
+  const doctorEntryCancel = document.getElementById("doctor-entry-cancel");
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
     "sector-data-dialog-title",
@@ -141,6 +185,10 @@
     "addFile",
     "reorderFiles",
     "trackSectorCount",
+    "readDirectoryEntry",
+    "writeDirectoryEntryBytes",
+    "encodeDirectoryEntryType",
+    "encodeFileName",
   ];
   const DISK_MAP_COLORS = Object.freeze({
     free: "#6f5133",
@@ -558,6 +606,110 @@
     }
     fileNameInput.setCustomValidity("");
     return true;
+  };
+
+  const hasDuplicateDoctorEntryName = function (nextName, entryIndex) {
+    if (!state.image) return false;
+    const normalizedNextName = d64.normalizeFileName(nextName, 16);
+    const targetIndex = Math.max(0, Math.floor(Number(entryIndex) || 0));
+    return d64.readFiles(state.image).some(function (file) {
+      const entry = file.entry || {};
+      return (
+        Number(entry.index) !== targetIndex &&
+        d64.normalizeFileName(file.name, 16) === normalizedNextName
+      );
+    });
+  };
+
+  const validateDoctorEntryDialog = function () {
+    if (!state.image) return false;
+    const geometry = d64.describeGeometry(state.image);
+    const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
+    const entryIndexValue = Math.max(
+      0,
+      Math.floor(Number(doctorEntryIndex.value) || 0),
+    );
+    const type = String(doctorEntryType.value || "prg").toLowerCase();
+    const startTrack = Math.max(
+      0,
+      Math.floor(Number(doctorEntryStartTrack.value) || 0),
+    );
+    const startSector = Math.max(
+      0,
+      Math.floor(Number(doctorEntryStartSector.value) || 0),
+    );
+    const sideTrack = Math.max(
+      0,
+      Math.floor(Number(doctorEntrySideTrack.value) || 0),
+    );
+    const sideSector = Math.max(
+      0,
+      Math.floor(Number(doctorEntrySideSector.value) || 0),
+    );
+    const recordLength = Math.max(
+      0,
+      Math.floor(Number(doctorEntryRecordLength.value) || 0),
+    );
+
+    doctorEntryName.setCustomValidity("");
+    doctorEntryStartTrack.setCustomValidity("");
+    doctorEntryStartSector.setCustomValidity("");
+    doctorEntrySideTrack.setCustomValidity("");
+    doctorEntrySideSector.setCustomValidity("");
+    doctorEntryRecordLength.setCustomValidity("");
+
+    if (!nextName) {
+      doctorEntryName.setCustomValidity("File name can not be empty.");
+      return false;
+    }
+    if (hasDuplicateDoctorEntryName(nextName, entryIndexValue)) {
+      doctorEntryName.setCustomValidity(
+        "A file with that name already exists.",
+      );
+      return false;
+    }
+    if (
+      startTrack > geometry.trackCount ||
+      (startTrack > 0 && startSector >= d64.trackSectorCount(startTrack)) ||
+      (startTrack === 0 && startSector !== 0)
+    ) {
+      doctorEntryStartTrack.setCustomValidity(
+        "Start track/sector must point to a valid sector or 0/0.",
+      );
+      doctorEntryStartSector.setCustomValidity(
+        "Start track/sector must point to a valid sector or 0/0.",
+      );
+      return false;
+    }
+    if (type === "rel") {
+      if (
+        sideTrack > geometry.trackCount ||
+        (sideTrack > 0 && sideSector >= d64.trackSectorCount(sideTrack)) ||
+        (sideTrack === 0 && sideSector !== 0)
+      ) {
+        doctorEntrySideTrack.setCustomValidity(
+          "REL side track/sector must point to a valid sector or 0/0.",
+        );
+        doctorEntrySideSector.setCustomValidity(
+          "REL side track/sector must point to a valid sector or 0/0.",
+        );
+        return false;
+      }
+      if (recordLength < 1 || recordLength > 254) {
+        doctorEntryRecordLength.setCustomValidity(
+          "REL record length must be between 1 and 254.",
+        );
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const syncDoctorEntryDialog = function () {
+    const isRel = String(doctorEntryType.value || "").toLowerCase() === "rel";
+    doctorEntrySideTrackField.hidden = !isRel;
+    doctorEntrySideSectorField.hidden = !isRel;
+    doctorEntryRecordLengthField.hidden = !isRel;
   };
 
   const toggleDiskDropTarget = function (isActive) {
@@ -4374,6 +4526,11 @@
       if (issue.code === "directory-block-count-mismatch") {
         return (
           '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
+          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
+          '">' +
+          "View" +
+          "</button>" +
           '<button type="button" class="file-type-button" data-action="repair-doctor-block-counts" data-entry-index="' +
           escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
           '">' +
@@ -4394,17 +4551,18 @@
         : "") +
       diagnosis.issues
         .map(function (issue, issueIndex) {
+          const renderLinkedDoctorText = function (value) {
+            return issue.code === "directory-block-count-mismatch"
+              ? escapeHtml(String(value || ""))
+              : renderDoctorTextWithSectorLinks(
+                  String(value || ""),
+                  issueIndex,
+                );
+          };
           const items = Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
-                  return (
-                    "<li>" +
-                    renderDoctorTextWithSectorLinks(
-                      String(item || ""),
-                      issueIndex,
-                    ) +
-                    "</li>"
-                  );
+                  return "<li>" + renderLinkedDoctorText(item) + "</li>";
                 })
                 .join("")
             : "";
@@ -4424,10 +4582,7 @@
             "</div>" +
             (issue.details
               ? '<p class="doctor-issue-details">' +
-                renderDoctorTextWithSectorLinks(
-                  String(issue.details),
-                  issueIndex,
-                ) +
+                renderLinkedDoctorText(issue.details) +
                 "</p>"
               : "") +
             (items ? '<ul class="doctor-issue-items">' + items + "</ul>" : "") +
@@ -4740,6 +4895,55 @@
     }
   };
 
+  const openDoctorEntryDialog = function (entryIndexValue, options) {
+    const config = options || {};
+    if (!state.image) return;
+    const entry = d64.readDirectoryEntry(state.image, entryIndexValue);
+    if (!entry || !entry.typeByte) {
+      setStatus("Directory entry not found.", true);
+      return;
+    }
+    doctorEntryIndex.value = String(entry.index);
+    doctorEntryDialogName.textContent =
+      "Track " +
+      String(entry.track) +
+      " Sector " +
+      String(entry.sector) +
+      " Slot " +
+      String(entry.slot);
+    doctorEntryDialogMeta.textContent =
+      "Edit the fields stored in this directory entry record.";
+    doctorEntryType.value = String(entry.fileType || "prg").toLowerCase();
+    doctorEntryName.value = String(entry.name || "");
+    doctorEntryStartTrack.value = String(Number(entry.startTrack) || 0);
+    doctorEntryStartSector.value = String(Number(entry.startSector) || 0);
+    doctorEntryBlockCount.value = String(Number(entry.blockCount) || 0);
+    doctorEntryBlockCountField.classList.toggle(
+      "is-significant",
+      Boolean(config.highlightBlockCount),
+    );
+    doctorEntryClosed.checked = Boolean(entry.closed);
+    doctorEntryLocked.checked = Boolean(entry.locked);
+    doctorEntrySideTrack.value = String(Number(entry.sideSectorTrack) || 0);
+    doctorEntrySideSector.value = String(Number(entry.sideSectorSector) || 0);
+    doctorEntryRecordLength.value = String(Number(entry.recordLength) || 32);
+    syncDoctorEntryDialog();
+    validateDoctorEntryDialog();
+    if (typeof doctorEntryDialog.showModal === "function") {
+      doctorEntryDialog.showModal();
+    } else {
+      doctorEntryDialog.setAttribute("open", "open");
+    }
+  };
+
+  const closeDoctorEntryDialog = function () {
+    if (typeof doctorEntryDialog.close === "function") {
+      doctorEntryDialog.close();
+    } else {
+      doctorEntryDialog.removeAttribute("open");
+    }
+  };
+
   const saveFileTypeDialog = function (event) {
     event.preventDefault();
     if (!state.image) return;
@@ -4784,6 +4988,108 @@
         "Renamed " + fileName + " to " + nextName + ".",
       );
       closeFileNameDialog();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const saveDoctorEntryDialog = function (event) {
+    event.preventDefault();
+    if (!state.image) return;
+    if (!validateDoctorEntryDialog()) {
+      if (doctorEntryName.validationMessage) {
+        doctorEntryName.reportValidity();
+      } else if (doctorEntryStartTrack.validationMessage) {
+        doctorEntryStartTrack.reportValidity();
+      } else if (doctorEntrySideTrack.validationMessage) {
+        doctorEntrySideTrack.reportValidity();
+      } else if (doctorEntryRecordLength.validationMessage) {
+        doctorEntryRecordLength.reportValidity();
+      }
+      return;
+    }
+    try {
+      const entry = d64.readDirectoryEntry(
+        state.image,
+        Math.max(0, Math.floor(Number(doctorEntryIndex.value) || 0)),
+      );
+      if (!entry || !entry.typeByte) {
+        throw new Error("Directory entry not found.");
+      }
+      const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
+      const nextType = String(doctorEntryType.value || "prg").toLowerCase();
+      const nextStartTrack = Math.max(
+        0,
+        Math.floor(Number(doctorEntryStartTrack.value) || 0),
+      );
+      const nextStartSector = Math.max(
+        0,
+        Math.floor(Number(doctorEntryStartSector.value) || 0),
+      );
+      const nextBlockCount = Math.max(
+        0,
+        Math.min(65535, Math.floor(Number(doctorEntryBlockCount.value) || 0)),
+      );
+      const nextSideTrack =
+        nextType === "rel"
+          ? Math.max(0, Math.floor(Number(doctorEntrySideTrack.value) || 0))
+          : 0;
+      const nextSideSector =
+        nextType === "rel"
+          ? Math.max(0, Math.floor(Number(doctorEntrySideSector.value) || 0))
+          : 0;
+      const nextRecordLength =
+        nextType === "rel"
+          ? Math.max(
+              1,
+              Math.min(
+                254,
+                Math.floor(Number(doctorEntryRecordLength.value) || 32),
+              ),
+            )
+          : 0;
+      const nextEntryBytes = entry.raw.slice();
+      nextEntryBytes[2] = d64.encodeDirectoryEntryType(nextType, {
+        closed: doctorEntryClosed.checked,
+        locked: doctorEntryLocked.checked,
+      });
+      nextEntryBytes[3] = nextStartTrack & 0xff;
+      nextEntryBytes[4] = nextStartSector & 0xff;
+      nextEntryBytes.set(d64.encodeFileName(nextName, 16), 5);
+      nextEntryBytes[21] = nextSideTrack & 0xff;
+      nextEntryBytes[22] = nextSideSector & 0xff;
+      nextEntryBytes[23] = nextRecordLength & 0xff;
+      nextEntryBytes[28] = nextBlockCount & 0xff;
+      nextEntryBytes[29] = (nextBlockCount >> 8) & 0xff;
+      const nextImage = d64.writeDirectoryEntryBytes(
+        state.image,
+        entry,
+        nextEntryBytes,
+      );
+      const nextReport = d64.diagnoseImage(nextImage);
+      const issueResolved = !findMatchingDoctorIssue(nextReport, {
+        code: "directory-block-count-mismatch",
+        entryIndex: entry.index,
+      });
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Updated directory entry for " +
+          nextName +
+          "." +
+          (issueResolved
+            ? " Doctor issue resolved."
+            : " Doctor issue still present."),
+        { resetDeletedTypeHints: false },
+      );
+      state.doctorReport = nextReport;
+      refreshDoctorReport(nextImage);
+      closeDoctorEntryDialog();
+      if (typeof doctorDialog.showModal === "function") {
+        doctorDialog.showModal();
+      } else {
+        doctorDialog.setAttribute("open", "open");
+      }
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -5061,6 +5367,49 @@
     fileNameCancel.addEventListener("click", function () {
       closeFileNameDialog();
     });
+    doctorEntryType.addEventListener("change", function () {
+      syncDoctorEntryDialog();
+      validateDoctorEntryDialog();
+    });
+    doctorEntryName.addEventListener("input", function () {
+      const normalizedValue = d64.normalizeFileName(doctorEntryName.value, 16, {
+        trim: false,
+      });
+      if (doctorEntryName.value !== normalizedValue) {
+        const start = doctorEntryName.selectionStart;
+        const end = doctorEntryName.selectionEnd;
+        const delta = doctorEntryName.value.length - normalizedValue.length;
+        doctorEntryName.value = normalizedValue;
+        if (typeof start === "number" && typeof end === "number") {
+          doctorEntryName.setSelectionRange(
+            Math.max(0, start - delta),
+            Math.max(0, end - delta),
+          );
+        }
+      }
+      validateDoctorEntryDialog();
+    });
+    [
+      doctorEntryStartTrack,
+      doctorEntryStartSector,
+      doctorEntryBlockCount,
+      doctorEntrySideTrack,
+      doctorEntrySideSector,
+      doctorEntryRecordLength,
+    ].forEach(function (input) {
+      input.addEventListener("input", function () {
+        validateDoctorEntryDialog();
+      });
+    });
+    doctorEntryForm.addEventListener("submit", saveDoctorEntryDialog);
+    doctorEntryCancel.addEventListener("click", function () {
+      closeDoctorEntryDialog();
+      if (typeof doctorDialog.showModal === "function") {
+        doctorDialog.showModal();
+      } else {
+        doctorDialog.setAttribute("open", "open");
+      }
+    });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;
       const normalizedValue = String(sectorByteValue.value || "")
@@ -5128,6 +5477,13 @@
       }
       if (button.dataset.action === "repair-doctor-block-counts") {
         repairMismatchedBlockCounts(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "edit-doctor-entry") {
+        closeDoctorDialog();
+        openDoctorEntryDialog(button.dataset.entryIndex, {
+          highlightBlockCount: true,
+        });
         return;
       }
       if (button.dataset.action === "repair-doctor-block-counts-all") {

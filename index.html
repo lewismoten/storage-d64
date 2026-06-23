@@ -275,6 +275,106 @@
             </form>
           </dialog>
 
+          <dialog id="doctor-entry-dialog" class="file-type-dialog">
+            <form id="doctor-entry-form" method="dialog" class="file-type-form">
+              <div class="section-heading">
+                <h3>Directory Entry</h3>
+                <p id="doctor-entry-dialog-name">Track 18 Sector 1 Slot 0</p>
+              </div>
+              <p id="doctor-entry-dialog-meta" class="sector-byte-dialog-meta">
+                Edit the human-readable fields for this 32-byte directory slot.
+              </p>
+              <input id="doctor-entry-index" type="hidden" />
+              <div class="doctor-entry-grid">
+                <label class="field">
+                  <span>Type</span>
+                  <select id="doctor-entry-type">
+                    <option value="prg">PRG - Program</option>
+                    <option value="seq">SEQ - Sequential Data</option>
+                    <option value="usr">USR - User File</option>
+                    <option value="rel">REL - Relative Records</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>File Name</span>
+                  <input
+                    id="doctor-entry-name"
+                    type="text"
+                    maxlength="16"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    autocorrect="off"
+                    spellcheck="false"
+                    data-1p-ignore="true"
+                  />
+                </label>
+                <label class="field">
+                  <span>Start Track</span>
+                  <input id="doctor-entry-start-track" type="number" min="0" />
+                </label>
+                <label class="field">
+                  <span>Start Sector</span>
+                  <input id="doctor-entry-start-sector" type="number" min="0" />
+                </label>
+                <label id="doctor-entry-block-count-field" class="field">
+                  <span>Block Count</span>
+                  <input
+                    id="doctor-entry-block-count"
+                    type="number"
+                    min="0"
+                    max="65535"
+                  />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <div class="doctor-entry-flags">
+                    <label class="doctor-entry-flag">
+                      <input id="doctor-entry-closed" type="checkbox" />
+                      <span>Closed</span>
+                    </label>
+                    <label class="doctor-entry-flag">
+                      <input id="doctor-entry-locked" type="checkbox" />
+                      <span>Locked</span>
+                    </label>
+                  </div>
+                </label>
+                <label
+                  id="doctor-entry-side-track-field"
+                  class="field doctor-entry-rel-field"
+                  hidden
+                >
+                  <span>REL Side Track</span>
+                  <input id="doctor-entry-side-track" type="number" min="0" />
+                </label>
+                <label
+                  id="doctor-entry-side-sector-field"
+                  class="field doctor-entry-rel-field"
+                  hidden
+                >
+                  <span>REL Side Sector</span>
+                  <input id="doctor-entry-side-sector" type="number" min="0" />
+                </label>
+                <label
+                  id="doctor-entry-record-length-field"
+                  class="field doctor-entry-rel-field"
+                  hidden
+                >
+                  <span>REL Record Length</span>
+                  <input
+                    id="doctor-entry-record-length"
+                    type="number"
+                    min="1"
+                    max="254"
+                  />
+                </label>
+              </div>
+              <div class="dialog-actions">
+                <button id="doctor-entry-cancel" type="button">Cancel</button>
+                <button id="doctor-entry-save" type="submit">Save Entry</button>
+              </div>
+            </form>
+          </dialog>
+
           <dialog id="create-dialog" class="file-type-dialog">
             <form id="create-form" method="dialog" class="file-type-form">
               <div class="section-heading">
