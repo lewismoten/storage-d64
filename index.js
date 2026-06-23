@@ -4612,17 +4612,13 @@
           "</button>" +
           "</td>" +
           "<td>" +
-          flagMarkup(file.closed, {
-            trueClass: "good",
-            falseClass: "warn",
-            trueText: "Closed",
-            falseText: "Open",
-            action: "toggle-closed",
-            entryIndex: String((file.entry && file.entry.index) || ""),
-            fileName: file.name,
-            ariaLabel:
-              (file.closed ? "Mark open " : "Mark closed ") + file.name,
-          }) +
+          '<button type="button" class="file-type-button" data-action="toggle-closed" data-entry-index="' +
+          escapeHtml(String((file.entry && file.entry.index) || "")) +
+          '" aria-label="' +
+          escapeHtml((file.closed ? "Open " : "Close ") + file.name) +
+          '">' +
+          escapeHtml(file.closed ? "Open" : "Close") +
+          "</button>" +
           "</td>" +
           "<td>" +
           '<button type="button" class="file-type-button" data-action="toggle-lock" data-entry-index="' +
