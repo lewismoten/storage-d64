@@ -2681,6 +2681,23 @@
           ")"
         );
       });
+    const duplicateGroups = Object.keys(duplicateNames)
+      .filter(function (name) {
+        return duplicateNames[name].length > 1;
+      })
+      .map(function (name) {
+        return {
+          name: name,
+          entries: duplicateNames[name].map(function (entry) {
+            return {
+              index: entry.index,
+              track: entry.track,
+              sector: entry.sector,
+              slot: entry.slot,
+            };
+          }),
+        };
+      });
     if (duplicateLabels.length) {
       addIssue(
         "repairable",
@@ -2688,6 +2705,7 @@
         "Duplicate active filenames were found in the directory.",
         {
           items: duplicateLabels,
+          duplicateGroups: duplicateGroups,
         },
       );
     }

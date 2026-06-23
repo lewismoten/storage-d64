@@ -597,6 +597,48 @@
     return markup;
   };
 
+  const renderDuplicateDoctorGroups = function (groups, issueIndex) {
+    return (Array.isArray(groups) ? groups : [])
+      .map(function (group) {
+        const refs = (Array.isArray(group.entries) ? group.entries : [])
+          .map(function (entry) {
+            const track = Number(entry && entry.track);
+            const sector = Number(entry && entry.sector);
+            const slot = Number(entry && entry.slot);
+            const entryIndex = Number(entry && entry.index);
+            return (
+              '<span class="doctor-inline-entry">(' +
+              '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+              encodeHtmlAttribute(String(issueIndex)) +
+              '" data-track="' +
+              encodeHtmlAttribute(String(track)) +
+              '" data-sector="' +
+              encodeHtmlAttribute(String(sector)) +
+              '">' +
+              escapeHtml("T" + String(track) + " S" + String(sector)) +
+              "</button> " +
+              '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+              encodeHtmlAttribute(String(entryIndex)) +
+              '">' +
+              escapeHtml("Slot " + String(slot)) +
+              "</button>)</span>"
+            );
+          })
+          .join(", ");
+        return (
+          '<div class="doctor-inline-group">' +
+          '<span class="doctor-inline-name">' +
+          escapeHtml(String((group && group.name) || "")) +
+          "</span>" +
+          '<span class="doctor-inline-entry-list">' +
+          refs +
+          "</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+  };
+
   const isDoctorSectorItemList = function (items) {
     if (!Array.isArray(items) || !items.length) return false;
     return items.every(function (item) {
@@ -5401,6 +5443,12 @@
         : "") +
       diagnosis.issues
         .map(function (issue, issueIndex) {
+          const duplicateGroupMarkup =
+            issue.code === "duplicate-filenames" &&
+            Array.isArray(issue.duplicateGroups) &&
+            issue.duplicateGroups.length
+              ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
+              : "";
           const renderLinkedDoctorText = function (value) {
             return issue.code === "directory-block-count-mismatch"
               ? escapeHtml(String(value || ""))
@@ -5440,20 +5488,24 @@
                 renderLinkedDoctorText(issue.details) +
                 "</p>"
               : "") +
-            (items
-              ? shouldCollapseSectorItems
-                ? '<details class="doctor-issue-items-toggle"><summary>' +
-                  escapeHtml(String(issue.items.length)) +
-                  " sectors found</summary>" +
-                  '<ul class="doctor-issue-items doctor-issue-items-grid">' +
-                  items +
-                  "</ul></details>"
-                : '<ul class="doctor-issue-items' +
-                  (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
-                  '">' +
-                  items +
-                  "</ul>"
-              : "") +
+            (duplicateGroupMarkup
+              ? '<div class="doctor-inline-groups">' +
+                duplicateGroupMarkup +
+                "</div>"
+              : items
+                ? shouldCollapseSectorItems
+                  ? '<details class="doctor-issue-items-toggle"><summary>' +
+                    escapeHtml(String(issue.items.length)) +
+                    " sectors found</summary>" +
+                    '<ul class="doctor-issue-items doctor-issue-items-grid">' +
+                    items +
+                    "</ul></details>"
+                  : '<ul class="doctor-issue-items' +
+                    (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
+                    '">' +
+                    items +
+                    "</ul>"
+                : "") +
             renderDoctorAction(issue) +
             "</article>"
           );

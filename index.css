@@ -1802,10 +1802,61 @@ tbody tr.is-drop-target {
   margin-top: 10px;
 }
 
+.doctor-inline-groups {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.doctor-inline-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.45;
+}
+
+.doctor-inline-name {
+  font-weight: 700;
+}
+
+.doctor-inline-entry-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.doctor-inline-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.doctor-slot-link {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid rgba(255, 211, 107, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 211, 107, 0.12);
+  color: #ffd36b;
+  font: inherit;
+  cursor: pointer;
+}
+
+.doctor-slot-link:hover {
+  background: rgba(255, 211, 107, 0.18);
+  border-color: rgba(255, 211, 107, 0.42);
+}
+
 .doctor-sector-link {
   display: inline-flex;
   align-items: center;
-  margin: 0 0.12rem;
+  margin: 0;
   padding: 0.08rem 0.38rem;
   border: 1px solid rgba(142, 243, 230, 0.28);
   border-radius: 999px;
