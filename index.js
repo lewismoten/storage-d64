@@ -1000,9 +1000,9 @@
 
   const getDoctorEntryBitRole = function (byteIndex, bitIndex) {
     if (byteIndex === 2) {
-      if (bitIndex === 0) return "closed";
-      if (bitIndex === 1) return "locked";
-      if (bitIndex >= 2 && bitIndex <= 4) return "unused";
+      if (bitIndex === 7) return "closed";
+      if (bitIndex === 6) return "locked";
+      if (bitIndex >= 3 && bitIndex <= 5) return "unused";
       return "type-status";
     }
     return getDoctorEntryByteRole(byteIndex);
@@ -1044,7 +1044,8 @@
         );
       }
       for (let bit = 0; bit < 8; bit += 1) {
-        const bitRole = getDoctorEntryBitRole(byteIndex, bit);
+        const actualBit = bit;
+        const bitRole = getDoctorEntryBitRole(byteIndex, actualBit);
         if (bitRole === "unused") {
           pixels.push(
             '<rect class="doctor-entry-bitmask-pixel is-unused" x="' +
@@ -1055,7 +1056,7 @@
           );
           continue;
         }
-        if (((value >> (7 - bit)) & 1) === 0) continue;
+        if (((value >> actualBit) & 1) === 0) continue;
         pixels.push(
           '<rect class="doctor-entry-bitmask-pixel is-' +
             bitRole +
@@ -1074,7 +1075,7 @@
               '" y="' +
               (bit + 0.56).toFixed(3) +
               '">' +
-              String(bit) +
+              String(actualBit) +
               "</text>",
           );
         }

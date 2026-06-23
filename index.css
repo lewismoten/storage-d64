@@ -1696,33 +1696,14 @@ tbody tr.is-drop-target {
 }
 
 .doctor-entry-bitmask-button {
-  display: grid;
-  gap: 10px;
-  justify-items: stretch;
-  padding: 12px;
+  display: block;
+  padding: 8px;
   border-radius: 16px;
   border: 1px solid rgba(185, 227, 242, 0.14);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%),
     rgba(255, 255, 255, 0.03);
   text-align: left;
-}
-
-.doctor-entry-bitmask-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-  color: var(--muted);
-}
-
-.doctor-entry-bitmask-head strong {
-  color: var(--ink);
-  font-size: 0.9rem;
-}
-
-.doctor-entry-bitmask-head span {
-  font-size: 0.8rem;
 }
 
 .doctor-entry-bitmask {
