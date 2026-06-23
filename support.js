@@ -4438,12 +4438,15 @@
     if (!nextName) {
       throw new Error("File name can not be empty.");
     }
-    const duplicateIndex = files.findIndex(function (file, fileIndex) {
-      if (fileIndex === index) return false;
-      return d64.normalizeFileName(file.name, 16) === nextName;
-    });
-    if (duplicateIndex >= 0) {
-      throw new Error("File already exists: " + nextName);
+    const currentName = d64.normalizeFileName(files[index].name, 16);
+    if (nextName !== currentName) {
+      const duplicateIndex = files.findIndex(function (file, fileIndex) {
+        if (fileIndex === index) return false;
+        return d64.normalizeFileName(file.name, 16) === nextName;
+      });
+      if (duplicateIndex >= 0) {
+        throw new Error("File already exists: " + nextName);
+      }
     }
     const metadataOnly =
       !Object.prototype.hasOwnProperty.call(patch, "data") &&
