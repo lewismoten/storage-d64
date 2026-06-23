@@ -4621,37 +4621,27 @@
           escapeHtml("Drag to reorder " + file.name) +
           '">::</button></td>' +
           "<td>" +
-          escapeHtml(
-            String(
-              file.entry && file.entry.index != null ? file.entry.index : "",
-            ),
-          ) +
-          "</td>" +
-          "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-name" data-entry-index="' +
+          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
           escapeHtml(
             String(
               file.entry && file.entry.index != null ? file.entry.index : "",
             ),
           ) +
           '" aria-label="' +
-          escapeHtml("Rename " + file.name) +
+          escapeHtml("Edit directory entry for " + file.name) +
           '">' +
+          escapeHtml(
+            String(
+              file.entry && file.entry.index != null ? file.entry.index : "",
+            ),
+          ) +
+          "</button>" +
+          "</td>" +
+          "<td>" +
           escapeHtml(file.name) +
-          "</button>" +
           "</td>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-type" data-entry-index="' +
-          escapeHtml(
-            String(
-              file.entry && file.entry.index != null ? file.entry.index : "",
-            ),
-          ) +
-          '" aria-label="' +
-          escapeHtml("Edit file type for " + file.name) +
-          '">' +
           escapeHtml(formatDirectoryTypeLabel(file)) +
-          "</button>" +
           "</td>" +
           "<td>" +
           escapeHtml(String((file.entry && file.entry.blockCount) || 0)) +
@@ -6781,12 +6771,11 @@
       const button = event.target.closest("button[data-action]");
       if (!button) return;
       const entryIndex = button.dataset.entryIndex;
-      if (button.dataset.action === "edit-name") {
-        openFileNameDialog(entryIndex);
-        return;
-      }
-      if (button.dataset.action === "edit-type") {
-        openFileTypeDialog(entryIndex);
+      if (button.dataset.action === "edit-doctor-entry") {
+        openDoctorEntryDialog(entryIndex, {
+          highlightBlockCount: false,
+          returnToDoctor: false,
+        });
         return;
       }
       if (button.dataset.action === "edit-bytes") {
