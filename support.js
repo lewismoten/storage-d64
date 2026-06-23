@@ -4160,7 +4160,10 @@
         diskName: header.diskName || DEFAULT_IMAGE_NAME,
         diskId: header.diskId || "TP",
         dosType: header.dosType || d64.dosTypes.dos2a,
-        dosVersion: header.dosVersionByte || d64.dosVersions.dos2_6,
+        dosVersion:
+          header.dosVersionByte != null
+            ? header.dosVersionByte
+            : d64.dosVersions.dos2_6,
         format: header.format,
         trackCount: header.trackCount || DEFAULT_TRACK_COUNT,
         hasErrorInfo: header.hasErrorInfo === true,
@@ -4179,7 +4182,10 @@
         diskName: header.diskName || DEFAULT_IMAGE_NAME,
         diskId: header.diskId || "TP",
         dosType: header.dosType || d64.dosTypes.dos2a,
-        dosVersion: header.dosVersionByte || d64.dosVersions.dos2_6,
+        dosVersion:
+          header.dosVersionByte != null
+            ? header.dosVersionByte
+            : d64.dosVersions.dos2_6,
         format: header.format,
         trackCount: header.trackCount || DEFAULT_TRACK_COUNT,
         hasErrorInfo: header.hasErrorInfo === true,

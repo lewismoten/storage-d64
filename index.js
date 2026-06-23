@@ -472,25 +472,35 @@
     return leftOrder - rightOrder;
   });
 
-  const formatDosTypeChipLabel = function (dosTypeInfo) {
+  const formatDosTypeChipLabel = function (dosTypeInfo, dosTypeValue) {
     const code = String((dosTypeInfo && dosTypeInfo.code) || "").toUpperCase();
-    if (code === "2A") return "1541 / D64";
-    if (code === "2C") return "8050 / 8250";
-    if (code === "3D") return "1581";
-    return "Unknown";
+    if (code) return code;
+    const value = String(dosTypeValue || "");
+    if (value && /^[ -~]+$/.test(value)) {
+      return value;
+    }
+    if (value) {
+      return Array.from(value)
+        .map(function (char) {
+          return (
+            "0x" +
+            char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")
+          );
+        })
+        .join(" ");
+    }
+    return "0x00";
   };
 
   const formatDosVersionChipLabel = function (dosVersionInfo, dosVersionByte) {
-    if (dosVersionInfo && dosVersionInfo.label) {
-      return dosVersionInfo.label;
+    if (dosVersionInfo && dosVersionInfo.ascii) {
+      return dosVersionInfo.ascii;
     }
-    return (
-      "0x" +
-      Math.max(0, Math.min(255, Number(dosVersionByte) || 0))
-        .toString(16)
-        .toUpperCase()
-        .padStart(2, "0")
-    );
+    const byte = Math.max(0, Math.min(255, Number(dosVersionByte) || 0));
+    if (byte >= 32 && byte <= 126) {
+      return String.fromCharCode(byte);
+    }
+    return "0x" + byte.toString(16).toUpperCase().padStart(2, "0");
   };
 
   const toDisplayValue = function (value) {
@@ -4381,7 +4391,10 @@
             d64 && d64.describeDosType
               ? d64.describeDosType(header.dosType)
               : null;
-          const dosTypeLabel = formatDosTypeChipLabel(dosTypeInfo);
+          const dosTypeLabel = formatDosTypeChipLabel(
+            dosTypeInfo,
+            header.dosType,
+          );
           const dosTypeDescription =
             (dosTypeInfo && dosTypeInfo.description) || "Unknown";
           return (
@@ -4948,13 +4961,15 @@
   const writeDoctorDosVersion = function (value, options) {
     if (!state.image) return;
     const config = options || {};
+    const numericValue =
+      typeof value === "number" ? value : Number.parseInt(String(value), 10);
     const dosVersion = Math.max(
       0,
       Math.min(
         255,
-        Math.round(typeof value === "number" ? value : Number(value)) ||
-          (d64 && d64.dosVersions && d64.dosVersions.dos2_6) ||
-          0x41,
+        Number.isFinite(numericValue)
+          ? Math.round(numericValue)
+          : (d64 && d64.dosVersions && d64.dosVersions.dos2_6) || 0x41,
       ),
     );
     const nextImage = state.image.slice();
