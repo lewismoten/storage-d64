@@ -2117,10 +2117,30 @@
 
     const headerAnalysis = d64.analyzeBamLikeSector(headerSector);
     if (!headerAnalysis || !headerAnalysis.looksLikeBam) {
+      const hasRecognizableHeader =
+        headerAnalysis &&
+        (headerAnalysis.hasRecognizedDosVersion ||
+          headerAnalysis.hasExpectedDosType ||
+          headerAnalysis.hasReadableIdentity);
       addIssue(
         "warning",
         "damaged-bam-or-header",
-        "Track 18 sector 0 does not strongly resemble a valid BAM/header sector.",
+        hasRecognizableHeader
+          ? "Track 18 sector 0 has recognizable header fields, but its BAM free-block table appears damaged or incomplete."
+          : "Track 18 sector 0 does not strongly resemble a valid BAM/header sector.",
+        headerAnalysis
+          ? {
+              details:
+                String(headerAnalysis.validTrackEntries || 0) +
+                " of " +
+                String(DEFAULT_TRACK_COUNT) +
+                " BAM track entries look valid; " +
+                String(headerAnalysis.invalidTrackEntries || 0) +
+                " look invalid and " +
+                String(headerAnalysis.zeroTrackEntries || 0) +
+                " are all zero.",
+            }
+          : null,
       );
     }
     if (
