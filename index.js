@@ -19,6 +19,8 @@
     dropTargetEntryIndex: "",
     dropPlacement: "before",
     doctorEntryContext: null,
+    bamDialogContext: null,
+    bamDialogDraft: null,
   };
 
   const createForm = document.getElementById("create-form");
@@ -188,6 +190,12 @@
   const doctorDosVersionCancel = document.getElementById(
     "doctor-dos-version-cancel",
   );
+  const bamDialog = document.getElementById("bam-dialog");
+  const bamForm = document.getElementById("bam-form");
+  const bamDialogName = document.getElementById("bam-dialog-name");
+  const bamGrid = document.getElementById("bam-grid");
+  const bamTooltip = document.getElementById("bam-tooltip");
+  const bamCancel = document.getElementById("bam-cancel");
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
     "sector-data-dialog-title",
@@ -229,6 +237,7 @@
     "buildImage",
     "readHeader",
     "readBam",
+    "readFreeMap",
     "readFiles",
     "readDeletedEntries",
     "readDirectoryEntriesFrom",
@@ -254,6 +263,7 @@
     "trackSectorCount",
     "readDirectoryEntry",
     "writeDirectoryEntryBytes",
+    "writeBamFreeMap",
     "encodeDirectoryEntryType",
     "encodeFileName",
     "normalizeDiskNameFieldBytes",
@@ -619,6 +629,160 @@
     }
     markup += escapeHtml(source.slice(cursor));
     return markup;
+  };
+
+  const findDoctorIssueByIndex = function (issueIndex) {
+    return (
+      (state.doctorReport &&
+        Array.isArray(state.doctorReport.issues) &&
+        state.doctorReport.issues[issueIndex]) ||
+      null
+    );
+  };
+
+  const extractDoctorSectorKeys = function (issue) {
+    const keys = {};
+    if (issue && Array.isArray(issue.sectorHighlights)) {
+      issue.sectorHighlights.forEach(function (highlight) {
+        if (!highlight || highlight.track == null || highlight.sector == null) {
+          return;
+        }
+        keys[
+          String(Number(highlight.track)) +
+            ":" +
+            String(Number(highlight.sector))
+        ] = true;
+      });
+    }
+    if (issue && Array.isArray(issue.items)) {
+      issue.items.forEach(function (item) {
+        const match = /T\s*(\d{1,2})\s*S\s*(\d{1,2})/i.exec(String(item || ""));
+        if (!match) return;
+        keys[String(Number(match[1])) + ":" + String(Number(match[2]))] = true;
+      });
+    }
+    return keys;
+  };
+
+  const extractDoctorTrackMismatchMap = function (issue) {
+    const mismatches = {};
+    if (!issue || issue.code !== "incorrect-bam-free-counts") {
+      return mismatches;
+    }
+    (Array.isArray(issue.items) ? issue.items : []).forEach(function (item) {
+      const match =
+        /Track\s+(\d+):\s+BAM says\s+(\d+),\s+bits show\s+(\d+)/i.exec(
+          String(item || ""),
+        );
+      if (!match) return;
+      mismatches[Math.max(1, Number(match[1]) || 0)] = {
+        bamFreeCount: Number(match[2]) || 0,
+        bitFreeCount: Number(match[3]) || 0,
+      };
+    });
+    return mismatches;
+  };
+
+  const getBamLegendMarkup = function () {
+    return [
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-free"></span>Free</span>',
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-used"></span>Used</span>',
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-problem"></span>Problem</span>',
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-untracked"></span>Invalid</span>',
+    ].join("");
+  };
+
+  const getBamCellIssueInfo = function (track, sector) {
+    if (!state.image || !state.bamDialogDraft) return "";
+    const key = String(track) + ":" + String(sector);
+    const issue = findDoctorIssueByIndex(
+      Number(
+        state.bamDialogContext && state.bamDialogContext.issueIndex != null
+          ? state.bamDialogContext.issueIndex
+          : -1,
+      ),
+    );
+    const trackMismatches = extractDoctorTrackMismatchMap(issue);
+    const draftValue =
+      state.bamDialogDraft[track] && state.bamDialogDraft[track][sector];
+    const statusLabel =
+      draftValue == null
+        ? "Not in BAM"
+        : draftValue
+          ? "Marked Free"
+          : "Marked Used";
+    let detail =
+      "This sector is currently " + statusLabel.toLowerCase() + " in the BAM.";
+    let issueClass = "";
+    if (issue && issue.code === "bam-disagrees-used-blocks-marked-free") {
+      const issueKeys = extractDoctorSectorKeys(issue);
+      if (issueKeys[key] && draftValue === true) {
+        detail =
+          "This sector is claimed by the directory or an active file chain, but the BAM still marks it free.";
+        issueClass = "is-problem-free";
+      }
+    } else if (issue && issue.code === "orphaned-allocated-blocks") {
+      const issueKeys = extractDoctorSectorKeys(issue);
+      if (issueKeys[key] && draftValue === false) {
+        detail =
+          "The BAM marks this sector used, but no reachable active file or directory structure claims it.";
+        issueClass = "is-problem-used";
+      }
+    } else if (
+      issue &&
+      issue.code === "incorrect-bam-free-counts" &&
+      trackMismatches[track]
+    ) {
+      detail =
+        "Track " +
+        String(track) +
+        " has a free-count mismatch. BAM says " +
+        String(trackMismatches[track].bamFreeCount) +
+        ", but the bitmap currently contains " +
+        String(trackMismatches[track].bitFreeCount) +
+        " free sectors.";
+      issueClass = draftValue === true ? "is-problem-free" : "is-problem-used";
+    } else if (track > 35) {
+      detail =
+        "This track is outside the standard 35-track D64 BAM area and is shown for reference only.";
+    }
+    return {
+      statusLabel: statusLabel,
+      detail: detail,
+      issueClass: issueClass,
+    };
+  };
+
+  const getBamCellTooltipMarkup = function (track, sector) {
+    const info = getBamCellIssueInfo(track, sector);
+    if (!info) return "";
+    return (
+      "<strong>T" +
+      escapeHtml(String(track)) +
+      " S" +
+      escapeHtml(String(sector)) +
+      "</strong><p>" +
+      escapeHtml(info.detail) +
+      "</p>"
+    );
+  };
+
+  const showBamTooltip = function (markup, clientX, clientY) {
+    if (!markup) {
+      bamTooltip.hidden = true;
+      bamTooltip.innerHTML = "";
+      return;
+    }
+    bamTooltip.innerHTML = markup;
+    bamTooltip.hidden = false;
+    const offset = 14;
+    bamTooltip.style.left = String(clientX + offset) + "px";
+    bamTooltip.style.top = String(clientY + offset) + "px";
+  };
+
+  const hideBamTooltip = function () {
+    bamTooltip.hidden = true;
+    bamTooltip.innerHTML = "";
   };
 
   const findActiveFileByEntryIndex = function (entryIndex) {
@@ -5241,6 +5405,161 @@
     }
   };
 
+  const closeBamDialog = function (options) {
+    const config = options || {};
+    const shouldReturnToDoctor =
+      !config.preserveReturnTarget && state.returnToDoctorReport && state.image;
+    if (!config.preserveReturnTarget) {
+      state.returnToDoctorReport = false;
+    }
+    state.bamDialogContext = null;
+    state.bamDialogDraft = null;
+    hideBamTooltip();
+    if (typeof bamDialog.close === "function") {
+      bamDialog.close();
+    } else {
+      bamDialog.removeAttribute("open");
+    }
+    if (shouldReturnToDoctor) {
+      reopenDoctorReport();
+    }
+  };
+
+  const renderBamDialog = function () {
+    if (!state.image || !state.bamDialogDraft) {
+      bamGrid.innerHTML = "";
+      return;
+    }
+    bamDialogName.innerHTML = getBamLegendMarkup();
+    const geometry = d64.describeGeometry(state.image);
+    const trackCount = Math.max(1, Number(geometry.trackCount) || 35);
+    const maxSectors = Array.from({ length: trackCount }, function (_, index) {
+      return d64.trackSectorCount(index + 1);
+    }).reduce(function (max, sectorCount) {
+      return Math.max(max, sectorCount);
+    }, 0);
+    const issue = findDoctorIssueByIndex(
+      Number(
+        state.bamDialogContext && state.bamDialogContext.issueIndex != null
+          ? state.bamDialogContext.issueIndex
+          : -1,
+      ),
+    );
+    const trackMismatches = extractDoctorTrackMismatchMap(issue);
+    bamGrid.innerHTML =
+      '<table class="bam-grid-table">' +
+      "<thead><tr>" +
+      '<th class="bam-grid-corner">T/S</th>' +
+      Array.from({ length: maxSectors }, function (_, sector) {
+        return (
+          '<th class="bam-grid-sector">' + escapeHtml(String(sector)) + "</th>"
+        );
+      }).join("") +
+      '<th class="bam-grid-freecount">Free</th>' +
+      "</tr></thead>" +
+      "<tbody>" +
+      Array.from({ length: trackCount }, function (_, index) {
+        const track = index + 1;
+        const sectorCount = d64.trackSectorCount(track);
+        const trackMap = state.bamDialogDraft[track] || [];
+        const editableTrack = track <= 35;
+        const freeCount = editableTrack
+          ? trackMap.filter(function (value) {
+              return value === true;
+            }).length
+          : null;
+        return (
+          '<tr class="bam-grid-row">' +
+          '<th class="bam-grid-track" scope="row">' +
+          escapeHtml(String(track)) +
+          "</th>" +
+          Array.from({ length: maxSectors }, function (_, sector) {
+            if (sector >= sectorCount) {
+              return '<td><span class="bam-cell is-empty" aria-hidden="true"></span></td>';
+            }
+            const value = trackMap[sector];
+            const issueInfo = getBamCellIssueInfo(track, sector);
+            if (value == null || !editableTrack) {
+              return (
+                '<td><button type="button" class="bam-cell is-untracked" ' +
+                'aria-label="Track ' +
+                encodeHtmlAttribute(String(track)) +
+                " sector " +
+                encodeHtmlAttribute(String(sector)) +
+                ' is outside the standard BAM range." disabled data-track="' +
+                encodeHtmlAttribute(String(track)) +
+                '" data-sector="' +
+                encodeHtmlAttribute(String(sector)) +
+                '"></button></td>'
+              );
+            }
+            return (
+              '<td><button type="button" class="bam-cell ' +
+              (value ? "is-free" : "is-used") +
+              (issueInfo && issueInfo.issueClass
+                ? " " + issueInfo.issueClass
+                : "") +
+              '" data-track="' +
+              encodeHtmlAttribute(String(track)) +
+              '" data-sector="' +
+              encodeHtmlAttribute(String(sector)) +
+              '" aria-label="Track ' +
+              encodeHtmlAttribute(String(track)) +
+              " sector " +
+              encodeHtmlAttribute(String(sector)) +
+              " marked " +
+              encodeHtmlAttribute(value ? "free" : "used") +
+              '"></button></td>'
+            );
+          }).join("") +
+          '<td class="bam-grid-freecount">' +
+          escapeHtml(freeCount == null ? "—" : String(freeCount)) +
+          "</td>" +
+          "</tr>"
+        );
+      }).join("") +
+      "</tbody></table>";
+  };
+
+  const openBamDialog = function (options) {
+    if (!state.image) return;
+    const config = options || {};
+    state.bamDialogContext = {
+      issueIndex:
+        config.issueIndex != null ? Math.max(0, Number(config.issueIndex)) : -1,
+      returnToDoctor: Boolean(config.returnToDoctor),
+    };
+    state.bamDialogDraft = d64.readFreeMap(state.image);
+    bamDialogName.innerHTML = getBamLegendMarkup();
+    renderBamDialog();
+    if (typeof bamDialog.showModal === "function") {
+      bamDialog.showModal();
+    } else {
+      bamDialog.setAttribute("open", "open");
+    }
+  };
+
+  const saveBamDialog = function (event) {
+    event.preventDefault();
+    if (!state.image || !state.bamDialogDraft) return;
+    try {
+      const shouldReturnToDoctor = Boolean(state.returnToDoctorReport);
+      const nextImage = d64.writeBamFreeMap(state.image, state.bamDialogDraft);
+      closeBamDialog({ preserveReturnTarget: shouldReturnToDoctor });
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Updated BAM allocation map.",
+        { resetDeletedTypeHints: false },
+      );
+      if (shouldReturnToDoctor) {
+        refreshDoctorReportAfterImageChange({ inline: false });
+      }
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const openDoctorDiskIdDialog = function (value, options) {
     const config = options || {};
     const normalizedValue = normalizeDoctorDiskIdValue(value || "00") || "00";
@@ -5889,7 +6208,7 @@
         '<div class="doctor-empty">No structural problems were detected.</div>';
       return;
     }
-    const renderDoctorAction = function (issue) {
+    const renderDoctorAction = function (issue, issueIndex) {
       if (issue.code === "invalid-disk-name-field") {
         return (
           '<div class="doctor-issue-actions">' +
@@ -5968,6 +6287,21 @@
           escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
           '">' +
           "Repair" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (
+        issue.code === "incorrect-bam-free-counts" ||
+        issue.code === "bam-disagrees-used-blocks-marked-free" ||
+        issue.code === "orphaned-allocated-blocks"
+      ) {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="review-doctor-bam" data-issue-index="' +
+          escapeHtml(String(issueIndex)) +
+          '">' +
+          "Review" +
           "</button>" +
           "</div>"
         );
@@ -6063,7 +6397,7 @@
                     items +
                     "</ul>"
                 : "") +
-            renderDoctorAction(issue) +
+            renderDoctorAction(issue, issueIndex) +
             "</article>"
           );
         })
@@ -7066,6 +7400,57 @@
     doctorDosVersionCancel.addEventListener("click", function () {
       closeDoctorDosVersionDialog();
     });
+    bamGrid.addEventListener("click", function (event) {
+      const button = event.target.closest("button[data-track][data-sector]");
+      if (!button || !state.bamDialogDraft) return;
+      const track = Math.max(1, Math.floor(Number(button.dataset.track) || 0));
+      const sector = Math.max(
+        0,
+        Math.floor(Number(button.dataset.sector) || 0),
+      );
+      if (
+        !state.bamDialogDraft[track] ||
+        state.bamDialogDraft[track][sector] == null
+      ) {
+        return;
+      }
+      state.bamDialogDraft[track][sector] =
+        !state.bamDialogDraft[track][sector];
+      renderBamDialog();
+    });
+    bamGrid.addEventListener("mousemove", function (event) {
+      const button = event.target.closest("button[data-track][data-sector]");
+      if (!button) {
+        hideBamTooltip();
+        return;
+      }
+      const track = Math.max(1, Math.floor(Number(button.dataset.track) || 0));
+      const sector = Math.max(
+        0,
+        Math.floor(Number(button.dataset.sector) || 0),
+      );
+      const issueInfo = getBamCellIssueInfo(track, sector);
+      const shouldShowTooltip =
+        Boolean(issueInfo && issueInfo.issueClass) || track > 35;
+      if (!shouldShowTooltip) {
+        hideBamTooltip();
+        return;
+      }
+      showBamTooltip(
+        getBamCellTooltipMarkup(track, sector),
+        event.clientX,
+        event.clientY,
+      );
+    });
+    bamGrid.addEventListener("mouseleave", hideBamTooltip);
+    bamForm.addEventListener("submit", saveBamDialog);
+    bamCancel.addEventListener("click", function () {
+      closeBamDialog();
+    });
+    bamDialog.addEventListener("cancel", function (event) {
+      event.preventDefault();
+      closeBamDialog();
+    });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;
       const normalizedValue = String(sectorByteValue.value || "")
@@ -7163,6 +7548,21 @@
       }
       if (button.dataset.action === "repair-doctor-dos-type") {
         repairDoctorDosType();
+        return;
+      }
+      if (button.dataset.action === "review-doctor-bam") {
+        const issueIndex = Math.max(
+          0,
+          Math.floor(Number(button.dataset.issueIndex) || 0),
+        );
+        const issue = findDoctorIssueByIndex(issueIndex);
+        state.returnToDoctorReport = true;
+        closeDoctorDialog({ preserveReturnTarget: true });
+        openBamDialog({
+          issueIndex: issueIndex,
+          returnToDoctor: true,
+          meta: issue ? issue.message : "",
+        });
         return;
       }
       if (button.dataset.action === "review-doctor-dos-type") {

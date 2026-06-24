@@ -1680,6 +1680,221 @@ tbody tr.is-drop-target {
   max-width: 840px;
 }
 
+.file-type-dialog.bam-dialog {
+  width: min(980px, calc(100vw - 28px));
+  max-width: 980px;
+  max-height: min(74vh, 760px);
+}
+
+.file-type-dialog.bam-dialog .file-type-form {
+  max-height: min(74vh, 760px);
+  overflow: hidden;
+}
+
+.file-type-dialog.bam-dialog .section-heading p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 14px;
+  max-width: min(68%, 620px);
+}
+
+.bam-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.bam-legend-item {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.bam-legend-swatch {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.bam-legend-swatch.is-free {
+  background: #8ef3e6;
+}
+
+.bam-legend-swatch.is-used {
+  background: #244657;
+}
+
+.bam-legend-swatch.is-problem {
+  background: #d62828;
+}
+
+.bam-legend-swatch.is-problem::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 50%, #6d0f0f 50%);
+}
+
+.bam-legend-swatch.is-untracked {
+  background: #050505;
+}
+
+.bam-grid-shell {
+  position: relative;
+  overflow: auto;
+  max-height: min(50vh, 430px);
+  border: 1px solid rgba(185, 227, 242, 0.12);
+  border-radius: 16px;
+  background: rgba(7, 20, 31, 0.35);
+}
+
+.bam-grid-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 760px;
+}
+
+.bam-grid-table th,
+.bam-grid-table td {
+  padding: 0;
+  border-right: 1px solid rgba(185, 227, 242, 0.08);
+  border-bottom: 1px solid rgba(185, 227, 242, 0.08);
+}
+
+.bam-grid-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(13, 37, 50, 0.96);
+}
+
+.bam-grid-corner,
+.bam-grid-track,
+.bam-grid-freecount {
+  min-width: 40px;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bam-grid-track {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: rgba(13, 37, 50, 0.96);
+}
+
+.bam-grid-freecount {
+  min-width: 48px;
+}
+
+.bam-grid-sector {
+  min-width: 20px;
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.bam-grid-row:nth-child(even) .bam-grid-track {
+  background: rgba(15, 43, 58, 0.96);
+}
+
+.bam-cell {
+  display: block;
+  width: 100%;
+  min-width: 20px;
+  min-height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: #244657;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.bam-cell.is-free {
+  background: rgba(142, 243, 230, 0.78);
+}
+
+.bam-cell.is-used {
+  background: rgba(36, 70, 87, 0.9);
+}
+
+.bam-cell.is-problem-free {
+  background: #d62828;
+}
+
+.bam-cell.is-problem-used {
+  background: #b61e1e;
+}
+
+.bam-cell:hover {
+  transform: scale(0.92);
+}
+
+.bam-cell:focus-visible {
+  outline: 2px solid #ffd36b;
+  outline-offset: -2px;
+}
+
+.bam-cell.is-untracked,
+.bam-cell.is-empty {
+  background: #050505;
+  cursor: default;
+}
+
+.bam-cell.is-untracked {
+  background: #050505;
+}
+
+.bam-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 260px;
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 227, 242, 0.18);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 24%),
+    rgba(8, 25, 36, 0.97);
+  color: var(--ink);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.bam-tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bam-tooltip p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .doctor-entry-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
