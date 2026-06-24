@@ -6460,6 +6460,57 @@
     }
   };
 
+  const repairDoctorInvalidFileTypes = function () {
+    if (!state.image || !state.doctorReport) return;
+    try {
+      const issue = findMatchingDoctorIssue(state.doctorReport, {
+        code: "invalid-file-types",
+      });
+      const targets = Array.isArray(issue && issue.items) ? issue.items : [];
+      let nextImage = state.image.slice();
+      let repairedCount = 0;
+      targets.forEach(function (item) {
+        const entryIndex = Math.max(
+          0,
+          Math.floor(Number(item && item.entryIndex) || 0),
+        );
+        const entry = d64.readDirectoryEntry(nextImage, entryIndex);
+        if (!entry || !entry.typeByte || entry.deleted) return;
+        const decoded = d64.decodeDirectoryEntryType(entry.typeByte);
+        if (
+          decoded.fileType !== "unknown" &&
+          decoded.fileType !== "del" &&
+          decoded.code >= 1 &&
+          decoded.code <= 4
+        ) {
+          return;
+        }
+        const entryBytes = entry.raw.slice();
+        entryBytes[2] = d64.encodeDirectoryEntryType("seq", {
+          closed: entry.closed !== false,
+          locked: Boolean(entry.locked),
+        });
+        nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
+        repairedCount += 1;
+      });
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        repairedCount
+          ? "Changed " +
+              String(repairedCount) +
+              " invalid file type" +
+              (repairedCount === 1 ? "" : "s") +
+              " to SEQ."
+          : "No invalid file types needed repair.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const repairDoctorDuplicateFilenames = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -6574,6 +6625,53 @@
           start,
         );
         steps.push('set DOS type to "2A"');
+      }
+
+      if (hasIssue("invalid-file-types")) {
+        const invalidIssue = issues.find(function (issue) {
+          return issue && issue.code === "invalid-file-types";
+        });
+        let repairedCount = 0;
+        (Array.isArray(invalidIssue && invalidIssue.items)
+          ? invalidIssue.items
+          : []
+        ).forEach(function (item) {
+          const entryIndex = Math.max(
+            0,
+            Math.floor(Number(item && item.entryIndex) || 0),
+          );
+          const entry = d64.readDirectoryEntry(nextImage, entryIndex);
+          if (!entry || !entry.typeByte || entry.deleted) return;
+          const decoded = d64.decodeDirectoryEntryType(entry.typeByte);
+          if (
+            decoded.fileType !== "unknown" &&
+            decoded.fileType !== "del" &&
+            decoded.code >= 1 &&
+            decoded.code <= 4
+          ) {
+            return;
+          }
+          const entryBytes = entry.raw.slice();
+          entryBytes[2] = d64.encodeDirectoryEntryType("seq", {
+            closed: entry.closed !== false,
+            locked: Boolean(entry.locked),
+          });
+          nextImage = d64.writeDirectoryEntryBytes(
+            nextImage,
+            entry,
+            entryBytes,
+          );
+          repairedCount += 1;
+        });
+        if (repairedCount) {
+          steps.push(
+            "changed " +
+              String(repairedCount) +
+              " invalid file type" +
+              (repairedCount === 1 ? "" : "s") +
+              " to SEQ",
+          );
+        }
       }
 
       if (hasIssue("splat-files")) {
@@ -6756,6 +6854,7 @@
       "short-disk-id": true,
       "unknown-dos-version": true,
       "unexpected-dos-type": true,
+      "invalid-file-types": true,
       "damaged-bam-or-header": true,
       "incorrect-bam-free-counts": true,
       "bam-disagrees-used-blocks-marked-free": true,
@@ -6817,6 +6916,15 @@
           "</button>" +
           '<button type="button" class="file-type-button" data-action="review-doctor-dos-type">' +
           "Review" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "invalid-file-types") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-invalid-file-types">' +
+          "Repair" +
           "</button>" +
           "</div>"
         );
@@ -8318,6 +8426,10 @@
       }
       if (button.dataset.action === "repair-doctor-dos-type") {
         repairDoctorDosType();
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-invalid-file-types") {
+        repairDoctorInvalidFileTypes();
         return;
       }
       if (button.dataset.action === "repair-doctor-bam-allocations") {
