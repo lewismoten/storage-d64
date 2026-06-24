@@ -3162,7 +3162,7 @@
         const key = makeKey(track, sector);
         if (visited[key]) {
           addIssue(
-            "repairable",
+            "warning",
             "circular-file-chain",
             labelPrefix + " contains a circular sector chain.",
             {
@@ -3214,7 +3214,7 @@
         }
         if (!isValidPointer(nextTrack, nextSector, false)) {
           addIssue(
-            "repairable",
+            "warning",
             "broken-file-chain",
             labelPrefix + " ends with an invalid next-block pointer.",
             {
