@@ -1738,7 +1738,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-legend-swatch.is-unreachable {
-  background: #b61e1e;
+  background: #d9b43b;
 }
 
 .bam-legend-swatch.is-untracked {
@@ -1818,6 +1818,10 @@ tbody tr.is-drop-target {
   background: rgba(15, 43, 58, 0.96);
 }
 
+.bam-grid-row:nth-child(even) .bam-grid-freecount {
+  background: rgba(15, 43, 58, 0.42);
+}
+
 .bam-cell {
   display: block;
   width: 100%;
@@ -1841,7 +1845,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-cell.is-free {
-  background: rgba(142, 243, 230, 0.78);
+  background: #8ef3e6;
 }
 
 .bam-cell.is-used {
@@ -1853,7 +1857,23 @@ tbody tr.is-drop-target {
 }
 
 .bam-cell.is-problem-used {
-  background: #b61e1e;
+  background: #d9b43b;
+}
+
+.bam-grid-row:nth-child(even) .bam-cell.is-free {
+  background: #72d8cd;
+}
+
+.bam-grid-row:nth-child(even) .bam-cell.is-used {
+  background: rgba(28, 55, 69, 0.9);
+}
+
+.bam-grid-row:nth-child(even) .bam-cell.is-problem-free {
+  background: #b91f1f;
+}
+
+.bam-grid-row:nth-child(even) .bam-cell.is-problem-used {
+  background: #bc9a2f;
 }
 
 .bam-cell.is-track-warning {
@@ -1871,7 +1891,7 @@ tbody tr.is-drop-target {
 
 .bam-cell.is-free:hover:not(:disabled),
 .bam-cell.is-free:active:not(:disabled) {
-  background: rgba(142, 243, 230, 0.78);
+  background: #8ef3e6;
 }
 
 .bam-cell.is-used:hover:not(:disabled),
@@ -1886,7 +1906,7 @@ tbody tr.is-drop-target {
 
 .bam-cell.is-problem-used:hover:not(:disabled),
 .bam-cell.is-problem-used:active:not(:disabled) {
-  background: #b61e1e;
+  background: #d9b43b;
 }
 
 .bam-cell.is-untracked:hover:not(:disabled),
@@ -1974,23 +1994,103 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-zone.is-bam {
-  fill: rgba(255, 209, 102, 0.14);
+  fill: rgba(255, 209, 102, 0.08);
 }
 
-.bam-bitmask-zone.is-header {
-  fill: rgba(116, 185, 255, 0.1);
+.bam-bitmask-zone.is-count {
+  fill: rgba(255, 209, 102, 0.12);
+}
+
+.bam-bitmask-zone.is-track-even {
+  fill: rgba(255, 255, 255, 0.025);
 }
 
 .bam-bitmask-zero-column {
-  fill: rgba(0, 0, 0, 0.24);
+  fill: rgba(0, 0, 0, 0.18);
 }
 
-.bam-bitmask-pixel.is-bam {
-  fill: #ffd166;
+.bam-bitmask-pixel.is-unused {
+  fill: rgba(0, 0, 0, 0.82);
 }
 
-.bam-bitmask-pixel.is-header {
+.bam-bitmask-pixel.is-count-on {
+  fill: #8f9ca6;
+}
+
+.bam-bitmask-pixel.is-count-off {
+  fill: rgba(143, 156, 166, 0.24);
+}
+
+.bam-bitmask-pixel.is-free-on {
   fill: #8ef3e6;
+}
+
+.bam-bitmask-pixel.is-free-off {
+  fill: rgba(142, 243, 230, 0.24);
+}
+
+.bam-bitmask-pixel.is-used-on {
+  fill: rgba(36, 70, 87, 0.92);
+}
+
+.bam-bitmask-pixel.is-used-off {
+  fill: rgba(36, 70, 87, 0.3);
+}
+
+.bam-bitmask-pixel.is-active-on {
+  fill: #d62828;
+}
+
+.bam-bitmask-pixel.is-active-off {
+  fill: rgba(214, 40, 40, 0.28);
+}
+
+.bam-bitmask-pixel.is-unreachable-on {
+  fill: #d9b43b;
+}
+
+.bam-bitmask-pixel.is-unreachable-off {
+  fill: rgba(217, 180, 59, 0.28);
+}
+
+.bam-bitmask-pixel.is-track-even.is-used-on {
+  fill: rgba(28, 55, 69, 0.92);
+}
+
+.bam-bitmask-pixel.is-track-even.is-used-off {
+  fill: rgba(28, 55, 69, 0.26);
+}
+
+.bam-bitmask-pixel.is-track-even.is-count-on {
+  fill: #73808a;
+}
+
+.bam-bitmask-pixel.is-track-even.is-count-off {
+  fill: rgba(115, 128, 138, 0.22);
+}
+
+.bam-bitmask-pixel.is-track-even.is-free-on {
+  fill: #72d8cd;
+}
+
+.bam-bitmask-pixel.is-track-even.is-free-off {
+  fill: rgba(114, 216, 205, 0.22);
+}
+
+.bam-bitmask-pixel.is-track-even.is-active-on {
+  fill: #b91f1f;
+}
+
+.bam-bitmask-pixel.is-track-even.is-active-off {
+  fill: rgba(185, 31, 31, 0.26);
+}
+
+.bam-bitmask-pixel.is-track-even.is-unreachable-on {
+  fill: #bc9a2f;
+}
+
+.bam-bitmask-pixel.is-track-even.is-unreachable-off {
+  fill: rgba(188, 154, 47, 0.24);
 }
 
 .doctor-entry-grid {

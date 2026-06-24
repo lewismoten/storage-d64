@@ -722,6 +722,22 @@
     return sectorBytes.subarray(bamStart, bamEnd);
   };
 
+  const getBamBitmaskPixelClass = function (track, sector) {
+    const issueInfo = getBamCellIssueInfo(track, sector);
+    let baseClass = "is-used";
+    if (issueInfo && issueInfo.issueClass === "is-problem-free") {
+      baseClass = "is-active";
+    } else if (issueInfo && issueInfo.issueClass === "is-problem-used") {
+      baseClass = "is-unreachable";
+    } else if (
+      state.bamDialogDraft[track] &&
+      state.bamDialogDraft[track][sector]
+    ) {
+      baseClass = "is-free";
+    }
+    return baseClass;
+  };
+
   const renderBamBitmask = function () {
     if (!bamBitmask || !bamBitmaskButton) return;
     const bytes = buildBamSectorPreview();
@@ -736,11 +752,15 @@
     const zeroColumns = [];
     const pixels = [];
     for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
-      const role = "bam";
+      const track = Math.floor(byteIndex / 4) + 1;
+      const byteInTrack = byteIndex % 4;
+      const isEvenTrack = track % 2 === 0;
+      const role = byteInTrack === 0 ? "count" : "bam";
       const value = Number(bytes[byteIndex]) || 0;
       zones.push(
         '<rect class="bam-bitmask-zone is-' +
           role +
+          (isEvenTrack ? " is-track-even" : "") +
           '" x="' +
           String(byteIndex) +
           '" y="0" width="1" height="8"></rect>',
@@ -753,10 +773,25 @@
         );
       }
       for (let bit = 0; bit < 8; bit += 1) {
-        if (((value >> bit) & 1) === 0) continue;
+        let pixelClass = "";
+        if (byteInTrack === 0) {
+          pixelClass =
+            ((value >> bit) & 1) === 1 ? "is-count-on" : "is-count-off";
+        } else {
+          const sector = (byteInTrack - 1) * 8 + bit;
+          if (sector >= d64.trackSectorCount(track)) {
+            pixelClass = "is-unused";
+          } else {
+            const baseClass = getBamBitmaskPixelClass(track, sector);
+            pixelClass =
+              baseClass +
+              (((value >> bit) & 1) === 1 ? "-on" : "-off") +
+              (isEvenTrack ? " is-track-even" : "");
+          }
+        }
         pixels.push(
-          '<rect class="bam-bitmask-pixel is-' +
-            role +
+          '<rect class="bam-bitmask-pixel ' +
+            pixelClass +
             '" x="' +
             String(byteIndex) +
             '" y="' +
