@@ -270,6 +270,7 @@
     "undeleteFile",
     "destroyDeletedFile",
     "destroyDeletedFileWithReport",
+    "truncateBrokenFileChainWithReport",
     "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
     "diagnoseImage",
@@ -643,6 +644,18 @@
   const renderDoctorTextWithSectorLinks = function (text, issueIndex) {
     const source = String(text || "");
     const pattern = /T\s*(\d{1,2})\s*S\s*(\d{1,2})/gi;
+    const geometry = state.image ? d64.describeGeometry(state.image) : null;
+    const isValidSectorAddress = function (track, sector) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      return Boolean(
+        geometry &&
+        safeTrack >= 1 &&
+        safeTrack <= geometry.trackCount &&
+        safeSector >= 0 &&
+        safeSector < d64.trackSectorCount(safeTrack),
+      );
+    };
     let cursor = 0;
     let markup = "";
     let match = pattern.exec(source);
@@ -650,16 +663,20 @@
       const start = match.index;
       const end = start + match[0].length;
       markup += escapeHtml(source.slice(cursor, start));
-      markup +=
-        '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
-        encodeHtmlAttribute(String(issueIndex)) +
-        '" data-track="' +
-        encodeHtmlAttribute(String(Number(match[1]))) +
-        '" data-sector="' +
-        encodeHtmlAttribute(String(Number(match[2]))) +
-        '">' +
-        escapeHtml(match[0].replace(/\s+/g, " ").trim()) +
-        "</button>";
+      if (isValidSectorAddress(match[1], match[2])) {
+        markup +=
+          '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+          encodeHtmlAttribute(String(issueIndex)) +
+          '" data-track="' +
+          encodeHtmlAttribute(String(Number(match[1]))) +
+          '" data-sector="' +
+          encodeHtmlAttribute(String(Number(match[2]))) +
+          '">' +
+          escapeHtml(match[0].replace(/\s+/g, " ").trim()) +
+          "</button>";
+      } else {
+        markup += escapeHtml(match[0].replace(/\s+/g, " ").trim());
+      }
       cursor = end;
       match = pattern.exec(source);
     }
@@ -7156,6 +7173,17 @@
           "</div>"
         );
       }
+      if (issue.code === "broken-file-chain") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="truncate-doctor-broken-chain" data-entry-index="' +
+          encodeHtmlAttribute(String(Number(issue.entryIndex) || 0)) +
+          '">' +
+          "Truncate" +
+          "</button>" +
+          "</div>"
+        );
+      }
       if (issue.code === "damaged-bam-or-header") {
         return (
           '<div class="doctor-issue-actions">' +
@@ -7709,6 +7737,43 @@
         {
           resetDeletedTypeHints: false,
         },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const truncateBrokenDoctorFile = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const file = findActiveFileByEntryIndex(entryIndex);
+      if (!file || !file.entry) {
+        throw new Error("File not found.");
+      }
+      const truncated = d64.truncateBrokenFileChainWithReport(
+        state.image,
+        file.entry,
+      );
+      let nextImage = truncated.image;
+      const repairedCounts = d64.repairBlockCounts(nextImage, file.entry);
+      if (repairedCounts && repairedCounts.image) {
+        nextImage = repairedCounts.image;
+      }
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        truncated.truncated
+          ? 'Truncated "' +
+              file.name +
+              '" at ' +
+              "T" +
+              String(truncated.track) +
+              " S" +
+              String(truncated.sector) +
+              "."
+          : 'File "' + file.name + '" did not need truncation.',
+        { resetDeletedTypeHints: false },
       );
       refreshDoctorReportAfterImageChange();
     } catch (error) {
@@ -8745,6 +8810,10 @@
       }
       if (button.dataset.action === "repair-doctor-invalid-file-types") {
         repairDoctorInvalidFileTypes();
+        return;
+      }
+      if (button.dataset.action === "truncate-doctor-broken-chain") {
+        truncateBrokenDoctorFile(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action === "repair-doctor-bam-allocations") {
