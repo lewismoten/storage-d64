@@ -271,6 +271,7 @@
     "destroyDeletedFile",
     "destroyDeletedFileWithReport",
     "truncateBrokenFileChainWithReport",
+    "truncateCircularFileChainWithReport",
     "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
     "diagnoseImage",
@@ -7203,6 +7204,17 @@
           "</div>"
         );
       }
+      if (issue.code === "circular-file-chain") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="truncate-doctor-circular-chain" data-entry-index="' +
+          encodeHtmlAttribute(String(Number(issue.entryIndex) || 0)) +
+          '">' +
+          "Truncate" +
+          "</button>" +
+          "</div>"
+        );
+      }
       if (issue.code === "damaged-bam-or-header") {
         return (
           '<div class="doctor-issue-actions">' +
@@ -7773,6 +7785,43 @@
         state.sourceName || "disk.d64",
         truncated.truncated
           ? 'Truncated "' +
+              file.name +
+              '" at ' +
+              "T" +
+              String(truncated.track) +
+              " S" +
+              String(truncated.sector) +
+              "."
+          : 'File "' + file.name + '" did not need truncation.',
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const truncateCircularDoctorFile = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const file = findActiveFileByEntryIndex(entryIndex);
+      if (!file || !file.entry) {
+        throw new Error("File not found.");
+      }
+      const truncated = d64.truncateCircularFileChainWithReport(
+        state.image,
+        file.entry,
+      );
+      let nextImage = truncated.image;
+      const repairedCounts = d64.repairBlockCounts(nextImage, file.entry);
+      if (repairedCounts && repairedCounts.image) {
+        nextImage = repairedCounts.image;
+      }
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        truncated.truncated
+          ? 'Truncated loop in "' +
               file.name +
               '" at ' +
               "T" +
@@ -8822,6 +8871,10 @@
       }
       if (button.dataset.action === "truncate-doctor-broken-chain") {
         truncateBrokenDoctorFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "truncate-doctor-circular-chain") {
+        truncateCircularDoctorFile(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action === "repair-doctor-bam-allocations") {

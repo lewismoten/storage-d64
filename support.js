@@ -2038,6 +2038,87 @@
       .image;
   };
 
+  d64.truncateCircularFileChainWithReport = function (
+    image,
+    entryOrName,
+    options,
+  ) {
+    const config = options || {};
+    const entry =
+      typeof entryOrName === "string"
+        ? d64.findDirectoryEntryByName(image, entryOrName, config)
+        : entryOrName || null;
+    if (!entry || !entry.typeByte || entry.deleted) {
+      throw new Error("File not found: " + String(entryOrName || ""));
+    }
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const geometry = d64.describeGeometry(bytes);
+    const isValidAddress = function (track, sector) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      return (
+        safeTrack >= 1 &&
+        safeTrack <= geometry.trackCount &&
+        safeSector >= 0 &&
+        safeSector < d64.trackSectorCount(safeTrack)
+      );
+    };
+    let track = Math.max(0, Math.floor(Number(entry.startTrack) || 0));
+    let sector = Math.max(0, Math.floor(Number(entry.startSector) || 0));
+    const visited = {};
+    let previousTrack = 0;
+    let previousSector = 0;
+    while (track) {
+      if (!isValidAddress(track, sector)) {
+        throw new Error("File does not reach a valid sector to truncate.");
+      }
+      const key = String(track) + ":" + String(sector);
+      if (visited[key]) {
+        if (!previousTrack) {
+          throw new Error("File loops at its starting sector.");
+        }
+        const previousBlock = d64.readSector(
+          bytes,
+          previousTrack,
+          previousSector,
+        );
+        previousBlock[0] = 0;
+        previousBlock[1] = 255;
+        return {
+          image: bytes,
+          truncated: true,
+          track: previousTrack,
+          sector: previousSector,
+          loopTrack: track,
+          loopSector: sector,
+        };
+      }
+      visited[key] = true;
+      const block = d64.readSector(bytes, track, sector);
+      const nextTrack = block[0];
+      const nextSector = block[1];
+      if (!nextTrack) {
+        return {
+          image: bytes,
+          truncated: false,
+          track: track,
+          sector: sector,
+        };
+      }
+      previousTrack = track;
+      previousSector = sector;
+      track = nextTrack;
+      sector = nextSector;
+    }
+    throw new Error("File has no valid start block to truncate.");
+  };
+
+  d64.truncateCircularFileChain = function (image, entryOrName, options) {
+    return d64.truncateCircularFileChainWithReport(image, entryOrName, options)
+      .image;
+  };
+
   d64.repairUnreachableDirectoryEntryWithReport = function (
     image,
     entryOrIndex,
@@ -2572,6 +2653,7 @@
             labelPrefix + " contains a circular sector chain.",
             {
               fileName: entry.name,
+              entryIndex: entry.index,
               items: [formatTs(track, sector)],
             },
           );
