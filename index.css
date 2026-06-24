@@ -311,6 +311,30 @@ button:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
+#doctor-button {
+  background: linear-gradient(180deg, #fffdf8, #f0ece3);
+  color: #bb2b2b;
+  box-shadow:
+    0 10px 24px rgba(255, 255, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+#doctor-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff, #f6f2e9);
+}
+
+#fragment-button {
+  background: linear-gradient(180deg, #ffe08a, #d6a93c);
+  color: #422d00;
+  box-shadow:
+    0 10px 24px rgba(214, 169, 60, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+#fragment-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffe8a7, #e2b74e);
+}
+
 #corrupt-button {
   background: linear-gradient(180deg, #ff938e, #e24d46);
   color: #3b0907;
