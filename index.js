@@ -7618,15 +7618,6 @@
       if (!file || !file.entry) {
         throw new Error("File not found.");
       }
-      if (file.locked) {
-        setStatus(
-          'Protected file "' +
-            file.name +
-            '" can not be destroyed until it is unlocked.',
-          true,
-        );
-        return;
-      }
       const sectorRefs = d64.collectFileSectorRefsBestEffort(
         state.image,
         file.entry,
