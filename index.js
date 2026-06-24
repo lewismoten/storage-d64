@@ -7568,13 +7568,25 @@
       if (issue.code === "cross-linked-file-sectors") {
         const plan = getCrossLinkedFileSectorRepairPlan();
         const removalTargets = getCrossLinkedRemovalTargets(issue);
-        const disabledReason =
+        let disabledReason =
           plan && !plan.repairable
             ? String(
                 plan.disabledReason ||
                   "Cross-linked sector repair is not available.",
               )
             : "";
+        if (
+          disabledReason &&
+          removalTargets.length &&
+          disabledReason.indexOf(
+            "no later conflicting file chain could be isolated for cloning",
+          ) !== -1
+        ) {
+          disabledReason =
+            'The later conflicting file chain for "' +
+            String(removalTargets[0].fileName || "the later entry") +
+            '" could not be read well enough to clone. Use Remove Entry to mark it as DEL.';
+        }
         const buttonMarkup =
           '<button type="button" class="file-type-button" data-action="repair-doctor-cross-linked-sectors"' +
           (disabledReason

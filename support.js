@@ -2566,7 +2566,9 @@
         ? candidates.length
           ? "Cross-linked sectors were found, but none of the later conflicting file chains can be cloned automatically. " +
             candidateReasonText
-          : "Cross-linked sectors were found, but no later conflicting file chain could be isolated for cloning."
+          : conflicts.length
+            ? "Cross-linked sectors were found, but the later conflicting file chain could not be read well enough to clone. Use Remove Entry to mark the later conflicting directory entry as DEL."
+            : "Cross-linked sectors were found, but no later conflicting file chain could be isolated for cloning."
         : availableTargets.length < requiredSectorCount
           ? "Not enough free sectors are available to clone the later conflicting file chains (" +
             String(requiredSectorCount) +
