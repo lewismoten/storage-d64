@@ -1449,14 +1449,15 @@
   };
 
   const syncDoctorEntryDialog = function () {
-    const isRel = String(doctorEntryType.value || "").toLowerCase() === "rel";
+    const typeInfo = getDoctorEntrySelectedTypeInfo();
+    const isRel = typeInfo.fileType === "rel";
     doctorEntryRelGroup.hidden = !isRel;
   };
 
   const syncDoctorEntryRecordCapacity = function () {
     if (!doctorEntryRecordCapacity) return;
-    const type = String(doctorEntryType.value || "").toLowerCase();
-    if (type !== "rel") {
+    const typeInfo = getDoctorEntrySelectedTypeInfo();
+    if (typeInfo.fileType !== "rel") {
       doctorEntryRecordCapacity.textContent = "Max records: not applicable";
       return;
     }
@@ -1515,10 +1516,73 @@
       : d64.readDirectoryEntry(state.image, entryIndexValue);
   };
 
+  const getDoctorEntrySelectedTypeInfo = function () {
+    const rawValue = String(doctorEntryType.value || "")
+      .trim()
+      .toLowerCase();
+    if (/^unknown:\d+$/.test(rawValue)) {
+      const code = Math.max(
+        0,
+        Math.min(7, Math.floor(Number(rawValue.split(":")[1]) || 0)),
+      );
+      return {
+        value: rawValue,
+        code: code,
+        fileType: "unknown",
+        isUnknown: true,
+      };
+    }
+    const decoded = d64.decodeDirectoryEntryType(
+      d64.encodeDirectoryEntryType(rawValue || "prg"),
+    );
+    return {
+      value: rawValue || "prg",
+      code: decoded.code,
+      fileType: decoded.fileType,
+      isUnknown: decoded.fileType === "unknown",
+    };
+  };
+
+  const ensureDoctorEntryTypeOption = function (entry) {
+    const existingUnknown = doctorEntryType.querySelector(
+      'option[data-dynamic-unknown="true"]',
+    );
+    if (existingUnknown) {
+      existingUnknown.remove();
+    }
+    if (!entry) return;
+    const typeInfo = d64.decodeDirectoryEntryType(entry.typeByte);
+    if (typeInfo.fileType !== "unknown") return;
+    const option = document.createElement("option");
+    option.value = "unknown:" + String(typeInfo.code);
+    option.dataset.dynamicUnknown = "true";
+    doctorEntryType.appendChild(option);
+  };
+
+  const updateDoctorEntryUnknownOptionLabel = function () {
+    const option = doctorEntryType.querySelector(
+      'option[data-dynamic-unknown="true"]',
+    );
+    if (!option) return;
+    const typeInfo = getDoctorEntrySelectedTypeInfo();
+    const code = Math.max(0, Math.min(7, Number(typeInfo.code) || 0));
+    const rawByte =
+      ((code & 0x07) |
+        (doctorEntryClosed.checked ? 0x80 : 0) |
+        (doctorEntryLocked.checked ? 0x40 : 0)) &
+      0xff;
+    option.textContent =
+      code.toString(2).padStart(3, "0") +
+      " - UNKNOWN (" +
+      "0x" +
+      toHexByte(rawByte) +
+      ")";
+  };
+
   const buildDoctorEntryPreviewBytes = function (entry) {
     if (!entry) return null;
     const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
-    const nextType = String(doctorEntryType.value || "prg").toLowerCase();
+    const nextType = getDoctorEntrySelectedTypeInfo();
     const nextStartTrack = Math.max(
       0,
       Math.floor(Number(doctorEntryStartTrack.value) || 0),
@@ -1532,15 +1596,15 @@
       Math.min(65535, Math.floor(Number(doctorEntryBlockCount.value) || 0)),
     );
     const nextSideTrack =
-      nextType === "rel"
+      nextType.fileType === "rel"
         ? Math.max(0, Math.floor(Number(doctorEntrySideTrack.value) || 0))
         : 0;
     const nextSideSector =
-      nextType === "rel"
+      nextType.fileType === "rel"
         ? Math.max(0, Math.floor(Number(doctorEntrySideSector.value) || 0))
         : 0;
     const nextRecordLength =
-      nextType === "rel"
+      nextType.fileType === "rel"
         ? Math.max(
             1,
             Math.min(
@@ -1553,14 +1617,14 @@
     const nextEntryBytes = entry.raw.slice();
     nextEntryBytes[2] =
       context.mode === "restore-deleted"
-        ? d64.encodeDirectoryEntryType(nextType, {
+        ? d64.encodeDirectoryEntryType(nextType.fileType, {
             closed: doctorEntryClosed.checked,
             locked: doctorEntryLocked.checked,
           })
-        : d64.encodeDirectoryEntryType(nextType, {
-            closed: doctorEntryClosed.checked,
-            locked: doctorEntryLocked.checked,
-          });
+        : ((nextType.code & 0x07) |
+            (doctorEntryClosed.checked ? 0x80 : 0) |
+            (doctorEntryLocked.checked ? 0x40 : 0)) &
+          0xff;
     nextEntryBytes[3] = nextStartTrack & 0xff;
     nextEntryBytes[4] = nextStartSector & 0xff;
     nextEntryBytes.set(d64.encodeFileName(nextName, 16), 5);
@@ -7348,6 +7412,7 @@
       entryIndex: String(entry.index),
       returnToDoctor: Boolean(config.returnToDoctor),
     };
+    ensureDoctorEntryTypeOption(entry);
     doctorEntryIndex.value = String(entry.index);
     doctorEntryDialogName.textContent =
       "Track " +
@@ -7366,7 +7431,10 @@
       config.restoreDeleted
         ? state.deletedTypeHints[entry.index] ||
             (entry.sideSectorTrack ? "rel" : "prg")
-        : entry.fileType || "prg",
+        : entry.fileType === "unknown"
+          ? "unknown:" +
+            String(d64.decodeDirectoryEntryType(entry.typeByte).code)
+          : entry.fileType || "prg",
     ).toLowerCase();
     doctorEntryName.value = String(entry.name || "");
     doctorEntryStartTrack.value = String(Number(entry.startTrack) || 0);
@@ -7384,8 +7452,10 @@
       "is-significant",
       Boolean(config.highlightType),
     );
+    updateDoctorEntryUnknownOptionLabel();
     doctorEntryClosed.checked = Boolean(entry.closed);
     doctorEntryLocked.checked = Boolean(entry.locked);
+    updateDoctorEntryUnknownOptionLabel();
     doctorEntrySideTrack.value = String(Number(entry.sideSectorTrack) || 0);
     doctorEntrySideSector.value = String(Number(entry.sideSectorSector) || 0);
     doctorEntryRecordLength.value = String(Number(entry.recordLength) || 32);
@@ -7500,7 +7570,7 @@
         throw new Error("Directory entry not found.");
       }
       const nextName = d64.normalizeFileName(doctorEntryName.value, 16);
-      const nextType = String(doctorEntryType.value || "prg").toLowerCase();
+      const nextType = getDoctorEntrySelectedTypeInfo();
       const nextStartTrack = Math.max(
         0,
         Math.floor(Number(doctorEntryStartTrack.value) || 0),
@@ -7514,15 +7584,15 @@
         Math.min(65535, Math.floor(Number(doctorEntryBlockCount.value) || 0)),
       );
       const nextSideTrack =
-        nextType === "rel"
+        nextType.fileType === "rel"
           ? Math.max(0, Math.floor(Number(doctorEntrySideTrack.value) || 0))
           : 0;
       const nextSideSector =
-        nextType === "rel"
+        nextType.fileType === "rel"
           ? Math.max(0, Math.floor(Number(doctorEntrySideSector.value) || 0))
           : 0;
       const nextRecordLength =
-        nextType === "rel"
+        nextType.fileType === "rel"
           ? Math.max(
               1,
               Math.min(
@@ -7535,10 +7605,10 @@
       nextEntryBytes[2] =
         context.mode === "restore-deleted"
           ? 0x00
-          : d64.encodeDirectoryEntryType(nextType, {
-              closed: doctorEntryClosed.checked,
-              locked: doctorEntryLocked.checked,
-            });
+          : ((nextType.code & 0x07) |
+              (doctorEntryClosed.checked ? 0x80 : 0) |
+              (doctorEntryLocked.checked ? 0x40 : 0)) &
+            0xff;
       nextEntryBytes[3] = nextStartTrack & 0xff;
       nextEntryBytes[4] = nextStartSector & 0xff;
       nextEntryBytes.set(d64.encodeFileName(nextName, 16), 5);
@@ -7565,7 +7635,7 @@
           stagedImage,
           stagedDeletedEntry,
           {
-            type: nextType,
+            type: nextType.fileType,
             name: nextName,
             closed: doctorEntryClosed.checked,
             locked: doctorEntryLocked.checked,
@@ -7574,7 +7644,11 @@
         loadImageBytes(
           restoredImage,
           state.sourceName || "disk.d64",
-          "Restored " + nextName + " as " + nextType.toUpperCase() + ".",
+          "Restored " +
+            nextName +
+            " as " +
+            nextType.fileType.toUpperCase() +
+            ".",
           { resetDeletedTypeHints: false },
         );
         delete state.deletedTypeHints[stagedDeletedEntry.index];
@@ -7940,6 +8014,7 @@
       }
     });
     doctorEntryType.addEventListener("change", function () {
+      updateDoctorEntryUnknownOptionLabel();
       syncDoctorEntryDialog();
       syncDoctorEntryRecordCapacity();
       validateDoctorEntryDialog();
@@ -7979,8 +8054,14 @@
       });
       input.addEventListener("change", syncDoctorEntryRecordCapacity);
     });
-    doctorEntryClosed.addEventListener("change", renderDoctorEntryBitmask);
-    doctorEntryLocked.addEventListener("change", renderDoctorEntryBitmask);
+    doctorEntryClosed.addEventListener("change", function () {
+      updateDoctorEntryUnknownOptionLabel();
+      renderDoctorEntryBitmask();
+    });
+    doctorEntryLocked.addEventListener("change", function () {
+      updateDoctorEntryUnknownOptionLabel();
+      renderDoctorEntryBitmask();
+    });
     doctorEntryBitmaskButton.addEventListener("click", function () {
       openDoctorEntryHexDialog();
     });
