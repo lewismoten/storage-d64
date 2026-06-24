@@ -1664,6 +1664,133 @@
     return refs;
   };
 
+  d64.collectFileSectorRefsBestEffort = function (image, entry, options) {
+    if (!entry || !entry.startTrack) {
+      return {
+        refs: [],
+        partial: false,
+        stoppedReason: "",
+      };
+    }
+    const config = options || {};
+    const geometry = d64.describeGeometry(image);
+    const refs = [];
+    const visited = {};
+    const blockedKeys = {};
+    const currentEntryIndex = String(entry.index != null ? entry.index : "");
+    const addBlockedRefs = function (entries, entryOptions) {
+      (Array.isArray(entries) ? entries : []).forEach(function (other) {
+        if (!other) return;
+        if (
+          currentEntryIndex &&
+          String(other.index != null ? other.index : "") === currentEntryIndex
+        ) {
+          return;
+        }
+        try {
+          d64
+            .collectFileSectorRefs(image, other, entryOptions)
+            .forEach(function (ref) {
+              blockedKeys[String(ref.track) + ":" + String(ref.sector)] = true;
+            });
+        } catch (error) {
+          // Ignore other corrupt chains here. Best-effort scratch only blocks
+          // sectors we can positively attribute to another entry.
+        }
+      });
+    };
+    addBlockedRefs(d64.readDirectoryEntries(image, config), config);
+    addBlockedRefs(d64.readDeletedEntries(image, config), config);
+
+    const isValidAddress = function (track, sector) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      return (
+        safeTrack >= 1 &&
+        safeTrack <= d64.normalizeTrackCount(geometry.trackCount) &&
+        safeSector >= 0 &&
+        safeSector < d64.trackSectorCount(safeTrack)
+      );
+    };
+
+    let track = Math.max(0, Math.floor(Number(entry.startTrack) || 0));
+    let sector = Math.max(0, Math.floor(Number(entry.startSector) || 0));
+    let stoppedReason = "";
+
+    while (track) {
+      if (!isValidAddress(track, sector)) {
+        stoppedReason = "invalid-pointer";
+        break;
+      }
+      const key = String(track) + ":" + String(sector);
+      if (visited[key]) {
+        stoppedReason = "loop";
+        break;
+      }
+      if (blockedKeys[key]) {
+        stoppedReason = "crossed-other-chain";
+        break;
+      }
+      visited[key] = true;
+      refs.push({ track: track, sector: sector });
+      const block = d64.readSector(image, track, sector);
+      const nextTrack = block[0];
+      const nextSector = block[1];
+      if (!nextTrack) {
+        break;
+      }
+      if (!isValidAddress(nextTrack, nextSector)) {
+        stoppedReason = "invalid-pointer";
+        break;
+      }
+      const nextKey = String(nextTrack) + ":" + String(nextSector);
+      if (visited[nextKey]) {
+        stoppedReason = "loop";
+        break;
+      }
+      if (blockedKeys[nextKey]) {
+        stoppedReason = "crossed-other-chain";
+        break;
+      }
+      track = nextTrack;
+      sector = nextSector;
+    }
+
+    if (
+      String(entry.fileType || "").toLowerCase() === "rel" &&
+      entry.sideSectorTrack
+    ) {
+      try {
+        d64
+          .readRelativeSideSectors(
+            image,
+            entry.sideSectorTrack,
+            entry.sideSectorSector,
+          )
+          .forEach(function (sideSector) {
+            const key =
+              String(sideSector.track) + ":" + String(sideSector.sector);
+            if (!blockedKeys[key] && !visited[key]) {
+              refs.push({
+                track: sideSector.track,
+                sector: sideSector.sector,
+              });
+            }
+          });
+      } catch (error) {
+        if (!stoppedReason) {
+          stoppedReason = "side-sector-error";
+        }
+      }
+    }
+
+    return {
+      refs: refs,
+      partial: Boolean(stoppedReason),
+      stoppedReason: stoppedReason,
+    };
+  };
+
   d64.updateFreeMapSectors = function (freeMap, sectors, isFree) {
     const map = freeMap;
     (Array.isArray(sectors) ? sectors : []).forEach(function (ref) {
@@ -1675,7 +1802,7 @@
     return map;
   };
 
-  d64.scratchFile = function (image, entryOrName, options) {
+  d64.scratchFileWithReport = function (image, entryOrName, options) {
     const entry =
       typeof entryOrName === "string"
         ? d64.findDirectoryEntryByName(image, entryOrName, options)
@@ -1684,8 +1811,12 @@
       throw new Error("File not found: " + String(entryOrName || ""));
     }
     const freeMap = d64.readFreeMap(image);
-    const sectorRefs = d64.collectFileSectorRefs(image, entry, options);
-    d64.updateFreeMapSectors(freeMap, sectorRefs, true);
+    const sectorRefs = d64.collectFileSectorRefsBestEffort(
+      image,
+      entry,
+      options,
+    );
+    d64.updateFreeMapSectors(freeMap, sectorRefs.refs, true);
     const entryBytes = entry.raw.slice();
     entryBytes[2] = 0x00;
     const withDeletedEntry = d64.writeDirectoryEntryBytes(
@@ -1693,7 +1824,16 @@
       entry,
       entryBytes,
     );
-    return d64.writeBamFreeMap(withDeletedEntry, freeMap);
+    return {
+      image: d64.writeBamFreeMap(withDeletedEntry, freeMap),
+      partial: Boolean(sectorRefs.partial),
+      stoppedReason: String(sectorRefs.stoppedReason || ""),
+      freedSectors: Array.isArray(sectorRefs.refs) ? sectorRefs.refs.length : 0,
+    };
+  };
+
+  d64.scratchFile = function (image, entryOrName, options) {
+    return d64.scratchFileWithReport(image, entryOrName, options).image;
   };
 
   d64.undeleteFile = function (image, deletedEntryOrName, restoreOptions) {

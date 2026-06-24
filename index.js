@@ -256,6 +256,7 @@
     "openFile",
     "closeFile",
     "scratchFile",
+    "scratchFileWithReport",
     "undeleteFile",
     "destroyDeletedFile",
     "repairBlockCounts",
@@ -7051,11 +7052,36 @@
       state.deletedTypeHints[file.entry.index] = String(file.type || "")
         .trim()
         .toLowerCase();
+      let scratchResult = null;
+      let statusMessage = "Deleted " + file.name + ".";
+      scratchResult = d64.scratchFileWithReport(state.image, file.entry);
+      if (scratchResult && scratchResult.partial) {
+        const stopReasonMap = {
+          loop: "a loop in the file chain",
+          "crossed-other-chain": "a sector already claimed by another chain",
+          "invalid-pointer": "an invalid track/sector pointer",
+          "side-sector-error": "a REL side-sector problem",
+        };
+        const stopReason =
+          stopReasonMap[scratchResult.stoppedReason] || "a chain problem";
+        statusMessage =
+          "Deleted " +
+          file.name +
+          ", and freed " +
+          numberFormatter.format(scratchResult.freedSectors || 0) +
+          " sector" +
+          (Number(scratchResult.freedSectors || 0) === 1 ? "" : "s") +
+          " before reaching " +
+          stopReason +
+          ".";
+      }
       loadImageBytes(
-        d64.scratchFile(state.image, file.entry),
+        scratchResult.image,
         state.sourceName || "disk.d64",
-        "Deleted " + file.name + ".",
-        { resetDeletedTypeHints: false },
+        statusMessage,
+        {
+          resetDeletedTypeHints: false,
+        },
       );
     } catch (error) {
       setStatus(error.message || String(error), true);
