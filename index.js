@@ -7086,6 +7086,37 @@
     }
   };
 
+  const removeDoctorCrossLinkedEntry = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const normalizedEntryIndex = Math.max(
+        0,
+        Math.floor(Number(entryIndex) || 0),
+      );
+      const entry = d64.readDirectoryEntry(state.image, normalizedEntryIndex);
+      if (!entry || !entry.typeByte || entry.deleted) {
+        setStatus("No conflicting directory entry was available to remove.");
+        return;
+      }
+      const entryBytes = entry.raw.slice();
+      entryBytes[2] = 0x00;
+      const nextImage = d64.writeDirectoryEntryBytes(
+        state.image,
+        entry,
+        entryBytes,
+      );
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        'Marked "' + String(entry.name || "file") + '" as DEL.',
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const autoRepairDoctorIssues = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -7746,8 +7777,65 @@
           Array.isArray(issue.items) &&
           issue.items.length > 18;
         const items =
-          issue.code === "recoverable-deleted-entries" &&
-          Array.isArray(issue.items)
+          issue.code === "cross-linked-file-sectors" &&
+          Array.isArray(issue.conflicts)
+            ? issue.conflicts
+                .map(function (conflict) {
+                  const track = Math.max(
+                    0,
+                    Math.floor(Number(conflict && conflict.track) || 0),
+                  );
+                  const sector = Math.max(
+                    0,
+                    Math.floor(Number(conflict && conflict.sector) || 0),
+                  );
+                  const owners = Array.isArray(conflict && conflict.owners)
+                    ? conflict.owners
+                    : [];
+                  const primaryOwner =
+                    owners.length && owners[0] && owners[0].fileName
+                      ? String(owners[0].fileName)
+                      : "UNKNOWN";
+                  return owners
+                    .slice(1)
+                    .map(function (owner) {
+                      const ownerName =
+                        owner && owner.fileName
+                          ? String(owner.fileName)
+                          : "UNKNOWN";
+                      const ownerEntryIndex = Math.max(
+                        0,
+                        Math.floor(Number(owner && owner.entryIndex) || 0),
+                      );
+                      return (
+                        '<li class="doctor-invalid-file-type-item">' +
+                        '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                        encodeHtmlAttribute(String(issueIndex)) +
+                        '" data-track="' +
+                        encodeHtmlAttribute(String(track)) +
+                        '" data-sector="' +
+                        encodeHtmlAttribute(String(sector)) +
+                        '">' +
+                        escapeHtml("T" + String(track) + " S" + String(sector)) +
+                        "</button> " +
+                        '<span class="doctor-inline-name">' +
+                        escapeHtml(
+                          "shared by " + primaryOwner + " and " + ownerName,
+                        ) +
+                        "</span> " +
+                        '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entry" data-entry-index="' +
+                        encodeHtmlAttribute(String(ownerEntryIndex)) +
+                        '">' +
+                        "Remove Entry" +
+                        "</button>" +
+                        "</li>"
+                      );
+                    })
+                    .join("");
+                })
+                .join("")
+            : issue.code === "recoverable-deleted-entries" &&
+                Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
                   const track = Math.max(
@@ -9361,6 +9449,10 @@
       }
       if (button.dataset.action === "remove-doctor-cross-linked-entries") {
         removeDoctorCrossLinkedEntries();
+        return;
+      }
+      if (button.dataset.action === "remove-doctor-cross-linked-entry") {
+        removeDoctorCrossLinkedEntry(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action === "repair-doctor-reserved-track") {
