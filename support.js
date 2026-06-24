@@ -2518,6 +2518,9 @@
     const repairableCandidates = [];
     let requiredSectorCount = 0;
     candidates.forEach(function (plan) {
+      const reservedRefs = plan.refs.filter(function (ref) {
+        return ref.track === DIRECTORY_TRACK;
+      });
       if (plan.fileType === "rel") {
         plan.disabledReason =
           "REL files are not yet supported by cross-linked sector repair.";
@@ -2531,6 +2534,13 @@
       }
       if (!plan.refs.length) {
         plan.disabledReason = "This file has no readable sector chain to copy.";
+        return;
+      }
+      if (reservedRefs.length) {
+        plan.disabledReason =
+          reservedRefs[0] === plan.refs[0]
+            ? "This file starts on reserved track 18 and must be removed rather than cloned."
+            : "This file crosses into reserved track 18 and must be truncated or removed rather than cloned.";
         return;
       }
       plan.repairable = true;
