@@ -439,7 +439,8 @@
 
   const setStatus = function (message, isError) {
     status.textContent = message;
-    status.style.color = isError ? "var(--bad)" : "";
+    status.dataset.error = isError ? "true" : "false";
+    status.classList.toggle("is-visible", Boolean(message));
   };
 
   const normalizeDiskId = function (value) {
@@ -1143,8 +1144,12 @@
     const entryOffset =
       d64.trackOffset(entry.track, entry.sector) + entry.slot * 32;
     const byteRoleMap = {};
+    const maskedByteIndexes = [];
     for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
       byteRoleMap[byteIndex] = getDoctorEntryByteRole(byteIndex);
+      if (byteRoleMap[byteIndex] === "unused") {
+        maskedByteIndexes.push(byteIndex);
+      }
     }
     openImageRangeDialog({
       title:
@@ -1161,6 +1166,7 @@
       }),
       highlightLinkBytes: false,
       byteRoleMap: byteRoleMap,
+      maskedByteIndexes: maskedByteIndexes,
     });
   };
 
@@ -2005,6 +2011,12 @@
         }, {})
       : {};
     const byteRoleMap = config.byteRoleMap || {};
+    const maskedByteIndexes = Array.isArray(config.maskedByteIndexes)
+      ? config.maskedByteIndexes.reduce(function (result, value) {
+          result[Math.max(0, Math.floor(Number(value) || 0))] = true;
+          return result;
+        }, {})
+      : {};
     const selectionStart = Number.isFinite(config.selectionStart)
       ? Math.max(0, Math.floor(config.selectionStart))
       : null;
@@ -2046,6 +2058,7 @@
         .map(function (value, index) {
           const absoluteIndex = offset + index;
           const classes = ["sector-hex-byte"];
+          const isMasked = Boolean(maskedByteIndexes[absoluteIndex]);
           if ((Number(value) || 0) === 0) {
             classes.push("is-zero");
           }
@@ -2067,6 +2080,9 @@
           if (byteRoleMap[absoluteIndex]) {
             classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
           }
+          if (isMasked) {
+            classes.push("is-masked");
+          }
           if (
             selectedMin != null &&
             absoluteIndex >= selectedMin &&
@@ -2077,10 +2093,12 @@
           return (
             '<span class="' +
             classes.join(" ") +
-            '" data-byte-index="' +
-            String(absoluteIndex) +
-            '">' +
-            toHexByte(value) +
+            '"' +
+            (isMasked
+              ? ""
+              : ' data-byte-index="' + String(absoluteIndex) + '"') +
+            ">" +
+            (isMasked ? "&nbsp;&nbsp;" : toHexByte(value)) +
             "</span>"
           );
         })
@@ -2089,6 +2107,7 @@
         .map(function (value, index) {
           const absoluteIndex = offset + index;
           const classes = ["sector-ascii-char"];
+          const isMasked = Boolean(maskedByteIndexes[absoluteIndex]);
           if (
             highlightLinkBytes &&
             (absoluteIndex === 0 || absoluteIndex === 1)
@@ -2107,6 +2126,9 @@
           if (byteRoleMap[absoluteIndex]) {
             classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
           }
+          if (isMasked) {
+            classes.push("is-masked");
+          }
           if (
             selectedMin != null &&
             absoluteIndex >= selectedMin &&
@@ -2117,10 +2139,12 @@
           return (
             '<span class="' +
             classes.join(" ") +
-            '" data-byte-index="' +
-            String(absoluteIndex) +
-            '">' +
-            escapeHtml(toPrintableSectorChar(value)) +
+            '"' +
+            (isMasked
+              ? ""
+              : ' data-byte-index="' + String(absoluteIndex) + '"') +
+            ">" +
+            (isMasked ? "&nbsp;" : escapeHtml(toPrintableSectorChar(value))) +
             "</span>"
           );
         })
@@ -3267,6 +3291,30 @@
     });
   };
 
+  const selectionCrossesMaskedBytes = function (startIndex, endIndex) {
+    if (
+      !state.hexViewContext ||
+      !state.hexViewContext.renderConfig ||
+      !Array.isArray(state.hexViewContext.renderConfig.maskedByteIndexes)
+    ) {
+      return false;
+    }
+    const maskedLookup =
+      state.hexViewContext.renderConfig.maskedByteIndexes.reduce(function (
+        result,
+        value,
+      ) {
+        result[Math.max(0, Math.floor(Number(value) || 0))] = true;
+        return result;
+      }, {});
+    const min = Math.min(startIndex, endIndex);
+    const max = Math.max(startIndex, endIndex);
+    for (let index = min; index <= max; index += 1) {
+      if (maskedLookup[index]) return true;
+    }
+    return false;
+  };
+
   const buildFileByteOffsetMap = function (fileRecord) {
     const offsets = [];
     const blocks =
@@ -3317,10 +3365,16 @@
         escapeHtml(String(state.hexViewContext.note)) +
         "</p>"
       : "";
+    const warning = state.hexViewContext.warning
+      ? '<p class="sector-data-dialog-warning">' +
+        escapeHtml(String(state.hexViewContext.warning)) +
+        "</p>"
+      : "";
     const selectionTip =
       '<p class="sector-data-dialog-tip">Tip: Shift-click to select multiple bytes, then click the selection to edit that range.</p>';
     sectorDataDialogBody.innerHTML =
       note +
+      warning +
       selectionTip +
       '<div class="sector-hex-viewer">' +
       renderSectorHexDumpWithOptions(
@@ -3467,6 +3521,9 @@
         highlightLinkBytes: options.highlightLinkBytes !== false,
         invalidByteIndexes: invalidByteIndexes,
         byteRoleMap: options.byteRoleMap || {},
+        maskedByteIndexes: Array.isArray(options.maskedByteIndexes)
+          ? options.maskedByteIndexes.slice()
+          : [],
         highlightByteIndexes: Array.isArray(options.highlightByteIndexes)
           ? options.highlightByteIndexes.slice()
           : [],
@@ -7191,12 +7248,29 @@
         event.shiftKey &&
         Number.isFinite(state.hexViewContext.selectionAnchor)
       ) {
+        if (
+          selectionCrossesMaskedBytes(
+            state.hexViewContext.selectionAnchor,
+            byteIndex,
+          )
+        ) {
+          state.hexViewContext.warning =
+            "Multiple selected bytes can not cross an unused/reserved area.";
+          renderActiveHexView();
+          setStatus(
+            "Multiple selected bytes can not cross an unused/reserved area.",
+            true,
+          );
+          return;
+        }
+        state.hexViewContext.warning = "";
         state.hexViewContext.selectionStart =
           state.hexViewContext.selectionAnchor;
         state.hexViewContext.selectionEnd = byteIndex;
         renderActiveHexView();
         return;
       }
+      state.hexViewContext.warning = "";
       if (
         currentRange &&
         byteIndex >= currentRange.start &&
@@ -7240,6 +7314,11 @@
       state.hexViewContext.selectionStart = byteIndex;
       state.hexViewContext.selectionEnd = byteIndex;
       renderActiveHexView();
+    });
+    sectorDataDialogBody.addEventListener("mousedown", function (event) {
+      const target = event.target.closest("[data-byte-index]");
+      if (!target) return;
+      event.preventDefault();
     });
     sectorDataDialogBody.addEventListener("mouseout", function (event) {
       const target = event.target.closest("[data-byte-index]");

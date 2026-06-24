@@ -328,9 +328,41 @@ button:disabled {
 }
 
 .status {
-  margin: 18px 0 0;
-  min-height: 1.5em;
-  line-height: 1.5;
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  max-width: min(420px, calc(100vw - 36px));
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid rgba(185, 227, 242, 0.16);
+  border-radius: 14px;
+  background: rgba(7, 20, 31, 0.94);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+  color: var(--ink);
+  line-height: 1.45;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    border-color 140ms ease;
+}
+
+.status.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.status[data-error="true"] {
+  border-color: rgba(255, 142, 144, 0.42);
+  color: #ffd2d3;
+}
+
+.status[data-error="false"] {
+  border-color: rgba(142, 243, 230, 0.28);
+  color: var(--paper-strong);
 }
 
 .summary-grid {
@@ -1036,6 +1068,7 @@ button:disabled {
 }
 
 .sector-data-dialog-body {
+  position: relative;
   display: grid;
   gap: 10px;
 }
@@ -1164,6 +1197,8 @@ button:disabled {
   font-family:
     "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono",
     monospace;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sector-hex-row {
@@ -1281,9 +1316,36 @@ button:disabled {
   color: #ff8e90;
 }
 
+.sector-hex-byte.is-masked,
+.sector-ascii-char.is-masked {
+  color: transparent;
+  background: transparent;
+  box-shadow: none;
+  user-select: none;
+  pointer-events: none;
+}
+
 .sector-hex-byte[data-byte-index],
 .sector-ascii-char[data-byte-index] {
   cursor: pointer;
+}
+
+.sector-data-dialog-warning {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 3;
+  max-width: min(360px, calc(100% - 20px));
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 142, 144, 0.42);
+  border-radius: 12px;
+  background: rgba(30, 8, 11, 0.94);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  color: #ffd2d3;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 .sector-hex-byte[data-byte-index]:hover,
