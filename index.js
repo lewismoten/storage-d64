@@ -486,6 +486,13 @@
     status.textContent = "";
     status.dataset.error = "false";
     status.classList.remove("is-visible");
+    if (status && typeof status.hidePopover === "function") {
+      try {
+        status.hidePopover();
+      } catch (error) {
+        // Ignore if the popover was not open.
+      }
+    }
   };
 
   const getDefaultDiskName = function () {
@@ -504,6 +511,21 @@
     status.textContent = message;
     status.dataset.error = isError ? "true" : "false";
     status.classList.toggle("is-visible", Boolean(message));
+    if (status && typeof status.showPopover === "function") {
+      if (message) {
+        try {
+          status.showPopover();
+        } catch (error) {
+          // Ignore if the popover is already open.
+        }
+      } else if (typeof status.hidePopover === "function") {
+        try {
+          status.hidePopover();
+        } catch (error) {
+          // Ignore if the popover was not open.
+        }
+      }
+    }
     if (!message) return;
     statusTimerId = window.setTimeout(clearStatus, isError ? 6500 : 4200);
   };

@@ -374,6 +374,11 @@ button:disabled {
     border-color 140ms ease;
 }
 
+.status:popover-open {
+  inset: auto 18px 18px auto;
+  margin: 0;
+}
+
 .status.is-visible {
   opacity: 1;
   transform: translateY(0);
