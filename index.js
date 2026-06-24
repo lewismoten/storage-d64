@@ -481,6 +481,14 @@
     status.classList.remove("is-visible");
   };
 
+  const getDefaultDiskName = function () {
+    const now = new Date();
+    const year = String(now.getFullYear()).padStart(4, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return year + "-" + month + "-" + day + " TEST";
+  };
+
   const setStatus = function (message, isError) {
     if (statusTimerId) {
       window.clearTimeout(statusTimerId);
@@ -6004,11 +6012,12 @@
   const createDiskImage = function (event) {
     event.preventDefault();
     try {
+      const defaultDiskName = getDefaultDiskName();
       const options = {
-        diskName: String(diskNameInput.value || "").trim() || "TEST LAB",
+        diskName: String(diskNameInput.value || "").trim() || defaultDiskName,
         diskId: normalizeDiskId(diskIdInput.value),
         format: diskFormatSelect.value,
-        name: String(diskNameInput.value || "").trim() || "TEST LAB",
+        name: String(diskNameInput.value || "").trim() || defaultDiskName,
       };
       const image = d64.buildImage([], options);
       if (!image) {
@@ -6026,6 +6035,7 @@
   };
 
   const openCreateDialog = function () {
+    diskNameInput.value = getDefaultDiskName();
     if (typeof createDialog.showModal === "function") {
       createDialog.showModal();
     } else {
@@ -8306,6 +8316,7 @@
       return;
     }
 
+    diskNameInput.value = getDefaultDiskName();
     createButton.addEventListener("click", openCreateDialog);
     loadButton.addEventListener("click", function () {
       imageUpload.click();
@@ -9216,11 +9227,12 @@
     window.addEventListener("beforeunload", releaseObjectUrl);
     syncDiskMapControls();
     try {
+      const defaultDiskName = getDefaultDiskName();
       const defaultOptions = {
-        diskName: "TEST LAB",
+        diskName: defaultDiskName,
         diskId: "TP",
         format: d64.diskFormats ? d64.diskFormats.d64_35_track : "d64_35_track",
-        name: "TEST LAB",
+        name: defaultDiskName,
       };
       const defaultImage = d64.buildImage([], defaultOptions);
       if (!defaultImage) {
