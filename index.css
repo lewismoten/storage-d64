@@ -1316,6 +1316,16 @@ button:disabled {
   color: #ff8e90;
 }
 
+.sector-hex-byte.is-role-bam-count,
+.sector-ascii-char.is-role-bam-count {
+  color: #f5f7fb;
+}
+
+.sector-hex-byte.is-role-bam-free,
+.sector-ascii-char.is-role-bam-free {
+  color: #8ef3e6;
+}
+
 .sector-hex-byte.is-masked,
 .sector-ascii-char.is-masked {
   color: transparent;

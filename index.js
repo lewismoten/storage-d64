@@ -22,6 +22,7 @@
     bamDialogContext: null,
     bamDialogDraft: null,
     bamDialogAnalysis: null,
+    returnToBamDialog: null,
     bamHoverTrack: null,
     bamHoverSector: null,
   };
@@ -742,6 +743,15 @@
         },
       ) || []
     );
+  };
+
+  const buildBamByteRoleMap = function (byteCount) {
+    const roleMap = {};
+    const total = Math.max(0, Math.floor(Number(byteCount) || 0));
+    for (let byteIndex = 0; byteIndex < total; byteIndex += 1) {
+      roleMap[byteIndex] = byteIndex % 4 === 0 ? "bam-count" : "bam-free";
+    }
+    return roleMap;
   };
 
   const getBamBitmaskPixelClass = function (track, sector) {
@@ -2571,55 +2581,55 @@
     ];
     for (let offset = 0; offset < bytes.length; offset += 16) {
       const chunk = bytes.subarray(offset, offset + 16);
-      const hexMarkup = Array.from(chunk)
-        .map(function (value, index) {
-          const absoluteIndex = offset + index;
-          const classes = ["sector-hex-byte"];
-          const isMasked = Boolean(maskedByteIndexes[absoluteIndex]);
-          if ((Number(value) || 0) === 0) {
-            classes.push("is-zero");
-          }
-          if (
-            highlightLinkBytes &&
-            (absoluteIndex === 0 || absoluteIndex === 1)
-          ) {
-            classes.push("is-link");
-          }
-          if (dimStart != null && absoluteIndex >= dimStart) {
-            classes.push("is-dim");
-          }
-          if (invalidByteIndexes[absoluteIndex]) {
-            classes.push("is-invalid");
-          }
-          if (significantByteIndexes[absoluteIndex]) {
-            classes.push("is-significant");
-          }
-          if (byteRoleMap[absoluteIndex]) {
-            classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
-          }
-          if (isMasked) {
-            classes.push("is-masked");
-          }
-          if (
-            selectedMin != null &&
-            absoluteIndex >= selectedMin &&
-            absoluteIndex <= selectedMax
-          ) {
-            classes.push("is-selected");
-          }
-          return (
-            '<span class="' +
-            classes.join(" ") +
-            '"' +
-            (isMasked
-              ? ""
-              : ' data-byte-index="' + String(absoluteIndex) + '"') +
-            ">" +
-            (isMasked ? "&nbsp;&nbsp;" : toHexByte(value)) +
-            "</span>"
-          );
-        })
-        .join("&nbsp;");
+      const hexMarkup = Array.from({ length: 16 }, function (_, index) {
+        if (index >= chunk.length) {
+          return '<span class="sector-hex-byte is-masked">&nbsp;&nbsp;</span>';
+        }
+        const value = chunk[index];
+        const absoluteIndex = offset + index;
+        const classes = ["sector-hex-byte"];
+        const isMasked = Boolean(maskedByteIndexes[absoluteIndex]);
+        if ((Number(value) || 0) === 0) {
+          classes.push("is-zero");
+        }
+        if (
+          highlightLinkBytes &&
+          (absoluteIndex === 0 || absoluteIndex === 1)
+        ) {
+          classes.push("is-link");
+        }
+        if (dimStart != null && absoluteIndex >= dimStart) {
+          classes.push("is-dim");
+        }
+        if (invalidByteIndexes[absoluteIndex]) {
+          classes.push("is-invalid");
+        }
+        if (significantByteIndexes[absoluteIndex]) {
+          classes.push("is-significant");
+        }
+        if (byteRoleMap[absoluteIndex]) {
+          classes.push("is-role-" + String(byteRoleMap[absoluteIndex]));
+        }
+        if (isMasked) {
+          classes.push("is-masked");
+        }
+        if (
+          selectedMin != null &&
+          absoluteIndex >= selectedMin &&
+          absoluteIndex <= selectedMax
+        ) {
+          classes.push("is-selected");
+        }
+        return (
+          '<span class="' +
+          classes.join(" ") +
+          '"' +
+          (isMasked ? "" : ' data-byte-index="' + String(absoluteIndex) + '"') +
+          ">" +
+          (isMasked ? "&nbsp;&nbsp;" : toHexByte(value)) +
+          "</span>"
+        );
+      }).join("&nbsp;");
       const asciiMarkup = Array.from(chunk)
         .map(function (value, index) {
           const absoluteIndex = offset + index;
@@ -3791,6 +3801,19 @@
       sectorDataDialog.close();
     } else {
       sectorDataDialog.removeAttribute("open");
+    }
+    if (state.returnToBamDialog && state.image) {
+      const bamReturn = Object.assign({}, state.returnToBamDialog);
+      state.returnToBamDialog = null;
+      state.returnToDoctorReport = Boolean(bamReturn.returnToDoctor);
+      openBamDialog({
+        issueIndex:
+          bamReturn.issueIndex != null
+            ? Math.max(0, Number(bamReturn.issueIndex) || 0)
+            : -1,
+        returnToDoctor: Boolean(bamReturn.returnToDoctor),
+      });
+      return;
     }
     if (state.returnToDoctorReport && state.image) {
       state.returnToDoctorReport = false;
@@ -5779,6 +5802,9 @@
       !config.preserveReturnTarget && state.returnToDoctorReport && state.image;
     if (!config.preserveReturnTarget) {
       state.returnToDoctorReport = false;
+    }
+    if (!config.preserveBamReturn) {
+      state.returnToBamDialog = null;
     }
     state.bamDialogContext = null;
     state.bamDialogDraft = null;
@@ -7892,8 +7918,14 @@
         state.image,
         state.bamDialogDraft,
       );
-      const shouldReturnToDoctor = Boolean(state.returnToDoctorReport);
-      closeBamDialog({ preserveReturnTarget: shouldReturnToDoctor });
+      state.returnToBamDialog = {
+        issueIndex:
+          state.bamDialogContext && state.bamDialogContext.issueIndex != null
+            ? Number(state.bamDialogContext.issueIndex)
+            : -1,
+        returnToDoctor: Boolean(state.returnToDoctorReport),
+      };
+      closeBamDialog({ preserveBamReturn: true });
       const bamStart = d64.trackOffset(18, 0) + d64.headerOffsets.bamStart;
       const bamLength = 35 * 4;
       openImageRangeDialog({
@@ -7906,6 +7938,7 @@
         }),
         showOffsets: false,
         highlightLinkBytes: false,
+        byteRoleMap: buildBamByteRoleMap(bamLength),
       });
     });
     sectorByteValue.addEventListener("input", function () {
