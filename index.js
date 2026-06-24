@@ -7581,6 +7581,28 @@
           "</div>"
         );
       }
+      if (issue.code === "malformed-directory-entry") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
+          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
+          '">' +
+          "View" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "rel-metadata-problem") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
+          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
+          '">' +
+          "View" +
+          "</button>" +
+          "</div>"
+        );
+      }
       if (issue.code === "broken-file-chain") {
         return (
           '<div class="doctor-issue-actions">' +

@@ -3743,7 +3743,6 @@
       );
     }
 
-    const malformedDirectoryEntries = [];
     const activeRefs = {};
     const activeRefOwners = {};
     const expectedUsed = {};
@@ -3754,19 +3753,60 @@
     const sharedActiveRefs = [];
     const sharedActiveConflicts = [];
     const slackFiles = [];
-    const relProblems = [];
-
     activeEntries.forEach(function (entry) {
       const labelPrefix = 'File "' + String(entry.name || "(unnamed)") + '"';
       if (!String(entry.name || "").trim()) {
-        malformedDirectoryEntries.push(labelPrefix + " has a blank filename.");
+        addIssue(
+          "warning",
+          "malformed-directory-entry",
+          labelPrefix + " has a blank filename.",
+          {
+            fileName: entry.name,
+            entryIndex: entry.index,
+            items: [
+              formatTs(entry.track, entry.sector) +
+                " slot " +
+                String(entry.slot),
+            ],
+            sectorHighlights: [
+              {
+                track: entry.track,
+                sector: entry.sector,
+                byteIndexes: Array.from(
+                  { length: 16 },
+                  function (_, index) {
+                    return entry.slot * 32 + 5 + index;
+                  },
+                ),
+              },
+            ],
+          },
+        );
       }
       if (!isValidPointer(entry.startTrack, entry.startSector, false)) {
-        malformedDirectoryEntries.push(
+        addIssue(
+          "warning",
+          "malformed-directory-entry",
           labelPrefix +
             " has an invalid start pointer " +
             formatTs(entry.startTrack, entry.startSector) +
             ".",
+          {
+            fileName: entry.name,
+            entryIndex: entry.index,
+            items: [
+              formatTs(entry.track, entry.sector) +
+                " slot " +
+                String(entry.slot),
+            ],
+            sectorHighlights: [
+              {
+                track: entry.track,
+                sector: entry.sector,
+                byteIndexes: [entry.slot * 32 + 3, entry.slot * 32 + 4],
+              },
+            ],
+          },
         );
         return;
       }
@@ -3774,30 +3814,88 @@
         entry.fileType !== "rel" &&
         (entry.sideSectorTrack || entry.sideSectorSector || entry.recordLength)
       ) {
-        malformedDirectoryEntries.push(
+        addIssue(
+          "warning",
+          "malformed-directory-entry",
           labelPrefix +
             " has REL-only side-sector metadata even though it is " +
             String(entry.fileType || "unknown").toUpperCase() +
             ".",
+          {
+            fileName: entry.name,
+            entryIndex: entry.index,
+            items: [
+              formatTs(entry.track, entry.sector) +
+                " slot " +
+                String(entry.slot),
+            ],
+            sectorHighlights: [
+              {
+                track: entry.track,
+                sector: entry.sector,
+                byteIndexes: [
+                  entry.slot * 32 + 21,
+                  entry.slot * 32 + 22,
+                  entry.slot * 32 + 23,
+                ],
+              },
+            ],
+          },
         );
       }
       if (entry.fileType === "rel") {
         if (!entry.recordLength || entry.recordLength > REL_MAX_RECORD_LENGTH) {
-          relProblems.push(
+          addIssue(
+            "warning",
+            "rel-metadata-problem",
             labelPrefix +
               " has invalid record length " +
               String(entry.recordLength || 0) +
               ".",
+            {
+              fileName: entry.name,
+              entryIndex: entry.index,
+              items: [
+                formatTs(entry.track, entry.sector) +
+                  " slot " +
+                  String(entry.slot),
+              ],
+              sectorHighlights: [
+                {
+                  track: entry.track,
+                  sector: entry.sector,
+                  byteIndexes: [entry.slot * 32 + 23],
+                },
+              ],
+            },
           );
         }
         if (
           !isValidPointer(entry.sideSectorTrack, entry.sideSectorSector, false)
         ) {
-          relProblems.push(
+          addIssue(
+            "warning",
+            "rel-metadata-problem",
             labelPrefix +
               " has invalid side-sector pointer " +
               formatTs(entry.sideSectorTrack, entry.sideSectorSector) +
               ".",
+            {
+              fileName: entry.name,
+              entryIndex: entry.index,
+              items: [
+                formatTs(entry.track, entry.sector) +
+                  " slot " +
+                  String(entry.slot),
+              ],
+              sectorHighlights: [
+                {
+                  track: entry.track,
+                  sector: entry.sector,
+                  byteIndexes: [entry.slot * 32 + 21, entry.slot * 32 + 22],
+                },
+              ],
+            },
           );
         } else {
           try {
@@ -3810,32 +3908,59 @@
               expectedUsed[makeKey(sideSector.track, sideSector.sector)] =
                 "rel-side";
               if (sideSector.recordLength !== entry.recordLength) {
-                relProblems.push(
+                addIssue(
+                  "warning",
+                  "rel-metadata-problem",
                   labelPrefix +
                     " has side-sector record length " +
                     String(sideSector.recordLength) +
                     " that does not match entry length " +
                     String(entry.recordLength) +
                     ".",
+                  {
+                    fileName: entry.name,
+                    entryIndex: entry.index,
+                    items: [
+                      formatTs(sideSector.track, sideSector.sector),
+                    ],
+                  },
                 );
               }
               sideSector.dataSectors.forEach(function (ref) {
                 if (!isValidPointer(ref.track, ref.sector, false)) {
-                  relProblems.push(
+                  addIssue(
+                    "warning",
+                    "rel-metadata-problem",
                     labelPrefix +
                       " references invalid REL data sector " +
                       formatTs(ref.track, ref.sector) +
                       ".",
+                    {
+                      fileName: entry.name,
+                      entryIndex: entry.index,
+                      items: [
+                        formatTs(sideSector.track, sideSector.sector),
+                      ],
+                    },
                   );
                 }
               });
             });
           } catch (error) {
-            relProblems.push(
+            addIssue(
+              "warning",
+              "rel-metadata-problem",
               labelPrefix +
                 " has unreadable side sectors: " +
                 String(error && error.message ? error.message : error) +
                 ".",
+              {
+                fileName: entry.name,
+                entryIndex: entry.index,
+                items: [
+                  formatTs(entry.sideSectorTrack, entry.sideSectorSector),
+                ],
+              },
             );
           }
         }
@@ -3918,26 +4043,6 @@
       });
     });
 
-    if (malformedDirectoryEntries.length) {
-      addIssue(
-        "warning",
-        "malformed-directory-entries",
-        "Some directory entries contain malformed metadata.",
-        {
-          items: malformedDirectoryEntries,
-        },
-      );
-    }
-    if (relProblems.length) {
-      addIssue(
-        "warning",
-        "rel-file-problems",
-        "REL metadata problems were found.",
-        {
-          items: relProblems,
-        },
-      );
-    }
     if (sharedActiveRefs.length) {
       addIssue(
         "repairable",
