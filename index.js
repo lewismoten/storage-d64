@@ -5591,6 +5591,72 @@
     }
   };
 
+  const repairDoctorDuplicateFilenames = function () {
+    if (!state.image || !state.doctorReport) return;
+    try {
+      const issues = Array.isArray(state.doctorReport.issues)
+        ? state.doctorReport.issues
+        : [];
+      const issue = issues.find(function (candidate) {
+        return candidate && candidate.code === "duplicate-filenames";
+      });
+      if (
+        !issue ||
+        !Array.isArray(issue.duplicateGroups) ||
+        !issue.duplicateGroups.length
+      ) {
+        setStatus("No duplicate filenames needed repair.");
+        return;
+      }
+      let nextImage = state.image.slice();
+      let removedCount = 0;
+      issue.duplicateGroups.forEach(function (group) {
+        if (
+          !group ||
+          !Array.isArray(group.entries) ||
+          group.entries.length < 2
+        ) {
+          return;
+        }
+        const keptByStart = {};
+        group.entries.forEach(function (entryRef) {
+          const startKey =
+            String(Number(entryRef.startTrack) || 0) +
+            ":" +
+            String(Number(entryRef.startSector) || 0);
+          if (!keptByStart[startKey]) {
+            keptByStart[startKey] = true;
+            return;
+          }
+          const entry = d64.readDirectoryEntry(nextImage, entryRef.index);
+          if (!entry || !entry.typeByte) return;
+          const entryBytes = entry.raw.slice();
+          entryBytes[2] = 0x00;
+          nextImage = d64.writeDirectoryEntryBytes(
+            nextImage,
+            entry,
+            entryBytes,
+          );
+          removedCount += 1;
+        });
+      });
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        removedCount
+          ? "Marked " +
+              String(removedCount) +
+              " duplicate directory entr" +
+              (removedCount === 1 ? "y as DEL." : "ies as DEL.")
+          : "No duplicate filenames shared the same start sector.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const autoRepairDoctorIssues = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -5697,6 +5763,57 @@
                 (repaired.repairedCount === 1 ? "" : "s"),
             );
           }
+        }
+      }
+
+      const duplicateIssue = issues.find(function (issue) {
+        return issue && issue.code === "duplicate-filenames";
+      });
+      if (
+        duplicateIssue &&
+        Array.isArray(duplicateIssue.duplicateGroups) &&
+        duplicateIssue.duplicateGroups.some(function (group) {
+          return group && group.consolidatable;
+        })
+      ) {
+        let removedCount = 0;
+        duplicateIssue.duplicateGroups.forEach(function (group) {
+          if (
+            !group ||
+            !Array.isArray(group.entries) ||
+            group.entries.length < 2
+          ) {
+            return;
+          }
+          const keptByStart = {};
+          group.entries.forEach(function (entryRef) {
+            const startKey =
+              String(Number(entryRef.startTrack) || 0) +
+              ":" +
+              String(Number(entryRef.startSector) || 0);
+            if (!keptByStart[startKey]) {
+              keptByStart[startKey] = true;
+              return;
+            }
+            const entry = d64.readDirectoryEntry(nextImage, entryRef.index);
+            if (!entry || !entry.typeByte) return;
+            const entryBytes = entry.raw.slice();
+            entryBytes[2] = 0x00;
+            nextImage = d64.writeDirectoryEntryBytes(
+              nextImage,
+              entry,
+              entryBytes,
+            );
+            removedCount += 1;
+          });
+        });
+        if (removedCount) {
+          steps.push(
+            "marked " +
+              String(removedCount) +
+              " duplicate entr" +
+              (removedCount === 1 ? "y as DEL" : "ies as DEL"),
+          );
         }
       }
 
@@ -5844,6 +5961,21 @@
           '<button type="button" class="file-type-button" data-action="repair-doctor-block-counts" data-entry-index="' +
           escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
           '">' +
+          "Repair" +
+          "</button>" +
+          "</div>"
+        );
+      }
+      if (
+        issue.code === "duplicate-filenames" &&
+        Array.isArray(issue.duplicateGroups) &&
+        issue.duplicateGroups.some(function (group) {
+          return group && group.consolidatable;
+        })
+      ) {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-duplicate-filenames">' +
           "Repair" +
           "</button>" +
           "</div>"
@@ -7033,6 +7165,10 @@
       }
       if (button.dataset.action === "repair-doctor-splat-files") {
         repairDoctorSplatFiles();
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-duplicate-filenames") {
+        repairDoctorDuplicateFilenames();
         return;
       }
       if (button.dataset.action === "repair-doctor-block-counts") {

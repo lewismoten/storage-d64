@@ -2695,15 +2695,33 @@
         return duplicateNames[name].length > 1;
       })
       .map(function (name) {
+        const entries = duplicateNames[name].map(function (entry) {
+          return {
+            index: entry.index,
+            track: entry.track,
+            sector: entry.sector,
+            slot: entry.slot,
+            startTrack: entry.startTrack,
+            startSector: entry.startSector,
+          };
+        });
+        const startCounts = {};
+        entries.forEach(function (entry) {
+          const key =
+            String(Number(entry.startTrack) || 0) +
+            ":" +
+            String(Number(entry.startSector) || 0);
+          startCounts[key] = (startCounts[key] || 0) + 1;
+        });
         return {
           name: name,
-          entries: duplicateNames[name].map(function (entry) {
-            return {
-              index: entry.index,
-              track: entry.track,
-              sector: entry.sector,
-              slot: entry.slot,
-            };
+          entries: entries,
+          consolidatable: entries.some(function (entry) {
+            const key =
+              String(Number(entry.startTrack) || 0) +
+              ":" +
+              String(Number(entry.startSector) || 0);
+            return startCounts[key] > 1;
           }),
         };
       });
