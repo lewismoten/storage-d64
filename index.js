@@ -787,6 +787,12 @@
             if (isEvenTrack) {
               pixelClass += " is-track-even";
             }
+            pixelAttributes =
+              ' data-count-track="' +
+              String(track) +
+              '" data-count-bit="' +
+              String(bit) +
+              '"';
           }
         } else {
           const sector = (byteInTrack - 1) * 8 + bit;
@@ -810,10 +816,10 @@
                 '" data-sector="' +
                 String(sector) +
                 '" x="' +
-                (byteIndex - 0.12).toFixed(3) +
+                (byteIndex - 0.24).toFixed(3) +
                 '" y="' +
-                (bit - 0.12).toFixed(3) +
-                '" width="1.24" height="1.24"></rect>',
+                (bit - 0.24).toFixed(3) +
+                '" width="1.48" height="1.48"></rect>',
             );
             hoverOutlines.push(
               '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-light" data-track="' +
@@ -821,10 +827,10 @@
                 '" data-sector="' +
                 String(sector) +
                 '" x="' +
-                (byteIndex - 0.12).toFixed(3) +
+                (byteIndex - 0.24).toFixed(3) +
                 '" y="' +
-                (bit - 0.12).toFixed(3) +
-                '" width="1.24" height="1.24"></rect>',
+                (bit - 0.24).toFixed(3) +
+                '" width="1.48" height="1.48"></rect>',
             );
           }
         }
@@ -840,6 +846,49 @@
             '" width="1" height="1"></rect>',
         );
       }
+      if (byteInTrack === 0) {
+        const maxCountBit = Math.floor(Math.log2(Math.max(1, sectorCount)));
+        hoverOutlines.push(
+          '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-dark" data-track-byte="' +
+            String(track) +
+            '" x="' +
+            (byteIndex - 0.24).toFixed(3) +
+            '" y="' +
+            (-0.24).toFixed(3) +
+            '" width="4.48" height="8.48"></rect>',
+        );
+        hoverOutlines.push(
+          '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-light" data-track-byte="' +
+            String(track) +
+            '" x="' +
+            (byteIndex - 0.24).toFixed(3) +
+            '" y="' +
+            (-0.24).toFixed(3) +
+            '" width="4.48" height="8.48"></rect>',
+        );
+        hoverOutlines.push(
+          '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-dark" data-count-track="' +
+            String(track) +
+            '" x="' +
+            (byteIndex - 0.24).toFixed(3) +
+            '" y="' +
+            (-0.24).toFixed(3) +
+            '" width="1.48" height="' +
+            (maxCountBit + 1.48).toFixed(3) +
+            '"></rect>',
+        );
+        hoverOutlines.push(
+          '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-light" data-count-track="' +
+            String(track) +
+            '" x="' +
+            (byteIndex - 0.24).toFixed(3) +
+            '" y="' +
+            (-0.24).toFixed(3) +
+            '" width="1.48" height="' +
+            (maxCountBit + 1.48).toFixed(3) +
+            '"></rect>',
+        );
+      }
     }
     bamBitmask.innerHTML =
       zones.join("") +
@@ -848,7 +897,8 @@
       hoverOutlines.join("");
   };
 
-  const setBamGridHover = function (track, sector) {
+  const setBamGridHover = function (track, sector, options) {
+    const config = options || {};
     state.bamHoverTrack =
       track == null ? null : Math.max(1, Math.floor(Number(track) || 0));
     state.bamHoverSector =
@@ -862,34 +912,54 @@
         node.classList.remove("is-hovered");
       });
     }
-    if (state.bamHoverTrack == null || state.bamHoverSector == null) return;
+    if (state.bamHoverTrack == null) return;
     const selectors = [
-      '[data-track="' +
-        String(state.bamHoverTrack) +
-        '"][data-sector="' +
-        String(state.bamHoverSector) +
-        '"]',
       '[data-track-header="' + String(state.bamHoverTrack) + '"]',
-      '[data-sector-header="' + String(state.bamHoverSector) + '"]',
       '[data-freecount-track="' + String(state.bamHoverTrack) + '"]',
     ];
+    if (state.bamHoverSector != null) {
+      selectors.unshift(
+        '[data-track="' +
+          String(state.bamHoverTrack) +
+          '"][data-sector="' +
+          String(state.bamHoverSector) +
+          '"]',
+      );
+      selectors.push(
+        '[data-sector-header="' + String(state.bamHoverSector) + '"]',
+      );
+    }
     selectors.forEach(function (selector) {
       bamGrid.querySelectorAll(selector).forEach(function (node) {
         node.classList.add("is-hovered");
       });
     });
     if (bamBitmask) {
-      bamBitmask
-        .querySelectorAll(
+      const bitmaskSelectors = [];
+      if (state.bamHoverSector != null) {
+        bitmaskSelectors.push(
           '[data-track="' +
             String(state.bamHoverTrack) +
             '"][data-sector="' +
             String(state.bamHoverSector) +
             '"]',
-        )
-        .forEach(function (node) {
+        );
+      }
+      if (config.highlightCountBits) {
+        bitmaskSelectors.push(
+          '[data-count-track="' + String(state.bamHoverTrack) + '"]',
+        );
+      }
+      if (config.highlightTrackBytes) {
+        bitmaskSelectors.push(
+          '[data-track-byte="' + String(state.bamHoverTrack) + '"]',
+        );
+      }
+      bitmaskSelectors.forEach(function (selector) {
+        bamBitmask.querySelectorAll(selector).forEach(function (node) {
           node.classList.add("is-hovered");
         });
+      });
     }
   };
 
@@ -7684,8 +7754,28 @@
     });
     bamGrid.addEventListener("mousemove", function (event) {
       const button = event.target.closest("button[data-track][data-sector]");
-      if (!button) {
+      const freeCountCell = event.target.closest("[data-freecount-track]");
+      const trackHeader = event.target.closest("[data-track-header]");
+      if (!button && !freeCountCell && !trackHeader) {
         setBamGridHover(null, null);
+        hideBamTooltip();
+        return;
+      }
+      if (trackHeader && !button && !freeCountCell) {
+        const track = Math.max(
+          1,
+          Math.floor(Number(trackHeader.dataset.trackHeader) || 0),
+        );
+        setBamGridHover(track, null, { highlightTrackBytes: true });
+        hideBamTooltip();
+        return;
+      }
+      if (freeCountCell && !button) {
+        const track = Math.max(
+          1,
+          Math.floor(Number(freeCountCell.dataset.freecountTrack) || 0),
+        );
+        setBamGridHover(track, null, { highlightCountBits: true });
         hideBamTooltip();
         return;
       }
