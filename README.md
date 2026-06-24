@@ -265,7 +265,7 @@ That document covers:
 - which actions are left as review or opt-in repairs because they may be destructive
 - how Auto Repair is intended to stay on the non-destructive side when possible
 
-W Why use 
+# Why use it?
 
 Storage D64 is not just for disk I/O. The lab works for repairs and as a learning and editing aid:
 
