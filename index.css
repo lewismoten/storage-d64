@@ -2645,6 +2645,21 @@ tbody tr.is-drop-target {
   color: var(--ink);
 }
 
+.doctor-issue-items li {
+  display: list-item;
+  line-height: 1.45;
+}
+
+.doctor-issue-items li > * {
+  vertical-align: middle;
+}
+
+.doctor-issue-items li .doctor-sector-link,
+.doctor-issue-items li .doctor-slot-link {
+  margin-inline: 0.2rem;
+  white-space: nowrap;
+}
+
 .doctor-issue-items li + li {
   margin-top: 4px;
 }
@@ -2652,6 +2667,7 @@ tbody tr.is-drop-target {
 .doctor-invalid-file-type-items {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px 10px;
   padding-left: 0;
   list-style: none;
@@ -2664,6 +2680,7 @@ tbody tr.is-drop-target {
 .doctor-invalid-file-type-item {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
@@ -2682,12 +2699,16 @@ tbody tr.is-drop-target {
 }
 
 .doctor-issue-items-grid li {
+  display: flex;
+  align-items: stretch;
   min-width: 0;
 }
 
-.doctor-issue-items-grid .doctor-sector-link {
+.doctor-issue-items-grid .doctor-sector-link,
+.doctor-issue-items-grid .doctor-slot-link {
   width: 100%;
   justify-content: center;
+  flex: 1 1 auto;
   margin: 0;
 }
 
@@ -2764,9 +2785,11 @@ tbody tr.is-drop-target {
 
 .doctor-slot-link {
   display: inline-flex;
+  width: auto;
+  flex: 0 0 auto;
   align-items: center;
   margin: 0;
-  padding: 0.08rem 0.38rem;
+  padding: 0.06rem 0.34rem;
   border: 1px solid rgba(255, 211, 107, 0.28);
   border-radius: 999px;
   background: rgba(255, 211, 107, 0.12);
@@ -2782,9 +2805,11 @@ tbody tr.is-drop-target {
 
 .doctor-sector-link {
   display: inline-flex;
+  width: auto;
+  flex: 0 0 auto;
   align-items: center;
   margin: 0;
-  padding: 0.08rem 0.38rem;
+  padding: 0.06rem 0.34rem;
   border: 1px solid rgba(142, 243, 230, 0.28);
   border-radius: 999px;
   background: rgba(142, 243, 230, 0.12);
