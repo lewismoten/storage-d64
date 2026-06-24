@@ -468,11 +468,28 @@
     hoveredSectorElement: null,
     selectedSectorElement: null,
   };
+  let statusTimerId = 0;
+
+  const clearStatus = function () {
+    if (statusTimerId) {
+      window.clearTimeout(statusTimerId);
+      statusTimerId = 0;
+    }
+    status.textContent = "";
+    status.dataset.error = "false";
+    status.classList.remove("is-visible");
+  };
 
   const setStatus = function (message, isError) {
+    if (statusTimerId) {
+      window.clearTimeout(statusTimerId);
+      statusTimerId = 0;
+    }
     status.textContent = message;
     status.dataset.error = isError ? "true" : "false";
     status.classList.toggle("is-visible", Boolean(message));
+    if (!message) return;
+    statusTimerId = window.setTimeout(clearStatus, isError ? 6500 : 4200);
   };
 
   const normalizeDiskId = function (value) {
