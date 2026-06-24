@@ -2471,6 +2471,220 @@
       .image;
   };
 
+  d64.analyzeCrossLinkedFileSectorRepair = function (image, options) {
+    const config = options || {};
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const geometry = d64.describeGeometry(bytes);
+    const activeEntries = d64.readDirectoryEntries(bytes, config);
+    const sectorOwners = {};
+    const entryPlans = [];
+    const entryPlanByIndex = {};
+    const conflictingEntryIndexes = {};
+    const conflicts = [];
+
+    activeEntries.forEach(function (entry) {
+      const plan = {
+        entry: entry,
+        entryIndex: entry.index,
+        fileName: entry.name,
+        fileType: entry.fileType,
+        refs: [],
+        readError: "",
+        repairable: false,
+        disabledReason: "",
+        requiredSectorCount: 0,
+        targetRefs: [],
+        sharedRefs: [],
+      };
+      try {
+        const file = d64.readFile(bytes, entry, config);
+        plan.refs = Array.isArray(file && file.blocks)
+          ? file.blocks.map(function (block) {
+              return {
+                track: block.track,
+                sector: block.sector,
+              };
+            })
+          : [];
+      } catch (error) {
+        plan.readError = String(error && error.message ? error.message : error);
+      }
+      entryPlans.push(plan);
+      entryPlanByIndex[String(entry.index)] = plan;
+      plan.refs.forEach(function (ref) {
+        const key = String(ref.track) + ":" + String(ref.sector);
+        sectorOwners[key] = sectorOwners[key] || [];
+        sectorOwners[key].push(plan);
+      });
+    });
+
+    Object.keys(sectorOwners).forEach(function (key) {
+      const owners = sectorOwners[key];
+      if (!owners || owners.length < 2) return;
+      const track = Math.max(0, Math.floor(Number(key.split(":")[0]) || 0));
+      const sector = Math.max(0, Math.floor(Number(key.split(":")[1]) || 0));
+      conflicts.push({
+        track: track,
+        sector: sector,
+        owners: owners.map(function (plan) {
+          return {
+            entryIndex: plan.entryIndex,
+            fileName: plan.fileName,
+          };
+        }),
+      });
+      owners.slice(1).forEach(function (plan) {
+        conflictingEntryIndexes[String(plan.entryIndex)] = true;
+        plan.sharedRefs.push({ track: track, sector: sector });
+      });
+    });
+
+    const candidates = entryPlans.filter(function (plan) {
+      return conflictingEntryIndexes[String(plan.entryIndex)];
+    });
+    const freeMap = d64.readFreeMap(bytes);
+    const availableTargets = [];
+    d64.centerOutTrackOrder(geometry.trackCount).forEach(function (track) {
+      if (track === DIRECTORY_TRACK) return;
+      const sectorCount = d64.trackSectorCount(track);
+      for (let sector = 0; sector < sectorCount; sector += 1) {
+        if (!freeMap[track] || freeMap[track][sector] !== true) continue;
+        availableTargets.push({ track: track, sector: sector });
+      }
+    });
+
+    const repairableCandidates = [];
+    let requiredSectorCount = 0;
+    candidates.forEach(function (plan) {
+      if (plan.fileType === "rel") {
+        plan.disabledReason =
+          "REL files are not yet supported by cross-linked sector repair.";
+        return;
+      }
+      if (plan.readError) {
+        plan.disabledReason =
+          "This file can not be cloned because its chain can not be read cleanly: " +
+          plan.readError;
+        return;
+      }
+      if (!plan.refs.length) {
+        plan.disabledReason = "This file has no readable sector chain to copy.";
+        return;
+      }
+      plan.repairable = true;
+      plan.requiredSectorCount = plan.refs.length;
+      requiredSectorCount += plan.requiredSectorCount;
+      repairableCandidates.push(plan);
+    });
+
+    const repairable =
+      repairableCandidates.length > 0 &&
+      availableTargets.length >= requiredSectorCount;
+    const disabledReason =
+      repairableCandidates.length === 0
+        ? candidates.length
+          ? candidates
+              .map(function (plan) {
+                return plan.fileName + ": " + plan.disabledReason;
+              })
+              .join(" ")
+          : "The shared-sector chains can not be cloned automatically."
+        : availableTargets.length < requiredSectorCount
+          ? "Not enough free sectors are available to clone the duplicate file chains (" +
+            String(requiredSectorCount) +
+            " needed, " +
+            String(availableTargets.length) +
+            " available)."
+          : "";
+
+    if (repairable) {
+      let cursor = 0;
+      repairableCandidates.forEach(function (plan) {
+        plan.targetRefs = availableTargets.slice(
+          cursor,
+          cursor + plan.requiredSectorCount,
+        );
+        cursor += plan.requiredSectorCount;
+      });
+    }
+
+    return {
+      conflicts: conflicts,
+      candidates: candidates,
+      repairableCandidates: repairableCandidates,
+      repairable: repairable,
+      disabledReason: disabledReason,
+      requiredSectorCount: requiredSectorCount,
+      availableSectorCount: availableTargets.length,
+    };
+  };
+
+  d64.repairCrossLinkedFileSectorsWithReport = function (image, options) {
+    const config = options || {};
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const plan = d64.analyzeCrossLinkedFileSectorRepair(bytes, config);
+    if (!plan.repairable) {
+      throw new Error(
+        plan.disabledReason || "Cross-linked sector repair is not available.",
+      );
+    }
+
+    let nextImage = bytes.slice();
+    const freeMap = d64.readFreeMap(nextImage);
+    let movedFilesCount = 0;
+    let movedSectorCount = 0;
+
+    plan.repairableCandidates.forEach(function (candidate) {
+      const mapping = {};
+      candidate.refs.forEach(function (ref, index) {
+        mapping[String(ref.track) + ":" + String(ref.sector)] =
+          candidate.targetRefs[index];
+      });
+      candidate.refs.forEach(function (ref, index) {
+        const sourceBlock = d64.readSector(bytes, ref.track, ref.sector).slice();
+        if (index < candidate.refs.length - 1) {
+          const nextRef = candidate.refs[index + 1];
+          const nextTarget =
+            mapping[String(nextRef.track) + ":" + String(nextRef.sector)] ||
+            nextRef;
+          sourceBlock[0] = nextTarget.track;
+          sourceBlock[1] = nextTarget.sector;
+        }
+        const target = candidate.targetRefs[index];
+        nextImage.set(
+          sourceBlock,
+          d64.trackOffset(target.track, target.sector),
+        );
+        if (freeMap[target.track] && freeMap[target.track][target.sector] != null) {
+          freeMap[target.track][target.sector] = false;
+        }
+      });
+      const entry = d64.readDirectoryEntry(nextImage, candidate.entryIndex);
+      const entryBytes = entry.raw.slice();
+      entryBytes[3] = candidate.targetRefs[0].track;
+      entryBytes[4] = candidate.targetRefs[0].sector;
+      nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
+      movedFilesCount += 1;
+      movedSectorCount += candidate.targetRefs.length;
+    });
+
+    return {
+      image: d64.writeBamFreeMap(nextImage, freeMap),
+      repaired: movedFilesCount > 0,
+      movedFilesCount: movedFilesCount,
+      movedSectorCount: movedSectorCount,
+      repairedEntryIndexes: plan.repairableCandidates.map(function (candidate) {
+        return candidate.entryIndex;
+      }),
+    };
+  };
+
+  d64.repairCrossLinkedFileSectors = function (image, options) {
+    return d64.repairCrossLinkedFileSectorsWithReport(image, options).image;
+  };
+
   d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {
     const target =
       typeof entryOrOptions === "string" ||

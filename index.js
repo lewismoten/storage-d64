@@ -246,6 +246,7 @@
   const doctorDialogName = document.getElementById("doctor-dialog-name");
   const doctorSummary = document.getElementById("doctor-summary");
   const doctorReportBody = document.getElementById("doctor-report-body");
+  const doctorTooltip = document.getElementById("doctor-tooltip");
   const doctorClose = document.getElementById("doctor-close");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -273,6 +274,8 @@
     "truncateBrokenFileChainWithReport",
     "truncateCircularFileChainWithReport",
     "analyzeReservedTrackFileRepair",
+    "analyzeCrossLinkedFileSectorRepair",
+    "repairCrossLinkedFileSectorsWithReport",
     "repairReservedTrackFileWithReport",
     "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
@@ -1199,6 +1202,27 @@
   const hideBamTooltip = function () {
     bamTooltip.hidden = true;
     bamTooltip.innerHTML = "";
+  };
+
+  const showDoctorTooltip = function (markup, clientX, clientY) {
+    if (!doctorTooltip || !markup) {
+      if (doctorTooltip) {
+        doctorTooltip.hidden = true;
+        doctorTooltip.innerHTML = "";
+      }
+      return;
+    }
+    doctorTooltip.innerHTML = markup;
+    doctorTooltip.hidden = false;
+    const offset = 14;
+    doctorTooltip.style.left = String(clientX + offset) + "px";
+    doctorTooltip.style.top = String(clientY + offset) + "px";
+  };
+
+  const hideDoctorTooltip = function () {
+    if (!doctorTooltip) return;
+    doctorTooltip.hidden = true;
+    doctorTooltip.innerHTML = "";
   };
 
   const findActiveFileByEntryIndex = function (entryIndex) {
@@ -6170,6 +6194,7 @@
     if (!config.preserveReturnTarget) {
       state.returnToDoctorReport = false;
     }
+    hideDoctorTooltip();
     if (typeof doctorDialog.close === "function") {
       doctorDialog.close();
     } else {
@@ -6884,6 +6909,45 @@
     }
   };
 
+  const getCrossLinkedFileSectorRepairPlan = function (imageOverride) {
+    const image = imageOverride || state.image;
+    if (!image) return null;
+    try {
+      return d64.analyzeCrossLinkedFileSectorRepair(image);
+    } catch (error) {
+      return {
+        repairable: false,
+        disabledReason: error.message || String(error),
+      };
+    }
+  };
+
+  const repairDoctorCrossLinkedFileSectors = function () {
+    if (!state.image) return;
+    try {
+      const result = d64.repairCrossLinkedFileSectorsWithReport(state.image);
+      loadImageBytes(
+        result.image,
+        state.sourceName || "disk.d64",
+        result.movedFilesCount
+          ? "Cloned " +
+              String(result.movedFilesCount) +
+              " duplicate file chain" +
+              (result.movedFilesCount === 1 ? "" : "s") +
+              " into " +
+              String(result.movedSectorCount) +
+              " new sector" +
+              (result.movedSectorCount === 1 ? "" : "s") +
+              "."
+          : "No cross-linked file sectors needed repair.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const autoRepairDoctorIssues = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -7133,6 +7197,22 @@
         }
       }
 
+      if (hasIssue("cross-linked-file-sectors")) {
+        const plan = getCrossLinkedFileSectorRepairPlan(nextImage);
+        if (plan && plan.repairable) {
+          const result = d64.repairCrossLinkedFileSectorsWithReport(nextImage);
+          nextImage = result.image;
+          if (result.movedFilesCount) {
+            steps.push(
+              "cloned " +
+                String(result.movedFilesCount) +
+                " cross-linked file chain" +
+                (result.movedFilesCount === 1 ? "" : "s"),
+            );
+          }
+        }
+      }
+
       if (
         hasIssue("damaged-bam-or-header") &&
         !(
@@ -7185,11 +7265,16 @@
       "directory-block-count-mismatch": true,
       "duplicate-filenames-repairable": true,
       "file-uses-reserved-track-18": true,
+      "cross-linked-file-sectors": true,
     };
     const autoRepairIssues = diagnosis.issues.filter(function (issue) {
       if (!issue || !supportedAutoRepairCodes[issue.code]) return false;
       if (issue.code === "file-uses-reserved-track-18") {
         const plan = getReservedTrackRepairPlan(issue);
+        return Boolean(plan && plan.repairable);
+      }
+      if (issue.code === "cross-linked-file-sectors") {
+        const plan = getCrossLinkedFileSectorRepairPlan();
         return Boolean(plan && plan.repairable);
       }
       return true;
@@ -7306,6 +7391,35 @@
           "</div>"
         );
       }
+      if (issue.code === "cross-linked-file-sectors") {
+        const plan = getCrossLinkedFileSectorRepairPlan();
+        const disabledReason =
+          plan && !plan.repairable
+            ? String(
+                plan.disabledReason ||
+                  "Cross-linked sector repair is not available.",
+              )
+            : "";
+        const buttonMarkup =
+          '<button type="button" class="file-type-button" data-action="repair-doctor-cross-linked-sectors"' +
+          (disabledReason
+            ? ' disabled aria-disabled="true"'
+            : "") +
+          ">" +
+          "Repair" +
+          "</button>";
+        return (
+          '<div class="doctor-issue-actions">' +
+          (disabledReason
+            ? '<span class="doctor-disabled-action" tabindex="0" data-tooltip="' +
+              encodeHtmlAttribute(disabledReason) +
+              '">' +
+              buttonMarkup +
+              "</span>"
+            : buttonMarkup) +
+          "</div>"
+        );
+      }
       if (issue.code === "file-uses-reserved-track-18") {
         const plan = getReservedTrackRepairPlan(issue);
         const disabledReason =
@@ -7328,7 +7442,7 @@
         return (
           '<div class="doctor-issue-actions">' +
           (disabledReason
-            ? '<span class="doctor-disabled-action" title="' +
+            ? '<span class="doctor-disabled-action" tabindex="0" data-tooltip="' +
               encodeHtmlAttribute(disabledReason) +
               '">' +
               buttonMarkup +
@@ -8999,6 +9113,10 @@
         truncateCircularDoctorFile(button.dataset.entryIndex);
         return;
       }
+      if (button.dataset.action === "repair-doctor-cross-linked-sectors") {
+        repairDoctorCrossLinkedFileSectors();
+        return;
+      }
       if (button.dataset.action === "repair-doctor-reserved-track") {
         repairDoctorReservedTrackFile(button.dataset.entryIndex);
         return;
@@ -9121,6 +9239,46 @@
     });
     doctorReportBody.addEventListener("click", function (event) {
       handleDoctorActionClick(event.target.closest("button[data-action]"));
+    });
+    const handleDoctorTooltipPointer = function (event) {
+      const target = event.target.closest(".doctor-disabled-action[data-tooltip]");
+      if (!target) {
+        hideDoctorTooltip();
+        return;
+      }
+      showDoctorTooltip(
+        "<p>" + escapeHtml(target.getAttribute("data-tooltip") || "") + "</p>",
+        event.clientX,
+        event.clientY,
+      );
+    };
+    doctorDialog.addEventListener("mousemove", handleDoctorTooltipPointer);
+    doctorDialog.addEventListener("mouseleave", hideDoctorTooltip);
+    doctorDialog.addEventListener("focusin", function (event) {
+      const target = event.target.closest(".doctor-disabled-action[data-tooltip]");
+      if (!target) {
+        hideDoctorTooltip();
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      showDoctorTooltip(
+        "<p>" + escapeHtml(target.getAttribute("data-tooltip") || "") + "</p>",
+        rect.left + rect.width / 2,
+        rect.bottom,
+      );
+    });
+    doctorDialog.addEventListener("focusout", function () {
+      window.setTimeout(function () {
+        const active = document.activeElement;
+        if (
+          active &&
+          active.closest &&
+          active.closest(".doctor-disabled-action[data-tooltip]")
+        ) {
+          return;
+        }
+        hideDoctorTooltip();
+      }, 0);
     });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
