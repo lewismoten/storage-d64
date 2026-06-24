@@ -7075,24 +7075,6 @@
     };
     state.doctorReport = diagnosis;
     const total = Math.max(0, Number(diagnosis.summary.total) || 0);
-    doctorSummary.innerHTML =
-      '<div class="doctor-summary-grid">' +
-      '<div class="doctor-summary-card"><strong>' +
-      escapeHtml(String(state.doctorRunCount || 0)) +
-      "</strong><span>Runs</span></div>" +
-      '<div class="doctor-summary-card doctor-summary-card-repairable"><strong>' +
-      escapeHtml(String(diagnosis.summary.repairable || 0)) +
-      "</strong><span>Repairable</span></div>" +
-      '<div class="doctor-summary-card doctor-summary-card-warning"><strong>' +
-      escapeHtml(String(diagnosis.summary.warning || 0)) +
-      "</strong><span>Warnings</span></div>" +
-      '<div class="doctor-summary-card doctor-summary-card-info"><strong>' +
-      escapeHtml(String(diagnosis.summary.informational || 0)) +
-      "</strong><span>Info</span></div>" +
-      '<div class="doctor-summary-card"><strong>' +
-      escapeHtml(String(total)) +
-      "</strong><span>Total</span></div>" +
-      "</div>";
     const supportedAutoRepairCodes = {
       "invalid-disk-name-field": true,
       "short-disk-id": true,
@@ -7110,6 +7092,33 @@
     const autoRepairIssues = diagnosis.issues.filter(function (issue) {
       return issue && supportedAutoRepairCodes[issue.code];
     });
+    doctorSummary.innerHTML =
+      '<div class="doctor-summary-header">' +
+      '<div class="doctor-summary-grid">' +
+      '<div class="doctor-summary-card"><strong>' +
+      escapeHtml(String(state.doctorRunCount || 0)) +
+      "</strong><span>Runs</span></div>" +
+      '<div class="doctor-summary-card doctor-summary-card-repairable"><strong>' +
+      escapeHtml(String(diagnosis.summary.repairable || 0)) +
+      "</strong><span>Repairable</span></div>" +
+      '<div class="doctor-summary-card doctor-summary-card-warning"><strong>' +
+      escapeHtml(String(diagnosis.summary.warning || 0)) +
+      "</strong><span>Warnings</span></div>" +
+      '<div class="doctor-summary-card doctor-summary-card-info"><strong>' +
+      escapeHtml(String(diagnosis.summary.informational || 0)) +
+      "</strong><span>Info</span></div>" +
+      '<div class="doctor-summary-card"><strong>' +
+      escapeHtml(String(total)) +
+      "</strong><span>Total</span></div>" +
+      (autoRepairIssues.length
+        ? '<div class="doctor-summary-actions">' +
+          '<button type="button" class="file-type-button" data-action="auto-repair-doctor">' +
+          "Auto Repair" +
+          "</button>" +
+          "</div>"
+        : '<div class="doctor-summary-actions"></div>') +
+      "</div>" +
+      "</div>";
     if (!total) {
       doctorReportBody.innerHTML =
         '<div class="doctor-empty">No structural problems were detected.</div>';
@@ -7253,135 +7262,124 @@
       }
       return "";
     };
-    doctorReportBody.innerHTML =
-      (autoRepairIssues.length
-        ? '<div class="doctor-report-actions">' +
-          '<button type="button" class="file-type-button" data-action="auto-repair-doctor">' +
-          "Auto Repair" +
-          "</button>" +
-          "</div>"
-        : "") +
-      diagnosis.issues
-        .map(function (issue, issueIndex) {
-          const duplicateGroupMarkup =
-            (issue.code === "duplicate-filenames-repairable" ||
-              issue.code === "duplicate-filenames-warning") &&
-            Array.isArray(issue.duplicateGroups) &&
-            issue.duplicateGroups.length
-              ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
-              : "";
-          const renderLinkedDoctorText = function (value) {
-            return issue.code === "directory-block-count-mismatch"
-              ? escapeHtml(String(value || ""))
-              : renderDoctorTextWithSectorLinks(
-                  String(value || ""),
-                  issueIndex,
-                );
-          };
-          const hasSectorItemGrid = isDoctorSectorItemList(issue.items);
-          const shouldCollapseSectorItems =
-            hasSectorItemGrid &&
-            Array.isArray(issue.items) &&
-            issue.items.length > 18;
-          const items =
-            issue.code === "invalid-file-types" && Array.isArray(issue.items)
+    doctorReportBody.innerHTML = diagnosis.issues
+      .map(function (issue, issueIndex) {
+        const duplicateGroupMarkup =
+          (issue.code === "duplicate-filenames-repairable" ||
+            issue.code === "duplicate-filenames-warning") &&
+          Array.isArray(issue.duplicateGroups) &&
+          issue.duplicateGroups.length
+            ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
+            : "";
+        const renderLinkedDoctorText = function (value) {
+          return issue.code === "directory-block-count-mismatch"
+            ? escapeHtml(String(value || ""))
+            : renderDoctorTextWithSectorLinks(String(value || ""), issueIndex);
+        };
+        const hasSectorItemGrid = isDoctorSectorItemList(issue.items);
+        const shouldCollapseSectorItems =
+          hasSectorItemGrid &&
+          Array.isArray(issue.items) &&
+          issue.items.length > 18;
+        const items =
+          issue.code === "invalid-file-types" && Array.isArray(issue.items)
+            ? issue.items
+                .map(function (item) {
+                  const track = Math.max(
+                    0,
+                    Math.floor(Number(item && item.track) || 0),
+                  );
+                  const sector = Math.max(
+                    0,
+                    Math.floor(Number(item && item.sector) || 0),
+                  );
+                  const slot = Math.max(
+                    0,
+                    Math.floor(Number(item && item.slot) || 0),
+                  );
+                  const entryIndex = Math.max(
+                    0,
+                    Math.floor(Number(item && item.entryIndex) || 0),
+                  );
+                  const name =
+                    String((item && item.name) || "").trim() || "Unnamed";
+                  return (
+                    '<li class="doctor-invalid-file-type-item">' +
+                    '<span class="doctor-inline-name">' +
+                    escapeHtml(name) +
+                    "</span> " +
+                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                    encodeHtmlAttribute(String(issueIndex)) +
+                    '" data-track="' +
+                    encodeHtmlAttribute(String(track)) +
+                    '" data-sector="' +
+                    encodeHtmlAttribute(String(sector)) +
+                    '">' +
+                    escapeHtml("T" + String(track) + " S" + String(sector)) +
+                    "</button> " +
+                    '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+                    encodeHtmlAttribute(String(entryIndex)) +
+                    '" data-issue-index="' +
+                    encodeHtmlAttribute(String(issueIndex)) +
+                    '">' +
+                    escapeHtml("Slot " + String(slot)) +
+                    "</button>" +
+                    "</li>"
+                  );
+                })
+                .join("")
+            : Array.isArray(issue.items)
               ? issue.items
                   .map(function (item) {
-                    const track = Math.max(
-                      0,
-                      Math.floor(Number(item && item.track) || 0),
-                    );
-                    const sector = Math.max(
-                      0,
-                      Math.floor(Number(item && item.sector) || 0),
-                    );
-                    const slot = Math.max(
-                      0,
-                      Math.floor(Number(item && item.slot) || 0),
-                    );
-                    const entryIndex = Math.max(
-                      0,
-                      Math.floor(Number(item && item.entryIndex) || 0),
-                    );
-                    const name =
-                      String((item && item.name) || "").trim() || "Unnamed";
-                    return (
-                      '<li class="doctor-invalid-file-type-item">' +
-                      '<span class="doctor-inline-name">' +
-                      escapeHtml(name) +
-                      "</span> " +
-                      '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
-                      encodeHtmlAttribute(String(issueIndex)) +
-                      '" data-track="' +
-                      encodeHtmlAttribute(String(track)) +
-                      '" data-sector="' +
-                      encodeHtmlAttribute(String(sector)) +
-                      '">' +
-                      escapeHtml("T" + String(track) + " S" + String(sector)) +
-                      "</button> " +
-                      '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
-                      encodeHtmlAttribute(String(entryIndex)) +
-                      '" data-issue-index="' +
-                      encodeHtmlAttribute(String(issueIndex)) +
-                      '">' +
-                      escapeHtml("Slot " + String(slot)) +
-                      "</button>" +
-                      "</li>"
-                    );
+                    return "<li>" + renderLinkedDoctorText(item) + "</li>";
                   })
                   .join("")
-              : Array.isArray(issue.items)
-                ? issue.items
-                    .map(function (item) {
-                      return "<li>" + renderLinkedDoctorText(item) + "</li>";
-                    })
-                    .join("")
-                : "";
-          return (
-            '<article class="doctor-issue doctor-issue-' +
-            escapeHtml(issue.level || "informational") +
-            '">' +
-            '<div class="doctor-issue-heading">' +
-            '<span class="doctor-level doctor-level-' +
-            escapeHtml(issue.level || "informational") +
-            '">' +
-            escapeHtml(String(issue.level || "informational")) +
-            "</span>" +
-            "<h4>" +
-            escapeHtml(issue.message || "Issue detected") +
-            "</h4>" +
-            "</div>" +
-            (issue.details
-              ? '<p class="doctor-issue-details">' +
-                renderLinkedDoctorText(issue.details) +
-                "</p>"
+              : "";
+        return (
+          '<article class="doctor-issue doctor-issue-' +
+          escapeHtml(issue.level || "informational") +
+          '">' +
+          '<div class="doctor-issue-heading">' +
+          '<span class="doctor-level doctor-level-' +
+          escapeHtml(issue.level || "informational") +
+          '">' +
+          escapeHtml(String(issue.level || "informational")) +
+          "</span>" +
+          "<h4>" +
+          escapeHtml(issue.message || "Issue detected") +
+          "</h4>" +
+          "</div>" +
+          (issue.details
+            ? '<p class="doctor-issue-details">' +
+              renderLinkedDoctorText(issue.details) +
+              "</p>"
+            : "") +
+          (duplicateGroupMarkup
+            ? '<div class="doctor-inline-groups">' +
+              duplicateGroupMarkup +
+              "</div>"
+            : items
+              ? shouldCollapseSectorItems
+                ? '<details class="doctor-issue-items-toggle"><summary>' +
+                  escapeHtml(String(issue.items.length)) +
+                  " sectors found</summary>" +
+                  '<ul class="doctor-issue-items doctor-issue-items-grid">' +
+                  items +
+                  "</ul></details>"
+                : '<ul class="doctor-issue-items' +
+                  (issue.code === "invalid-file-types"
+                    ? " doctor-invalid-file-type-items"
+                    : "") +
+                  (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
+                  '">' +
+                  items +
+                  "</ul>"
               : "") +
-            (duplicateGroupMarkup
-              ? '<div class="doctor-inline-groups">' +
-                duplicateGroupMarkup +
-                "</div>"
-              : items
-                ? shouldCollapseSectorItems
-                  ? '<details class="doctor-issue-items-toggle"><summary>' +
-                    escapeHtml(String(issue.items.length)) +
-                    " sectors found</summary>" +
-                    '<ul class="doctor-issue-items doctor-issue-items-grid">' +
-                    items +
-                    "</ul></details>"
-                  : '<ul class="doctor-issue-items' +
-                    (issue.code === "invalid-file-types"
-                      ? " doctor-invalid-file-type-items"
-                      : "") +
-                    (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
-                    '">' +
-                    items +
-                    "</ul>"
-                : "") +
-            renderDoctorAction(issue, issueIndex) +
-            "</article>"
-          );
-        })
-        .join("");
+          renderDoctorAction(issue, issueIndex) +
+          "</article>"
+        );
+      })
+      .join("");
   };
 
   const runDoctorDiagnosis = function () {
@@ -8740,8 +8738,7 @@
     doctorClose.addEventListener("click", function () {
       closeDoctorDialog();
     });
-    doctorReportBody.addEventListener("click", function (event) {
-      const button = event.target.closest("button[data-action]");
+    const handleDoctorActionClick = function (button) {
       if (!button) return;
       if (button.dataset.action === "open-doctor-disk-name-hex") {
         const report = state.doctorReport;
@@ -8928,6 +8925,12 @@
             : null,
         });
       }
+    };
+    doctorSummary.addEventListener("click", function (event) {
+      handleDoctorActionClick(event.target.closest("button[data-action]"));
+    });
+    doctorReportBody.addEventListener("click", function (event) {
+      handleDoctorActionClick(event.target.closest("button[data-action]"));
     });
     fileTableBody.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");

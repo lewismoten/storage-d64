@@ -2512,8 +2512,24 @@ tbody tr.is-drop-target {
 
 .doctor-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
   gap: 10px;
+}
+
+.doctor-summary-header {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.doctor-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.doctor-summary-actions .file-type-button {
+  width: auto;
+  min-width: 132px;
 }
 
 .doctor-summary-card {
@@ -2558,11 +2574,6 @@ tbody tr.is-drop-target {
   max-height: min(62vh, 720px);
   overflow: auto;
   padding-right: 4px;
-}
-
-.doctor-report-actions {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .doctor-empty {
