@@ -3983,12 +3983,21 @@
       }
       if (deletedChain.refs.length) {
         recoverableDeleted.push(
-          label +
-            " may still be recoverable from " +
-            String(deletedChain.refs.length) +
-            " sector" +
-            (deletedChain.refs.length === 1 ? "" : "s") +
-            ".",
+          {
+            name: String(entry.name || "(unnamed)"),
+            entryIndex: entry.index,
+            track: entry.track,
+            sector: entry.sector,
+            slot: entry.slot,
+            sectors: deletedChain.refs.length,
+            message:
+              label +
+              " may still be recoverable from " +
+              String(deletedChain.refs.length) +
+              " sector" +
+              (deletedChain.refs.length === 1 ? "" : "s") +
+              ".",
+          },
         );
       }
     });

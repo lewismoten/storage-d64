@@ -7709,7 +7709,60 @@
           Array.isArray(issue.items) &&
           issue.items.length > 18;
         const items =
-          issue.code === "invalid-file-types" && Array.isArray(issue.items)
+          issue.code === "recoverable-deleted-entries" &&
+          Array.isArray(issue.items)
+            ? issue.items
+                .map(function (item) {
+                  const track = Math.max(
+                    0,
+                    Math.floor(Number(item && item.track) || 0),
+                  );
+                  const sector = Math.max(
+                    0,
+                    Math.floor(Number(item && item.sector) || 0),
+                  );
+                  const slot = Math.max(
+                    0,
+                    Math.floor(Number(item && item.slot) || 0),
+                  );
+                  const entryIndex = Math.max(
+                    0,
+                    Math.floor(Number(item && item.entryIndex) || 0),
+                  );
+                  const name =
+                    String((item && item.name) || "").trim() || "Unnamed";
+                  const sectorCount = Math.max(
+                    0,
+                    Math.floor(Number(item && item.sectors) || 0),
+                  );
+                  return (
+                    '<li class="doctor-invalid-file-type-item">' +
+                    '<span class="doctor-inline-name">' +
+                    escapeHtml('Deleted "' + name + '"') +
+                    "</span> may still be recoverable from " +
+                    escapeHtml(String(sectorCount)) +
+                    " sector" +
+                    (sectorCount === 1 ? "" : "s") +
+                    " " +
+                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                    encodeHtmlAttribute(String(issueIndex)) +
+                    '" data-track="' +
+                    encodeHtmlAttribute(String(track)) +
+                    '" data-sector="' +
+                    encodeHtmlAttribute(String(sector)) +
+                    '">' +
+                    escapeHtml("T" + String(track) + " S" + String(sector)) +
+                    "</button> " +
+                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-deleted-entry" data-entry-index="' +
+                    encodeHtmlAttribute(String(entryIndex)) +
+                    '">' +
+                    escapeHtml("Slot " + String(slot)) +
+                    "</button>" +
+                    "</li>"
+                  );
+                })
+                .join("")
+            : issue.code === "invalid-file-types" && Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
                   const track = Math.max(
@@ -8311,11 +8364,22 @@
   const openDoctorEntryDialog = function (entryIndexValue, options) {
     const config = options || {};
     if (!state.image) return;
-    const entry = config.restoreDeleted
-      ? d64.readDeletedEntries(state.image).find(function (candidate) {
+    let entry = null;
+    if (config.restoreDeleted) {
+      entry =
+        d64.readDeletedEntries(state.image).find(function (candidate) {
           return String(candidate.index) === String(entryIndexValue);
-        }) || null
-      : d64.readDirectoryEntry(state.image, entryIndexValue);
+        }) || null;
+      if (!entry) {
+        const fallbackEntry = d64.readDirectoryEntry(state.image, entryIndexValue);
+        if (fallbackEntry && d64.isDeletedDirectoryEntry(fallbackEntry)) {
+          fallbackEntry.deleted = true;
+          entry = fallbackEntry;
+        }
+      }
+    } else {
+      entry = d64.readDirectoryEntry(state.image, entryIndexValue);
+    }
     if (!entry || (!entry.typeByte && !config.restoreDeleted)) {
       setStatus("Directory entry not found.", true);
       return;
@@ -9309,6 +9373,13 @@
             (issue.code === "duplicate-filenames-repairable" ||
               issue.code === "duplicate-filenames-warning"),
           highlightType: Boolean(issue) && issue.code === "invalid-file-types",
+          returnToDoctor: true,
+        });
+        return;
+      }
+      if (button.dataset.action === "open-doctor-deleted-entry") {
+        openDoctorEntryDialog(button.dataset.entryIndex, {
+          restoreDeleted: true,
           returnToDoctor: true,
         });
         return;
