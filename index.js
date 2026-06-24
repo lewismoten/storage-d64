@@ -5714,6 +5714,22 @@
     }
   };
 
+  const repairDoctorBamAllocations = function () {
+    if (!state.image) return;
+    try {
+      const nextImage = d64.validateImage(state.image);
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        "Repaired BAM allocation flags from reachable closed file chains.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const normalizeDoctorDiskName = function () {
     if (!state.image) return;
     try {
@@ -6461,6 +6477,15 @@
         }
       }
 
+      if (
+        hasIssue("incorrect-bam-free-counts") ||
+        hasIssue("bam-disagrees-used-blocks-marked-free") ||
+        hasIssue("orphaned-allocated-blocks")
+      ) {
+        nextImage = d64.validateImage(nextImage);
+        steps.push("repaired BAM allocation flags");
+      }
+
       const duplicateIssue = issues.find(function (issue) {
         return issue && issue.code === "duplicate-filenames-repairable";
       });
@@ -6512,7 +6537,14 @@
         }
       }
 
-      if (hasIssue("damaged-bam-or-header")) {
+      if (
+        hasIssue("damaged-bam-or-header") &&
+        !(
+          hasIssue("incorrect-bam-free-counts") ||
+          hasIssue("bam-disagrees-used-blocks-marked-free") ||
+          hasIssue("orphaned-allocated-blocks")
+        )
+      ) {
         nextImage = d64.validateImage(nextImage);
         steps.push("rebuilt BAM");
       }
@@ -6567,6 +6599,9 @@
       "unknown-dos-version": true,
       "unexpected-dos-type": true,
       "damaged-bam-or-header": true,
+      "incorrect-bam-free-counts": true,
+      "bam-disagrees-used-blocks-marked-free": true,
+      "orphaned-allocated-blocks": true,
       "splat-files": true,
       "directory-block-count-mismatch": true,
       "duplicate-filenames-repairable": true,
@@ -6669,6 +6704,9 @@
       ) {
         return (
           '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-bam-allocations">' +
+          "Repair" +
+          "</button>" +
           '<button type="button" class="file-type-button" data-action="review-doctor-bam" data-issue-index="' +
           escapeHtml(String(issueIndex)) +
           '">' +
@@ -7967,6 +8005,10 @@
       }
       if (button.dataset.action === "repair-doctor-dos-type") {
         repairDoctorDosType();
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-bam-allocations") {
+        repairDoctorBamAllocations();
         return;
       }
       if (button.dataset.action === "review-doctor-bam") {
