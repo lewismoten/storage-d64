@@ -8196,11 +8196,7 @@
   const destroyDeletedFile = function (entryIndex) {
     if (!state.image) return;
     try {
-      const deletedEntry = d64
-        .readDeletedEntries(state.image)
-        .find(function (entry) {
-          return String(entry.index) === String(entryIndex);
-        });
+      const deletedEntry = findDeletedEntryByIndex(state.image, entryIndex);
       if (!deletedEntry) throw new Error("Deleted file not found.");
       const destroyResult = d64.destroyDeletedFileWithReport(
         state.image,
