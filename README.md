@@ -1,4 +1,4 @@
-# Commodore 64 D64 Storage Medium
+# D64 Storage Medium
 
 This folder contains a browser-ready storage plug-in that registers a `d64` storage medium with the TPP API.
 
@@ -182,13 +182,19 @@ The lab lets you:
 - inspect header metadata, usage, and directory state
 - list active and deleted directory entries
 - rename files, change file types, and toggle file lock and open/closed flags
-- delete, restore, fragment, and defragment files and whole images
+- delete, restore, deoptimize, and optimize files and whole images
 - run a read-only Doctor diagnosis that reports structural issues and recoverable conditions
 - drag host files into the image and export individual files back out
 - inspect the disk layout, sector usage, directory track, and file placement
 - open sector and file byte data in a hex/printable viewer and edit bytes in place
-- compare read-efficiency layout visually with the Efficiency Map overlay
+- compare read-efficiency layout visually with the speed-map overlay
 - download either the current full image or individual extracted files
+
+The lab is also meant to help improve read behavior in emulators that model
+real drive timing, including disk rotation, head movement, and the pace at
+which data can be delivered back to the computer. It can be used both as an
+editor and as a timing-aware layout workbench for understanding why one sector
+layout reads faster than another.
 
 The disk layout view also includes:
 
@@ -197,6 +203,13 @@ The disk layout view also includes:
 - a physical sector model and bitplane view for the selected sector
 - inferred read-timing and read-optimization scoring for chained sectors
 - a floppy-shell presentation mode, including sleeve/cover visualization
+
+The editing workflow is intentionally available through multiple views so you
+can approach a problem from the level that makes the most sense:
+
+- structured forms for disk headers, directory entries, BAM state, and repair flows
+- hex and printable-text editing for sectors, files, and selected byte ranges
+- color-coded bitmask views that map fields and flags back to their stored bytes when possible
 
 The disk layout inspector in the lab can also show inferred disk-level context,
 such as the logical disk ID associated with a selected sector. A plain `.d64`
@@ -214,6 +227,56 @@ Current rebuild behavior in the lab and support layer includes:
 
 Clicking a file's `Bytes` value opens a full-file payload hex viewer/editor.
 Clicking a sector in the disk map opens a per-sector hex viewer/editor.
+
+## D64 Limits And Inferred Physical Details
+
+A plain `.d64` stores logical sector data, directory entries, the BAM, and
+optionally one appended error byte per sector. It does not preserve the full
+low-level magnetic-disk encoding that a real floppy surface would have carried.
+
+That means the lab and support layer cannot directly read or reproduce details
+such as:
+
+- sync marks and other GCR-level framing details
+- checksum/check-bit style on-disk encoding details
+- exact rotational placement and timing of sectors
+- weak bits, density tricks, or other copy-protection-specific recording patterns
+
+Where the lab shows physical-sector context, timing hints, disk-structure
+visuals, or expected header-style information, that data is inferred from the
+logical contents of the `.d64` image and from common 1541-style conventions. It
+is meant to help explain what would normally be expected on a legitimate disk,
+not to claim that those exact magnetic details are stored in the image.
+
+## Doctor Philosophy
+
+The Doctor utility is intended as a best-effort reviewer and repair assistant
+for ordinary disk images.
+
+It is primarily useful for:
+
+- diagnosing trouble spots that make images behave poorly in emulators
+- repairing structural damage in legitimate disks and working copies
+- surfacing recoverable deleted entries and broken chains
+- optimizing file and directory layout for timing-aware emulator reads
+- helping explain and visualize the underlying disk-format tradeoffs
+- making drag-and-drop file import/export workflows easier while editing an image
+
+Doctor starts with a read-only diagnosis. When repairs are offered, they aim to
+bring the image back toward a conventional, emulator-friendly logical layout.
+
+That also means Doctor can be the wrong tool for intentionally unusual disks.
+Some originals used nonstandard formatting, deliberate slack/tail data,
+unclaimed sectors, or other format tricks for copy protection or custom loader
+behavior. A repair may remove, normalize, or relocate that kind of data if it
+looks unsafe or structurally invalid inside a standard `.d64` workflow.
+
+Examples include:
+
+- clearing unexpected data from logically unused tail bytes
+- zeroing sectors that appear unused or unreachable
+- rebuilding BAM state from reachable file chains
+- normalizing directory metadata to common expectations
 
 ## Notes
 

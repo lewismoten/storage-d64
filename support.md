@@ -882,6 +882,14 @@ Notes:
   names, broken chains, REL metadata issues, recoverable deleted entries, BAM
   mismatches, orphaned allocated blocks, nonzero slack bytes, and optional D64
   error-byte observations.
+- The diagnosis is read-only. Repair helpers are separate and intentionally try
+  to normalize an image toward a conventional, emulator-friendly logical D64
+  layout.
+- Because a `.d64` does not preserve full magnetic-disk encoding, Doctor cannot
+  truly validate or preserve low-level features such as sync marks, exact
+  rotational placement, weak bits, or many copy-protection tricks. Some repair
+  actions may therefore remove or normalize unusual data that was intentional on
+  the original physical disk.
 
 ### `repairBlockCounts(image, options)`
 
@@ -1393,6 +1401,10 @@ Current limitations of this support layer:
 - Each directory sector holds `8` directory entries.
 - The BAM/header physically stores allocation data only for tracks `1-35`.
 - Tracks above `35` can be used for file storage, but they are not represented in the on-disk BAM bytes.
+- A `.d64` stores logical sector payloads, not the full low-level floppy
+  recording. Physical details shown by the lab, such as expected sector-header
+  structure or timing hints, are inferred from standard DOS conventions rather
+  than read directly from the image bytes.
 - Filenames are stored in a `16`-byte field.
 - Filename normalization is intentionally simple and not a full PETSCII conversion layer.
 - File type support is simplified to a normalized directory type byte.
