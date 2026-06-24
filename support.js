@@ -3850,6 +3850,46 @@
     return best;
   };
 
+  d64.findFarthestSlowSector = function (allocation, previousBlock) {
+    const freePool = d64.collectAllocatableSectors(allocation);
+    if (!freePool.length) return null;
+    let best = null;
+    let bestScore = -1;
+    for (let index = 0; index < freePool.length; index += 1) {
+      const candidate = freePool[index];
+      const seekDistance = previousBlock
+        ? Math.abs(candidate.track - previousBlock.track)
+        : Math.abs(candidate.track - DIRECTORY_TRACK);
+      const predictedSector = previousBlock
+        ? d64.estimateNextSectorWindow(previousBlock, candidate.track)
+        : 0;
+      const sectorCount = d64.trackSectorCount(candidate.track);
+      const rotationalDistance =
+        previousBlock == null
+          ? (candidate.sector - predictedSector + sectorCount) % sectorCount
+          : (candidate.sector - predictedSector + sectorCount) % sectorCount;
+      const sideSwitchBonus =
+        previousBlock &&
+        ((previousBlock.track < DIRECTORY_TRACK &&
+          candidate.track > DIRECTORY_TRACK) ||
+          (previousBlock.track > DIRECTORY_TRACK &&
+            candidate.track < DIRECTORY_TRACK))
+          ? 120
+          : 0;
+      const score =
+        seekDistance * 1000 +
+        rotationalDistance * 12 +
+        Math.abs(candidate.track - DIRECTORY_TRACK) * 4 +
+        sideSwitchBonus +
+        candidate.sector / 100;
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    return best;
+  };
+
   d64.markAllocatedSector = function (allocation, block) {
     if (!block) return null;
     const sectorCount = d64.trackSectorCount(block.track);
@@ -3885,48 +3925,21 @@
 
   d64.allocateFragmentedSectors = function (count, allocation) {
     const result = [];
-    const freePool = d64.collectAllocatableSectors(allocation);
-    if (!freePool.length || count <= 0) return result;
-    let stride = Math.max(
-      2,
-      Math.floor(Number(allocation.fragmentStride) || 29),
-    );
-    while (
-      freePool.length > 1 &&
-      d64.greatestCommonDivisor(stride, freePool.length) !== 1
-    ) {
-      stride += 1;
+    if (count <= 0) return result;
+    while (result.length < count) {
+      const nextBlock =
+        result.length === 0
+          ? d64.findFarthestSlowSector(allocation, null)
+          : d64.findFarthestSlowSector(allocation, result[result.length - 1]);
+      if (!nextBlock) break;
+      d64.markAllocatedSector(allocation, nextBlock);
+      result.push(nextBlock);
     }
-    let cursor =
-      Math.max(0, Math.floor(Number(allocation.fragmentCursor) || 0)) %
-      freePool.length;
-    const used = new Array(freePool.length).fill(false);
-    const maxAttempts = freePool.length * 3;
-    let attempts = 0;
-    while (result.length < count && attempts < maxAttempts) {
-      if (!used[cursor]) {
-        const block = freePool[cursor];
-        used[cursor] = true;
-        allocation.map[block.track][block.sector] = false;
-        result.push(block);
-      }
-      cursor = (cursor + stride) % freePool.length;
-      attempts += 1;
+    if (result.length) {
+      const last = result[result.length - 1];
+      allocation.track = last.track;
+      allocation.sector = last.sector;
     }
-    if (result.length < count) {
-      for (
-        let index = 0;
-        index < freePool.length && result.length < count;
-        index += 1
-      ) {
-        if (used[index]) continue;
-        const block = freePool[index];
-        used[index] = true;
-        allocation.map[block.track][block.sector] = false;
-        result.push(block);
-      }
-    }
-    allocation.fragmentCursor = cursor;
     return result;
   };
 

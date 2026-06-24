@@ -1230,7 +1230,7 @@ Notes:
 
 - The `allocation` object is mutated.
 - Sequential allocation now prefers tracks nearest `18` first and chooses follow-up sectors by a simple seek-plus-rotation cost model.
-- Fragmented allocation intentionally scatters blocks across the free sector pool.
+- Fragmented allocation intentionally picks follow-up sectors that maximize estimated seek plus rotational delay, making chained reads as slow as possible.
 - Sequential write priority is: first `PRG`, remaining `PRG`, then `SEQ`/`USR`, and finally `REL`.
 
 ### `writeFile(image, data, allocation, unusedTailData)`
