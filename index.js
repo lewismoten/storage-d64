@@ -12,7 +12,6 @@
     heatMapVisible: false,
     hexViewContext: null,
     doctorReport: null,
-    doctorRunCount: 0,
     returnToDoctorReport: false,
     draggedFileName: "",
     draggedEntryIndex: "",
@@ -1902,19 +1901,11 @@
     defragmentButton.disabled = !state.image;
     corruptButton.disabled = !state.image;
     heatmapButton.disabled = !state.image;
-    doctorButton.textContent =
-      "Doctor" +
-      (state.doctorRunCount ? " (" + String(state.doctorRunCount) + ")" : "");
+    doctorButton.textContent = "Doctor";
   };
 
   const resetDeletedTypeHints = function () {
     state.deletedTypeHints = {};
-  };
-
-  const updateDoctorRunIndicators = function () {
-    doctorButton.textContent =
-      "Doctor" +
-      (state.doctorRunCount ? " (" + String(state.doctorRunCount) + ")" : "");
   };
 
   const renderDefinitionList = function (node, rows) {
@@ -7445,9 +7436,6 @@
     doctorSummary.innerHTML =
       '<div class="doctor-summary-header">' +
       '<div class="doctor-summary-grid">' +
-      '<div class="doctor-summary-card"><strong>' +
-      escapeHtml(String(state.doctorRunCount || 0)) +
-      "</strong><span>Runs</span></div>" +
       '<div class="doctor-summary-card doctor-summary-card-repairable"><strong>' +
       escapeHtml(String(diagnosis.summary.repairable || 0)) +
       "</strong><span>Repairable</span></div>" +
@@ -7855,8 +7843,6 @@
   const refreshDoctorReport = function (imageOverride) {
     const image = imageOverride || state.image;
     if (!image) return;
-    state.doctorRunCount += 1;
-    updateDoctorRunIndicators();
     const report = d64.diagnoseImage(image);
     state.doctorReport = report;
     doctorDialogName.textContent =
@@ -7864,9 +7850,7 @@
       " · " +
       String(report.summary.total || 0) +
       " issue" +
-      (Number(report.summary.total || 0) === 1 ? "" : "s") +
-      " · run #" +
-      String(state.doctorRunCount);
+      (Number(report.summary.total || 0) === 1 ? "" : "s");
     renderDoctorReport(report);
   };
 
@@ -7889,11 +7873,6 @@
     const shouldRefreshInline = config.inline !== false && isDoctorDialogOpen();
     if (shouldRefreshInline) {
       refreshDoctorReport();
-      setStatus(
-        "Doctor reran after image change. Run #" +
-          String(state.doctorRunCount) +
-          ".",
-      );
       return;
     }
     if (state.returnToDoctorReport) {
