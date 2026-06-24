@@ -7479,6 +7479,20 @@
     }
   };
 
+  const reopenDoctorFromEntryDialog = function (rerun) {
+    const shouldRerun = Boolean(rerun);
+    if (shouldRerun) {
+      state.returnToDoctorReport = true;
+      refreshDoctorReportAfterImageChange({ inline: false });
+      return;
+    }
+    if (typeof doctorDialog.showModal === "function") {
+      doctorDialog.showModal();
+    } else {
+      doctorDialog.setAttribute("open", "open");
+    }
+  };
+
   const saveFileTypeDialog = function (event) {
     event.preventDefault();
     if (!state.image) return;
@@ -7552,6 +7566,9 @@
       return;
     }
     try {
+      const shouldReturnToDoctor = Boolean(
+        state.doctorEntryContext && state.doctorEntryContext.returnToDoctor,
+      );
       const entryIndexValue = Math.max(
         0,
         Math.floor(Number(doctorEntryIndex.value) || 0),
@@ -7676,9 +7693,11 @@
               : " Doctor issue still present."),
           { resetDeletedTypeHints: false },
         );
-        refreshDoctorReportAfterImageChange({ inline: false });
       }
       closeDoctorEntryDialog();
+      if (shouldReturnToDoctor) {
+        reopenDoctorFromEntryDialog(true);
+      }
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -8071,13 +8090,8 @@
         state.doctorEntryContext && state.doctorEntryContext.returnToDoctor,
       );
       closeDoctorEntryDialog();
-      if (
-        shouldReturnToDoctor &&
-        typeof doctorDialog.showModal === "function"
-      ) {
-        doctorDialog.showModal();
-      } else if (shouldReturnToDoctor) {
-        doctorDialog.setAttribute("open", "open");
+      if (shouldReturnToDoctor) {
+        reopenDoctorFromEntryDialog(false);
       }
     });
     doctorDiskIdInput.addEventListener("input", function () {
