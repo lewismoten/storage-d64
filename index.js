@@ -7613,13 +7613,20 @@
         );
       }
       if (issue.code === "malformed-directory-entry") {
+        const messageText = String(issue.message || "").toLowerCase();
+        const isInvalidStartPointer =
+          messageText.indexOf("invalid start pointer") !== -1;
         return (
           '<div class="doctor-issue-actions">' +
-          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
-          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
-          '">' +
-          "View" +
-          "</button>" +
+          (isInvalidStartPointer
+            ? ""
+            : '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
+              escapeHtml(
+                String(issue.entryIndex != null ? issue.entryIndex : ""),
+              ) +
+              '">' +
+              "View" +
+              "</button>") +
           '<button type="button" class="file-type-button" data-action="remove-doctor-entry" data-entry-index="' +
           escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
           '">' +
