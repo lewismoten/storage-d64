@@ -248,35 +248,26 @@ logical contents of the `.d64` image and from common 1541-style conventions. It
 is meant to help explain what would normally be expected on a legitimate disk,
 not to claim that those exact magnetic details are stored in the image.
 
-## Doctor Philosophy
+## Doctor Guide
 
-The Doctor utility is intended as a best-effort reviewer and repair assistant
-for ordinary disk images.
+The Doctor utility has its own guide in [DOCTOR.md](./DOCTOR.md).
 
-It is primarily useful for:
+That document covers:
 
-- diagnosing trouble spots that make images behave poorly in emulators
-- repairing structural damage in legitimate disks and working copies
-- surfacing recoverable deleted entries and broken chains
-- optimizing file and directory layout for timing-aware emulator reads
-- helping explain and visualize the underlying disk-format tradeoffs
-- making drag-and-drop file import/export workflows easier while editing an image
+- what Doctor detects
+- what it can repair automatically
+- which actions are left as review or opt-in repairs because they may be destructive
+- how Auto Repair is intended to stay on the non-destructive side when possible
 
-Doctor starts with a read-only diagnosis. When repairs are offered, they aim to
-bring the image back toward a conventional, emulator-friendly logical layout.
+W Why use 
 
-That also means Doctor can be the wrong tool for intentionally unusual disks.
-Some originals used nonstandard formatting, deliberate slack/tail data,
-unclaimed sectors, or other format tricks for copy protection or custom loader
-behavior. A repair may remove, normalize, or relocate that kind of data if it
-looks unsafe or structurally invalid inside a standard `.d64` workflow.
+Storage D64 is not just for disk I/O. The lab works for repairs and as a learning and editing aid:
 
-Examples include:
+- disk layout, zone, and timing visuals help explain why some images read faster
+- hex, text, and form-based editors give multiple ways to inspect the same bytes
+- color-coded bitmask views help map fields and flags back to their stored layout
+- drag-and-drop import and per-file export make image maintenance easier
 
-- clearing unexpected data from logically unused tail bytes
-- zeroing sectors that appear unused or unreachable
-- rebuilding BAM state from reachable file chains
-- normalizing directory metadata to common expectations
 
 ## Notes
 

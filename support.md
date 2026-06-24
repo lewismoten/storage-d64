@@ -882,6 +882,8 @@ Notes:
   names, broken chains, REL metadata issues, recoverable deleted entries, BAM
   mismatches, orphaned allocated blocks, nonzero slack bytes, and optional D64
   error-byte observations.
+- The higher-level Doctor behavior and repair policy are documented in
+  [DOCTOR.md](./DOCTOR.md).
 - The diagnosis is read-only. Repair helpers are separate and intentionally try
   to normalize an image toward a conventional, emulator-friendly logical D64
   layout.
