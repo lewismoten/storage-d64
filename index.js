@@ -7241,7 +7241,8 @@
             ? state.doctorReport.issues[issueIndex]
             : null;
         const highlight = findDoctorIssueHighlight(issue, track, sector);
-        closeDoctorDialog();
+        state.returnToDoctorReport = true;
+        closeDoctorDialog({ preserveReturnTarget: true });
         selectDiskMapSector(track, sector, { centerView: true });
         openSectorDataDialog(track, sector, {
           highlightByteIndexes: highlight ? highlight.byteIndexes || [] : [],
