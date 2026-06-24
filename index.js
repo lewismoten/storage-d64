@@ -270,6 +270,7 @@
     "undeleteFile",
     "destroyDeletedFile",
     "destroyDeletedFileWithReport",
+    "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
     "diagnoseImage",
     "validateImage",
@@ -2180,6 +2181,15 @@
     );
   };
 
+  const directoryEntryLocationKey = function (entryLike) {
+    const entry = entryLike && entryLike.entry ? entryLike.entry : entryLike;
+    if (!entry) return "";
+    const track = Math.max(0, Math.floor(Number(entry.track) || 0));
+    const sector = Math.max(0, Math.floor(Number(entry.sector) || 0));
+    const slot = Math.max(0, Math.floor(Number(entry.slot) || 0));
+    return String(track) + ":" + String(sector) + ":" + String(slot);
+  };
+
   const buildDirectoryRow = function (image, entry) {
     if (!image || !entry) return null;
     let file = null;
@@ -2257,20 +2267,14 @@
 
   const readUnreachableDirectoryRows = function (image) {
     if (!image) return [];
-    const reachableIndexes = new Set(
+    const reachableLocations = new Set(
       readReachableDirectoryRows(image).map(function (file) {
-        return String(
-          file && file.entry && file.entry.index != null
-            ? file.entry.index
-            : "",
-        );
+        return directoryEntryLocationKey(file);
       }),
     );
     return readAllDirectoryRows(image).filter(function (file) {
-      const key = String(
-        file && file.entry && file.entry.index != null ? file.entry.index : "",
-      );
-      return key && !reachableIndexes.has(key);
+      const key = directoryEntryLocationKey(file);
+      return key && !reachableLocations.has(key);
     });
   };
 
@@ -5481,7 +5485,7 @@
     if (!unreachableFiles.length) {
       unreachableFilesPanel.hidden = true;
       unreachableFilesList.innerHTML =
-        '<tr><td colspan="9" class="empty-state">No unreachable files found.</td></tr>';
+        '<tr><td colspan="10" class="empty-state">No unreachable files found.</td></tr>';
       return;
     }
 
@@ -5556,6 +5560,16 @@
             ariaLabel: "Download " + file.name,
             defaultIcon: "💾",
             hoverIcon: "⬇️",
+          }) +
+          "</td>" +
+          "<td>" +
+          actionIconMarkup({
+            action: "repair-unreachable-file",
+            entryIndex: entryIndex,
+            title: "Repair",
+            ariaLabel: "Repair " + file.name,
+            defaultIcon: "🩹",
+            hoverIcon: "❤️‍🩹",
           }) +
           "</td>" +
           "<td>" +
@@ -7660,6 +7674,40 @@
     }
   };
 
+  const repairUnreachableFile = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const file = findActiveFileByEntryIndex(entryIndex);
+      if (!file || !file.entry) {
+        throw new Error("File not found.");
+      }
+      const result = d64.repairUnreachableDirectoryEntryWithReport(
+        state.image,
+        file.entry,
+      );
+      const statusMessage = result.repaired
+        ? result.mode === "new-sector"
+          ? 'Repaired unreachable file "' +
+            file.name +
+            '" by moving it into a new reachable directory sector.'
+          : 'Repaired unreachable file "' +
+            file.name +
+            '" by moving it into a reachable directory slot.'
+        : 'File "' + file.name + '" is already reachable.';
+      loadImageBytes(
+        result.image,
+        state.sourceName || "disk.d64",
+        statusMessage,
+        {
+          resetDeletedTypeHints: false,
+        },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const reorderDirectoryFiles = function (draggedEntryIndex, targetEntryIndex) {
     if (
       !state.image ||
@@ -8897,15 +8945,45 @@
       state.dropPlacement = "before";
       renderDirectory();
     });
+    unreachableFilesList.addEventListener("click", function (event) {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      if (button.dataset.action === "destroy-unreachable-file") {
+        destroyUnreachableFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "repair-unreachable-file") {
+        repairUnreachableFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "edit-doctor-entry") {
+        openDoctorEntryDialog(button.dataset.entryIndex, {
+          highlightBlockCount: false,
+          returnToDoctor: false,
+        });
+        return;
+      }
+      if (button.dataset.action === "edit-bytes") {
+        openFileDataDialog(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "download-file") {
+        downloadDiskFile(button.dataset.entryIndex);
+        return;
+      }
+      if (
+        button.dataset.action === "toggle-closed" ||
+        button.dataset.action === "toggle-lock"
+      ) {
+        updateFileFlag(button.dataset.action, button.dataset.entryIndex);
+        return;
+      }
+    });
     deletedFilesList.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
       if (button.dataset.action === "destroy-deleted-file") {
         destroyDeletedFile(button.dataset.entryIndex);
-        return;
-      }
-      if (button.dataset.action === "destroy-unreachable-file") {
-        destroyUnreachableFile(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action !== "restore-file") return;

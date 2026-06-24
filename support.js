@@ -1966,6 +1966,160 @@
       .image;
   };
 
+  d64.repairUnreachableDirectoryEntryWithReport = function (
+    image,
+    entryOrIndex,
+    options,
+  ) {
+    const config = options || {};
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const entry =
+      typeof entryOrIndex === "number"
+        ? d64.readDirectoryEntry(bytes, entryOrIndex)
+        : entryOrIndex || null;
+    if (!entry || !entry.typeByte || entry.deleted) {
+      throw new Error("Active directory entry not found.");
+    }
+    const header = d64.readHeader(bytes);
+    const directory = d64.readDirectoryEntriesFrom(
+      bytes,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+      Object.assign({}, config, { includeDeleted: true }),
+    );
+    const reachableIndexes = {};
+    directory.entries.forEach(function (candidate) {
+      reachableIndexes[String(candidate.index)] = true;
+    });
+    if (reachableIndexes[String(entry.index)]) {
+      return {
+        image: bytes,
+        repaired: false,
+        mode: "already-reachable",
+        targetTrack: entry.track,
+        targetSector: entry.sector,
+        targetSlot: entry.slot,
+      };
+    }
+
+    const isAllZeroEntry = function (entryBytes) {
+      for (let index = 0; index < 32; index += 1) {
+        if (entryBytes[index]) return false;
+      }
+      return true;
+    };
+
+    let target = null;
+    directory.sectors.some(function (sectorInfo) {
+      const sectorBytes = d64.readSector(
+        bytes,
+        sectorInfo.track,
+        sectorInfo.sector,
+      );
+      for (let slot = 0; slot < 8; slot += 1) {
+        const offset = slot * 32;
+        const entryBytes = sectorBytes.subarray(offset, offset + 32);
+        if (!isAllZeroEntry(entryBytes)) continue;
+        target = {
+          track: sectorInfo.track,
+          sector: sectorInfo.sector,
+          slot: slot,
+          mode: "slot",
+        };
+        return true;
+      }
+      return false;
+    });
+
+    const freeMap = d64.readFreeMap(bytes);
+    if (!target) {
+      const usedDirectorySectors = directory.sectors.map(function (sectorInfo) {
+        return sectorInfo.sector;
+      });
+      const lastSectorInfo = directory.sectors[directory.sectors.length - 1];
+      const nextSector = d64.findNextDirectoryInterleaveSector(
+        lastSectorInfo ? lastSectorInfo.sector : DIRECTORY_START_SECTOR,
+        usedDirectorySectors,
+      );
+      if (
+        Number.isFinite(Number(nextSector)) &&
+        freeMap[DIRECTORY_TRACK] &&
+        freeMap[DIRECTORY_TRACK][nextSector] === true
+      ) {
+        target = {
+          track: DIRECTORY_TRACK,
+          sector: Math.floor(Number(nextSector)),
+          slot: 0,
+          mode: "new-sector",
+          previousSector: lastSectorInfo ? lastSectorInfo.sector : null,
+        };
+      }
+    }
+
+    if (!target) {
+      throw new Error("No reachable directory slot is available for repair.");
+    }
+
+    let nextImage = bytes.slice();
+    if (target.mode === "new-sector") {
+      const newSectorBytes = new Uint8Array(SECTOR_SIZE);
+      newSectorBytes[0] = 0;
+      newSectorBytes[1] = 255;
+      newSectorBytes.set(entry.raw.slice(0, 32), 0);
+      nextImage.set(
+        newSectorBytes,
+        d64.trackOffset(DIRECTORY_TRACK, target.sector),
+      );
+      const previousSectorBytes = d64
+        .readSector(nextImage, DIRECTORY_TRACK, target.previousSector)
+        .slice();
+      previousSectorBytes[0] = DIRECTORY_TRACK;
+      previousSectorBytes[1] = target.sector;
+      nextImage.set(
+        previousSectorBytes,
+        d64.trackOffset(DIRECTORY_TRACK, target.previousSector),
+      );
+      freeMap[DIRECTORY_TRACK][target.sector] = false;
+      nextImage = d64.writeBamFreeMap(nextImage, freeMap);
+    } else {
+      const targetSectorBytes = d64
+        .readSector(nextImage, target.track, target.sector)
+        .slice();
+      targetSectorBytes.set(entry.raw.slice(0, 32), target.slot * 32);
+      nextImage.set(
+        targetSectorBytes,
+        d64.trackOffset(target.track, target.sector),
+      );
+    }
+
+    const clearedEntry = new Uint8Array(32);
+    nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, clearedEntry);
+    return {
+      image: nextImage,
+      repaired: true,
+      mode: target.mode,
+      targetTrack: target.track,
+      targetSector: target.sector,
+      targetSlot: target.slot,
+      sourceTrack: entry.track,
+      sourceSector: entry.sector,
+      sourceSlot: entry.slot,
+    };
+  };
+
+  d64.repairUnreachableDirectoryEntry = function (
+    image,
+    entryOrIndex,
+    options,
+  ) {
+    return d64.repairUnreachableDirectoryEntryWithReport(
+      image,
+      entryOrIndex,
+      options,
+    ).image;
+  };
+
   d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {
     const target =
       typeof entryOrOptions === "string" ||
