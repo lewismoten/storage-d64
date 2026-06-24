@@ -2089,6 +2089,30 @@
     );
   };
 
+  const readDirectoryRows = function (image) {
+    if (!image) return [];
+    return d64.readDirectoryEntries(image).map(function (entry) {
+      let file = null;
+      let readError = "";
+      try {
+        file = d64.readFile(image, entry);
+      } catch (error) {
+        readError = String(error && error.message ? error.message : error);
+      }
+      return {
+        name: entry.name,
+        type: entry.fileType || "unknown",
+        closed: entry.closed,
+        locked: entry.locked,
+        recordLength: entry.recordLength || undefined,
+        data: file ? file.payload.slice() : new Uint8Array(0),
+        unusedTailData: file ? file.unusedTailData.slice() : new Uint8Array(0),
+        readError: readError,
+        entry: entry,
+      };
+    });
+  };
+
   const updateDownloadLinkState = function () {
     releaseObjectUrl();
     if (!state.image) return;
@@ -5327,7 +5351,7 @@
 
     const header = d64.readHeader(state.image);
     const shellPreset = pickShellColorPreset(header.diskName);
-    const files = d64.readFiles(state.image);
+    const files = readDirectoryRows(state.image);
     const deletedEntries = d64.readDeletedEntries(state.image);
     const usage = d64.estimateImageUsage(files, {
       trackCount: header.trackCount,
