@@ -2195,6 +2195,12 @@
     if (!entry || !entry.typeByte || entry.deleted) {
       throw new Error("Active directory entry not found.");
     }
+    const entryLocationKey =
+      String(Math.max(0, Math.floor(Number(entry.track) || 0))) +
+      ":" +
+      String(Math.max(0, Math.floor(Number(entry.sector) || 0))) +
+      ":" +
+      String(Math.max(0, Math.floor(Number(entry.slot) || 0)));
     const header = d64.readHeader(bytes);
     const directory = d64.readDirectoryEntriesFrom(
       bytes,
@@ -2202,11 +2208,17 @@
       header.nextDirectorySector,
       Object.assign({}, config, { includeDeleted: true }),
     );
-    const reachableIndexes = {};
+    const reachableLocations = {};
     directory.entries.forEach(function (candidate) {
-      reachableIndexes[String(candidate.index)] = true;
+      const locationKey =
+        String(Math.max(0, Math.floor(Number(candidate.track) || 0))) +
+        ":" +
+        String(Math.max(0, Math.floor(Number(candidate.sector) || 0))) +
+        ":" +
+        String(Math.max(0, Math.floor(Number(candidate.slot) || 0)));
+      reachableLocations[locationKey] = true;
     });
-    if (reachableIndexes[String(entry.index)]) {
+    if (reachableLocations[entryLocationKey]) {
       return {
         image: bytes,
         repaired: false,

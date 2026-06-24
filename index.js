@@ -2330,28 +2330,45 @@
     return String(track) + ":" + String(sector) + ":" + String(slot);
   };
 
+  const getPhysicalDirectoryEntryIndex = function (entryLike) {
+    const entry = entryLike && entryLike.entry ? entryLike.entry : entryLike;
+    if (!entry) return -1;
+    const track = Math.max(0, Math.floor(Number(entry.track) || 0));
+    const sector = Math.max(0, Math.floor(Number(entry.sector) || 0));
+    const slot = Math.max(0, Math.floor(Number(entry.slot) || 0));
+    if (track !== 18 || sector < 1 || slot < 0 || slot > 7) {
+      return Math.max(-1, Math.floor(Number(entry.index) || -1));
+    }
+    return (sector - 1) * 8 + slot;
+  };
+
   const buildDirectoryRow = function (image, entry) {
     if (!image || !entry) return null;
+    const normalizedEntry = Object.assign({}, entry, {
+      index: getPhysicalDirectoryEntryIndex(entry),
+    });
     let file = null;
     let readError = "";
     try {
-      file = entry.deleted ? d64.readDeletedFile(image, entry) : d64.readFile(image, entry);
+      file = normalizedEntry.deleted
+        ? d64.readDeletedFile(image, normalizedEntry)
+        : d64.readFile(image, normalizedEntry);
     } catch (error) {
       readError = String(error && error.message ? error.message : error);
     }
     return {
-      name: entry.name,
-      type: entry.deleted
-        ? inferDeletedEntryType(entry)
-        : entry.fileType || "unknown",
-      closed: entry.closed,
-      locked: entry.locked,
-      recordLength: entry.recordLength || undefined,
+      name: normalizedEntry.name,
+      type: normalizedEntry.deleted
+        ? inferDeletedEntryType(normalizedEntry)
+        : normalizedEntry.fileType || "unknown",
+      closed: normalizedEntry.closed,
+      locked: normalizedEntry.locked,
+      recordLength: normalizedEntry.recordLength || undefined,
       data: file ? file.payload.slice() : new Uint8Array(0),
       unusedTailData: file ? file.unusedTailData.slice() : new Uint8Array(0),
       readError: readError,
-      deleted: entry.deleted === true,
-      entry: entry,
+      deleted: normalizedEntry.deleted === true,
+      entry: normalizedEntry,
     };
   };
 
@@ -5541,7 +5558,13 @@
   };
 
   const renderDeletedFiles = function () {
-    const deletedFiles = state.image ? d64.readDeletedEntries(state.image) : [];
+    const deletedFiles = state.image
+      ? d64.readDeletedEntries(state.image).map(function (entry) {
+          return Object.assign({}, entry, {
+            index: getPhysicalDirectoryEntryIndex(entry),
+          });
+        })
+      : [];
     deletedCount.textContent =
       deletedFiles.length.toString() +
       (deletedFiles.length === 1 ? " entry" : " entries");
@@ -8381,17 +8404,7 @@
     if (!state.image) return;
     let entry = null;
     if (config.restoreDeleted) {
-      entry =
-        d64.readDeletedEntries(state.image).find(function (candidate) {
-          return String(candidate.index) === String(entryIndexValue);
-        }) || null;
-      if (!entry) {
-        const fallbackEntry = d64.readDirectoryEntry(state.image, entryIndexValue);
-        if (fallbackEntry && d64.isDeletedDirectoryEntry(fallbackEntry)) {
-          fallbackEntry.deleted = true;
-          entry = fallbackEntry;
-        }
-      }
+      entry = findDeletedEntryByIndex(state.image, entryIndexValue);
     } else {
       entry = d64.readDirectoryEntry(state.image, entryIndexValue);
     }
@@ -8456,6 +8469,27 @@
     validateDoctorEntryDialog();
     renderDoctorEntryBitmask();
     openManagedDialog(doctorEntryDialog);
+  };
+
+  const findDeletedEntryByIndex = function (image, entryIndexValue) {
+    if (!image) return null;
+    const targetIndex = String(
+      Math.max(0, Math.floor(Number(entryIndexValue) || 0)),
+    );
+    let entry =
+      d64.readDeletedEntries(image).find(function (candidate) {
+        return (
+          String(getPhysicalDirectoryEntryIndex(candidate)) === targetIndex
+        );
+      }) || null;
+    if (entry) return entry;
+    const fallbackEntry = d64.readDirectoryEntry(image, targetIndex);
+    if (fallbackEntry && d64.isDeletedDirectoryEntry(fallbackEntry)) {
+      fallbackEntry.deleted = true;
+      fallbackEntry.index = getPhysicalDirectoryEntryIndex(fallbackEntry);
+      return fallbackEntry;
+    }
+    return null;
   };
 
   const closeDoctorEntryDialog = function () {
@@ -8559,9 +8593,7 @@
       };
       const entry =
         context.mode === "restore-deleted"
-          ? d64.readDeletedEntries(state.image).find(function (candidate) {
-              return String(candidate.index) === String(entryIndexValue);
-            }) || null
+          ? findDeletedEntryByIndex(state.image, entryIndexValue)
           : d64.readDirectoryEntry(state.image, entryIndexValue);
       if (!entry || (!entry.typeByte && context.mode !== "restore-deleted")) {
         throw new Error("Directory entry not found.");
@@ -8620,11 +8652,10 @@
           entry,
           nextEntryBytes,
         );
-        const stagedDeletedEntry = d64
-          .readDeletedEntries(stagedImage)
-          .find(function (candidate) {
-            return String(candidate.index) === String(entry.index);
-          });
+        const stagedDeletedEntry = findDeletedEntryByIndex(
+          stagedImage,
+          entry.index,
+        );
         if (!stagedDeletedEntry) {
           throw new Error("Deleted file not found.");
         }
@@ -8638,10 +8669,18 @@
             locked: doctorEntryLocked.checked,
           },
         );
+        const repairedRestore =
+          d64.repairUnreachableDirectoryEntryWithReport(
+            restoredImage,
+            entry.index,
+          );
+        const finalRestoredImage = repairedRestore.image || restoredImage;
         loadImageBytes(
-          restoredImage,
+          finalRestoredImage,
           state.sourceName || "disk.d64",
-          "Restored " +
+          (repairedRestore.repaired
+            ? "Restored and relinked "
+            : "Restored ") +
             nextName +
             " as " +
             nextType.fileType.toUpperCase() +
