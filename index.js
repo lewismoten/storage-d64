@@ -7081,6 +7081,10 @@
       };
       let nextImage = state.image.slice();
       const steps = [];
+      const needsBamRepair =
+        hasIssue("incorrect-bam-free-counts") ||
+        hasIssue("bam-disagrees-used-blocks-marked-free") ||
+        hasIssue("orphaned-allocated-blocks");
 
       if (hasIssue("invalid-disk-name-field")) {
         const start = d64.trackOffset(18, 0) + d64.headerOffsets.diskNameStart;
@@ -7224,15 +7228,6 @@
         }
       }
 
-      if (
-        hasIssue("incorrect-bam-free-counts") ||
-        hasIssue("bam-disagrees-used-blocks-marked-free") ||
-        hasIssue("orphaned-allocated-blocks")
-      ) {
-        nextImage = d64.validateImage(nextImage);
-        steps.push("repaired BAM allocation flags");
-      }
-
       const duplicateIssue = issues.find(function (issue) {
         return issue && issue.code === "duplicate-filenames-repairable";
       });
@@ -7368,14 +7363,15 @@
 
       if (
         hasIssue("damaged-bam-or-header") &&
-        !(
-          hasIssue("incorrect-bam-free-counts") ||
-          hasIssue("bam-disagrees-used-blocks-marked-free") ||
-          hasIssue("orphaned-allocated-blocks")
-        )
+        !needsBamRepair
       ) {
         nextImage = d64.validateImage(nextImage);
         steps.push("rebuilt BAM");
+      }
+
+      if (needsBamRepair) {
+        nextImage = d64.validateImage(nextImage);
+        steps.push("repaired BAM allocation flags");
       }
 
       loadImageBytes(
