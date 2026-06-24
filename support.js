@@ -3763,6 +3763,9 @@
           {
             fileName: entry.name,
             entryIndex: entry.index,
+            track: entry.track,
+            sector: entry.sector,
+            slot: entry.slot,
             items: [
               formatTs(entry.track, entry.sector) +
                 " slot " +
@@ -3794,6 +3797,9 @@
           {
             fileName: entry.name,
             entryIndex: entry.index,
+            track: entry.track,
+            sector: entry.sector,
+            slot: entry.slot,
             items: [
               formatTs(entry.track, entry.sector) +
                 " slot " +

@@ -7117,6 +7117,37 @@
     }
   };
 
+  const removeDoctorEntry = function (entryIndex) {
+    if (!state.image) return;
+    try {
+      const normalizedEntryIndex = Math.max(
+        0,
+        Math.floor(Number(entryIndex) || 0),
+      );
+      const entry = d64.readDirectoryEntry(state.image, normalizedEntryIndex);
+      if (!entry || !entry.typeByte || entry.deleted) {
+        setStatus("No directory entry was available to remove.");
+        return;
+      }
+      const entryBytes = entry.raw.slice();
+      entryBytes[2] = 0x00;
+      const nextImage = d64.writeDirectoryEntryBytes(
+        state.image,
+        entry,
+        entryBytes,
+      );
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        'Marked "' + String(entry.name || "file") + '" as DEL.',
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const autoRepairDoctorIssues = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -7589,6 +7620,11 @@
           '">' +
           "View" +
           "</button>" +
+          '<button type="button" class="file-type-button" data-action="remove-doctor-entry" data-entry-index="' +
+          escapeHtml(String(issue.entryIndex != null ? issue.entryIndex : "")) +
+          '">' +
+          "Remove" +
+          "</button>" +
           "</div>"
         );
       }
@@ -7993,6 +8029,46 @@
                   );
                 })
                 .join("")
+            : issue.code === "malformed-directory-entry" &&
+                Number.isFinite(Number(issue.entryIndex))
+            ? (function () {
+                const entryIndex = Math.max(
+                  0,
+                  Math.floor(Number(issue.entryIndex) || 0),
+                );
+                const sector = Math.max(
+                  0,
+                  Math.floor(Number(issue.sector) || 0),
+                );
+                const slot = Math.max(
+                  0,
+                  Math.floor(Number(issue.slot) || 0),
+                );
+                const track = Math.max(
+                  0,
+                  Math.floor(Number(issue.track) || 0),
+                );
+                return (
+                  '<li class="doctor-invalid-file-type-item">' +
+                  '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                  encodeHtmlAttribute(String(issueIndex)) +
+                  '" data-track="' +
+                  encodeHtmlAttribute(String(track)) +
+                  '" data-sector="' +
+                  encodeHtmlAttribute(String(sector)) +
+                  '">' +
+                  escapeHtml("T" + String(track) + " S" + String(sector)) +
+                  "</button> " +
+                  '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+                  encodeHtmlAttribute(String(entryIndex)) +
+                  '" data-issue-index="' +
+                  encodeHtmlAttribute(String(issueIndex)) +
+                  '">' +
+                  escapeHtml("Slot " + String(slot)) +
+                  "</button>" +
+                  "</li>"
+                );
+              })()
             : Array.isArray(issue.items)
               ? issue.items
                   .map(function (item) {
@@ -9509,6 +9585,10 @@
       }
       if (button.dataset.action === "remove-doctor-cross-linked-entry") {
         removeDoctorCrossLinkedEntry(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "remove-doctor-entry") {
+        removeDoctorEntry(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action === "repair-doctor-reserved-track") {
