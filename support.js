@@ -1937,9 +1937,9 @@
       );
     }
 
-    const deletedFile = d64.readDeletedFile(image, entry);
+    const inferredDeletedType = entry.sideSectorTrack ? "rel" : "prg";
     const targetRefs = d64.collectFileSectorRefsBestEffort(image, entry, {
-      restoredType: deletedFile.fileType,
+      restoredType: inferredDeletedType,
     });
     const bytes =
       image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
