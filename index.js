@@ -276,6 +276,7 @@
     "analyzeReservedTrackFileRepair",
     "analyzeCrossLinkedFileSectorRepair",
     "repairCrossLinkedFileSectorsWithReport",
+    "repairBamHeaderSectorFileReferenceWithReport",
     "repairReservedTrackFileWithReport",
     "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
@@ -6892,15 +6893,42 @@
       loadImageBytes(
         result.image,
         state.sourceName || "disk.d64",
-        result.movedCount
-          ? 'Moved ' +
-              String(result.movedCount) +
-              ' reserved sector' +
-              (result.movedCount === 1 ? '' : 's') +
-              ' for "' +
+        result.mode === "cleared-entry"
+          ? 'Removed invalid directory entry "' +
               String(result.fileName || "file") +
-              '" off track 18.'
-          : 'No reserved-track sectors needed repair.',
+              '" because it started on track 18.'
+          : result.mode === "truncated-before-track-18"
+            ? 'Truncated "' +
+                String(result.fileName || "file") +
+                '" before its first track-18 sector.'
+            : 'No reserved-track sectors needed repair.',
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const repairDoctorBamHeaderFileReference = function (entryIndex) {
+    if (!state.image || entryIndex == null) return;
+    try {
+      const result = d64.repairBamHeaderSectorFileReferenceWithReport(
+        state.image,
+        Number(entryIndex),
+      );
+      loadImageBytes(
+        result.image,
+        state.sourceName || "disk.d64",
+        result.mode === "cleared-entry"
+          ? 'Removed invalid directory entry "' +
+              String(result.fileName || "file") +
+              '" because it started in T18 S0.'
+          : result.mode === "truncated-before-bam"
+            ? 'Truncated "' +
+                String(result.fileName || "file") +
+                '" before T18 S0.'
+            : "No BAM/header-sector repair was needed.",
         { resetDeletedTypeHints: false },
       );
       refreshDoctorReportAfterImageChange();
@@ -6920,6 +6948,32 @@
         disabledReason: error.message || String(error),
       };
     }
+  };
+
+  const getCrossLinkedRemovalTargets = function (source) {
+    const targets = [];
+    const seen = {};
+    const conflicts = Array.isArray(source && source.conflicts)
+      ? source.conflicts
+      : [];
+    conflicts.forEach(function (conflict) {
+      const owners = Array.isArray(conflict && conflict.owners)
+        ? conflict.owners
+        : [];
+      owners.slice(1).forEach(function (owner) {
+        const entryIndex = Math.max(
+          0,
+          Math.floor(Number(owner && owner.entryIndex) || 0),
+        );
+        if (seen[entryIndex]) return;
+        seen[entryIndex] = true;
+        targets.push({
+          entryIndex: entryIndex,
+          fileName: owner && owner.fileName ? owner.fileName : "",
+        });
+      });
+    });
+    return targets;
   };
 
   const repairDoctorCrossLinkedFileSectors = function () {
@@ -6948,6 +7002,51 @@
                   " at the last readable sector."
                 : "")
           : "No cross-linked file sectors needed repair.",
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const removeDoctorCrossLinkedEntries = function () {
+    if (!state.image) return;
+    try {
+      const issue =
+        state.doctorReport &&
+        Array.isArray(state.doctorReport.issues) &&
+        state.doctorReport.issues.find(function (candidate) {
+          return candidate && candidate.code === "cross-linked-file-sectors";
+        });
+      const targets = getCrossLinkedRemovalTargets(issue);
+      if (!targets.length) {
+        setStatus("No later conflicting directory entries were available to remove.");
+        return;
+      }
+      let nextImage = state.image.slice();
+      let removedCount = 0;
+      targets.forEach(function (candidate) {
+        const entryIndex = Math.max(
+          0,
+          Math.floor(Number(candidate && candidate.entryIndex) || 0),
+        );
+        const entry = d64.readDirectoryEntry(nextImage, entryIndex);
+        if (!entry || !entry.typeByte || entry.deleted) return;
+        const entryBytes = entry.raw.slice();
+        entryBytes[2] = 0x00;
+        nextImage = d64.writeDirectoryEntryBytes(nextImage, entry, entryBytes);
+        removedCount += 1;
+      });
+      loadImageBytes(
+        nextImage,
+        state.sourceName || "disk.d64",
+        removedCount
+          ? "Marked " +
+              String(removedCount) +
+              " later cross-linked entr" +
+              (removedCount === 1 ? "y as DEL." : "ies as DEL.")
+          : "No later conflicting directory entries could be removed.",
         { resetDeletedTypeHints: false },
       );
       refreshDoctorReportAfterImageChange();
@@ -7177,7 +7276,7 @@
       });
       if (reservedTrackIssues.length) {
         const repairedEntries = {};
-        let movedCount = 0;
+        let repairedCount = 0;
         reservedTrackIssues.forEach(function (issue) {
           const entryIndex = Math.max(
             0,
@@ -7192,15 +7291,48 @@
             entryIndex,
           );
           nextImage = result.image;
-          movedCount += Math.max(0, Number(result.movedCount) || 0);
+          if (result.repaired) {
+            repairedCount += 1;
+          }
         });
-        if (movedCount) {
+        if (repairedCount) {
           steps.push(
-            "moved " +
-              String(movedCount) +
-              " reserved sector" +
-              (movedCount === 1 ? "" : "s") +
-              " off track 18",
+            "removed or truncated " +
+              String(repairedCount) +
+              " track-18-linked file entr" +
+              (repairedCount === 1 ? "y" : "ies"),
+          );
+        }
+      }
+
+      const bamHeaderIssues = issues.filter(function (issue) {
+        return issue && issue.code === "file-uses-bam-header-sector";
+      });
+      if (bamHeaderIssues.length) {
+        const repairedEntries = {};
+        let repairedCount = 0;
+        bamHeaderIssues.forEach(function (issue) {
+          const entryIndex = Math.max(
+            0,
+            Math.floor(Number(issue && issue.entryIndex) || 0),
+          );
+          if (repairedEntries[entryIndex]) return;
+          repairedEntries[entryIndex] = true;
+          const result = d64.repairBamHeaderSectorFileReferenceWithReport(
+            nextImage,
+            entryIndex,
+          );
+          nextImage = result.image;
+          if (result.repaired) {
+            repairedCount += 1;
+          }
+        });
+        if (repairedCount) {
+          steps.push(
+            "removed or truncated " +
+              String(repairedCount) +
+              " BAM/header-linked file entr" +
+              (repairedCount === 1 ? "y" : "ies"),
           );
         }
       }
@@ -7273,6 +7405,7 @@
       "directory-block-count-mismatch": true,
       "duplicate-filenames-repairable": true,
       "file-uses-reserved-track-18": true,
+      "file-uses-bam-header-sector": true,
       "cross-linked-file-sectors": true,
     };
     const autoRepairIssues = diagnosis.issues.filter(function (issue) {
@@ -7415,8 +7548,20 @@
           "</div>"
         );
       }
+      if (issue.code === "file-uses-bam-header-sector") {
+        return (
+          '<div class="doctor-issue-actions">' +
+          '<button type="button" class="file-type-button" data-action="repair-doctor-bam-header-file" data-entry-index="' +
+          encodeHtmlAttribute(String(Number(issue.entryIndex) || 0)) +
+          '">' +
+          "Repair" +
+          "</button>" +
+          "</div>"
+        );
+      }
       if (issue.code === "cross-linked-file-sectors") {
         const plan = getCrossLinkedFileSectorRepairPlan();
+        const removalTargets = getCrossLinkedRemovalTargets(issue);
         const disabledReason =
           plan && !plan.repairable
             ? String(
@@ -7432,11 +7577,20 @@
           ">" +
           "Repair" +
           "</button>";
+        const removeButtonMarkup =
+          removalTargets.length
+            ? '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entries">' +
+              (removalTargets.length === 1
+                ? "Remove Entry"
+                : "Remove Entries") +
+              "</button>"
+            : "";
         return (
           '<div class="doctor-issue-actions">' +
           (disabledReason
             ? renderDisabledDoctorAction(buttonMarkup, disabledReason)
             : buttonMarkup) +
+          removeButtonMarkup +
           "</div>"
         );
       }
@@ -9129,8 +9283,16 @@
         truncateCircularDoctorFile(button.dataset.entryIndex);
         return;
       }
+      if (button.dataset.action === "repair-doctor-bam-header-file") {
+        repairDoctorBamHeaderFileReference(button.dataset.entryIndex);
+        return;
+      }
       if (button.dataset.action === "repair-doctor-cross-linked-sectors") {
         repairDoctorCrossLinkedFileSectors();
+        return;
+      }
+      if (button.dataset.action === "remove-doctor-cross-linked-entries") {
+        removeDoctorCrossLinkedEntries();
         return;
       }
       if (button.dataset.action === "repair-doctor-reserved-track") {

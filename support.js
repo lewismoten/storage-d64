@@ -2347,98 +2347,30 @@
     if (!entry || !entry.typeByte || entry.deleted) {
       throw new Error("Active file not found: " + String(entryOrName || ""));
     }
-
-    const isAllZeroSector = function (block) {
-      for (let index = 0; index < SECTOR_SIZE; index += 1) {
-        if (block[index]) return false;
-      }
-      return true;
-    };
-
-    const header = d64.readHeader(bytes);
-    const geometry = d64.describeGeometry(bytes);
-    const directory = d64.readDirectoryEntriesFrom(
-      bytes,
-      header.nextDirectoryTrack,
-      header.nextDirectorySector,
-      Object.assign({}, config, { includeDeleted: true }),
-    );
-    const reservedOwners = {};
-    reservedOwners[String(DIRECTORY_TRACK) + ":" + String(BAM_SECTOR)] =
-      "BAM/header sector";
-    directory.sectors.forEach(function (sectorInfo) {
-      reservedOwners[String(sectorInfo.track) + ":" + String(sectorInfo.sector)] =
-        "live directory sector";
-    });
-
-    const chain = d64.collectFileSectorRefsBestEffort(bytes, entry, config);
+    const chain = d64.collectRawFileSectorRefsBestEffort(bytes, entry);
     const reservedRefs = chain.refs.filter(function (ref) {
       return ref.track === DIRECTORY_TRACK;
-    });
-    const movableRefs = [];
-    const blockedRefs = [];
-    reservedRefs.forEach(function (ref) {
-      const key = String(ref.track) + ":" + String(ref.sector);
-      const owner = reservedOwners[key];
-      if (owner) {
-        blockedRefs.push({
-          track: ref.track,
-          sector: ref.sector,
-          reason: owner,
-        });
-        return;
-      }
-      movableRefs.push({
-        track: ref.track,
-        sector: ref.sector,
-      });
-    });
-
-    const freeMap = d64.readFreeMap(bytes);
-    const availableTargets = [];
-    const trackOrder = d64.centerOutTrackOrder(geometry.trackCount);
-    trackOrder.forEach(function (track) {
-      if (track === DIRECTORY_TRACK) return;
-      const sectorCount = d64.trackSectorCount(track);
-      for (let sector = 0; sector < sectorCount; sector += 1) {
-        if (!freeMap[track] || freeMap[track][sector] !== true) continue;
-        const block = d64.readSector(bytes, track, sector);
-        if (!isAllZeroSector(block)) continue;
-        availableTargets.push({ track: track, sector: sector });
-      }
     });
 
     let disabledReason = "";
     if (!reservedRefs.length) {
       disabledReason = "This file does not currently use the reserved directory track.";
-    } else if (blockedRefs.length) {
-      disabledReason =
-        "One or more reserved sectors belong to the live directory/BAM and can not be moved automatically.";
-    } else if (availableTargets.length < movableRefs.length) {
-      disabledReason =
-        "Not enough free all-zero sectors are available outside track 18 (" +
-        String(movableRefs.length) +
-        " needed, " +
-        String(availableTargets.length) +
-        " available).";
     }
+    const firstReservedIndex = reservedRefs.length
+      ? chain.refs.findIndex(function (ref) {
+          return ref.track === DIRECTORY_TRACK;
+        })
+      : -1;
 
     return {
       entry: entry,
       entryIndex: entry.index,
       fileName: entry.name,
       reservedRefs: reservedRefs,
-      movableRefs: movableRefs,
-      blockedRefs: blockedRefs,
-      requiredSectorCount: movableRefs.length,
-      availableSectorCount: availableTargets.length,
-      targetRefs: availableTargets.slice(0, movableRefs.length),
+      firstReservedIndex: firstReservedIndex,
       partial: Boolean(chain.partial),
       stoppedReason: String(chain.stoppedReason || ""),
-      repairable:
-        !disabledReason &&
-        movableRefs.length > 0 &&
-        availableTargets.length >= movableRefs.length,
+      repairable: !disabledReason && reservedRefs.length > 0,
       disabledReason: disabledReason,
       chainRefs: chain.refs,
     };
@@ -2457,71 +2389,42 @@
         plan.disabledReason || "Reserved-track repair is not available.",
       );
     }
-
-    const nextImage = bytes.slice();
-    const freeMap = d64.readFreeMap(nextImage);
-    const mapping = {};
-    plan.movableRefs.forEach(function (ref, index) {
-      const target = plan.targetRefs[index];
-      mapping[String(ref.track) + ":" + String(ref.sector)] = {
-        track: target.track,
-        sector: target.sector,
+    const firstReservedIndex = Math.max(
+      0,
+      Math.floor(Number(plan.firstReservedIndex) || 0),
+    );
+    if (firstReservedIndex === 0) {
+      const clearedEntry = new Uint8Array(32);
+      return {
+        image: d64.writeDirectoryEntryBytes(bytes, plan.entry, clearedEntry),
+        repaired: true,
+        mode: "cleared-entry",
+        entryIndex: plan.entryIndex,
+        fileName: plan.fileName,
+        partial: plan.partial,
+        stoppedReason: plan.stoppedReason,
       };
-    });
-
-    plan.chainRefs.forEach(function (ref, index) {
-      const sourceKey = String(ref.track) + ":" + String(ref.sector);
-      const targetRef = mapping[sourceKey] || ref;
-      const block = d64.readSector(bytes, ref.track, ref.sector).slice();
-      if (index < plan.chainRefs.length - 1) {
-        const nextRef = plan.chainRefs[index + 1];
-        const nextTarget =
-          mapping[String(nextRef.track) + ":" + String(nextRef.sector)] ||
-          nextRef;
-        block[0] = nextTarget.track;
-        block[1] = nextTarget.sector;
-      }
-      nextImage.set(block, d64.trackOffset(targetRef.track, targetRef.sector));
-      if (mapping[sourceKey]) {
-        freeMap[targetRef.track][targetRef.sector] = false;
-      }
-    });
-
-    const firstRef = plan.chainRefs[0];
-    const movedFirstRef =
-      firstRef &&
-      mapping[String(firstRef.track) + ":" + String(firstRef.sector)];
-    let withUpdatedEntry = nextImage;
-    if (movedFirstRef) {
-      const entryBytes = plan.entry.raw.slice();
-      entryBytes[3] = movedFirstRef.track;
-      entryBytes[4] = movedFirstRef.sector;
-      withUpdatedEntry = d64.writeDirectoryEntryBytes(
-        withUpdatedEntry,
-        plan.entry,
-        entryBytes,
-      );
     }
 
-    plan.movableRefs.forEach(function (ref) {
-      withUpdatedEntry.fill(
-        0,
-        d64.trackOffset(ref.track, ref.sector),
-        d64.trackOffset(ref.track, ref.sector) + SECTOR_SIZE,
-      );
-      if (freeMap[ref.track] && freeMap[ref.track][ref.sector] != null) {
-        freeMap[ref.track][ref.sector] = true;
-      }
-    });
+    const previousRef = plan.chainRefs[firstReservedIndex - 1];
+    const previousBlock = d64
+      .readSector(bytes, previousRef.track, previousRef.sector)
+      .slice();
+    previousBlock[0] = 0;
+    previousBlock[1] = 255;
+    bytes.set(
+      previousBlock,
+      d64.trackOffset(previousRef.track, previousRef.sector),
+    );
 
     return {
-      image: d64.writeBamFreeMap(withUpdatedEntry, freeMap),
+      image: bytes,
       repaired: true,
-      movedCount: plan.movableRefs.length,
-      movedFrom: plan.movableRefs.slice(),
-      movedTo: plan.targetRefs.slice(0, plan.movableRefs.length),
+      mode: "truncated-before-track-18",
       entryIndex: plan.entryIndex,
       fileName: plan.fileName,
+      track: previousRef.track,
+      sector: previousRef.sector,
       partial: plan.partial,
       stoppedReason: plan.stoppedReason,
     };
@@ -2763,6 +2666,82 @@
 
   d64.repairCrossLinkedFileSectors = function (image, options) {
     return d64.repairCrossLinkedFileSectorsWithReport(image, options).image;
+  };
+
+  d64.repairBamHeaderSectorFileReferenceWithReport = function (
+    image,
+    entryOrName,
+    options,
+  ) {
+    const config = options || {};
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const entry =
+      typeof entryOrName === "string"
+        ? d64.findDirectoryEntryByName(bytes, entryOrName, config)
+        : typeof entryOrName === "number"
+          ? d64.readDirectoryEntry(bytes, entryOrName)
+          : entryOrName || null;
+    if (!entry || !entry.typeByte || entry.deleted) {
+      throw new Error("Active file not found: " + String(entryOrName || ""));
+    }
+
+    const chain = d64.collectRawFileSectorRefsBestEffort(bytes, entry);
+    const bamIndex = chain.refs.findIndex(function (ref) {
+      return ref.track === DIRECTORY_TRACK && ref.sector === BAM_SECTOR;
+    });
+    if (bamIndex === -1) {
+      return {
+        image: bytes,
+        repaired: false,
+        mode: "not-found",
+        entryIndex: entry.index,
+        fileName: entry.name,
+      };
+    }
+
+    if (bamIndex === 0) {
+      const clearedEntry = new Uint8Array(32);
+      return {
+        image: d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry),
+        repaired: true,
+        mode: "cleared-entry",
+        entryIndex: entry.index,
+        fileName: entry.name,
+      };
+    }
+
+    const previousRef = chain.refs[bamIndex - 1];
+    const previousBlock = d64
+      .readSector(bytes, previousRef.track, previousRef.sector)
+      .slice();
+    previousBlock[0] = 0;
+    previousBlock[1] = 255;
+    bytes.set(
+      previousBlock,
+      d64.trackOffset(previousRef.track, previousRef.sector),
+    );
+    return {
+      image: bytes,
+      repaired: true,
+      mode: "truncated-before-bam",
+      entryIndex: entry.index,
+      fileName: entry.name,
+      track: previousRef.track,
+      sector: previousRef.sector,
+    };
+  };
+
+  d64.repairBamHeaderSectorFileReference = function (
+    image,
+    entryOrName,
+    options,
+  ) {
+    return d64.repairBamHeaderSectorFileReferenceWithReport(
+      image,
+      entryOrName,
+      options,
+    ).image;
   };
 
   d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {
@@ -3114,10 +3093,10 @@
         return result;
       }
       while (track) {
-        if (!isValidPointer(track, sector, false)) {
-          addIssue(
-            "repairable",
-            "invalid-file-pointer",
+      if (!isValidPointer(track, sector, false)) {
+        addIssue(
+          "repairable",
+          "invalid-file-pointer",
             labelPrefix + " points outside the image geometry.",
             {
               fileName: entry.name,
@@ -3126,7 +3105,25 @@
           );
           break;
         }
-        if (track === DIRECTORY_TRACK) {
+        if (track === DIRECTORY_TRACK && sector === BAM_SECTOR) {
+          addIssue(
+            "repairable",
+            "file-uses-bam-header-sector",
+            result.refs.length === 0
+              ? labelPrefix + " starts in the live BAM/header sector."
+              : labelPrefix + " crosses into the live BAM/header sector.",
+            {
+              fileName: entry.name,
+              entryIndex: entry.index,
+              details:
+                result.refs.length === 0
+                  ? "T18 S0 is the live BAM/header sector and can not safely be treated as file data."
+                  : "T18 S0 is the live BAM/header sector and the chain must be cut before it.",
+              items: [formatTs(track, sector)],
+            },
+          );
+        }
+        if (track === DIRECTORY_TRACK && sector !== BAM_SECTOR) {
           addIssue(
             "repairable",
             "file-uses-reserved-track-18",
@@ -3724,12 +3721,14 @@
 
     const malformedDirectoryEntries = [];
     const activeRefs = {};
+    const activeRefOwners = {};
     const expectedUsed = {};
     expectedUsed[makeKey(DIRECTORY_TRACK, BAM_SECTOR)] = "bam";
     directory.sectors.forEach(function (sectorInfo) {
       expectedUsed[makeKey(sectorInfo.track, sectorInfo.sector)] = "directory";
     });
     const sharedActiveRefs = [];
+    const sharedActiveConflicts = [];
     const slackFiles = [];
     const relProblems = [];
 
@@ -3873,8 +3872,24 @@
               " and " +
               entry.name,
           );
+          const owners = (activeRefOwners[key] || []).slice();
+          owners.push({
+            entryIndex: entry.index,
+            fileName: entry.name,
+          });
+          sharedActiveConflicts.push({
+            track: ref.track,
+            sector: ref.sector,
+            owners: owners,
+          });
         } else {
           activeRefs[key] = entry.name;
+          activeRefOwners[key] = [
+            {
+              entryIndex: entry.index,
+              fileName: entry.name,
+            },
+          ];
         }
       });
     });
@@ -3906,6 +3921,7 @@
         "Some file sectors are referenced by more than one active file.",
         {
           items: listUnique(sharedActiveRefs),
+          conflicts: sharedActiveConflicts,
         },
       );
     }
