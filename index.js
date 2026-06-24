@@ -7039,6 +7039,15 @@
       if (!file || !file.entry) {
         throw new Error("File not found.");
       }
+      if (file.locked) {
+        setStatus(
+          'Protected file "' +
+            file.name +
+            '" can not be deleted until it is unlocked.',
+          true,
+        );
+        return;
+      }
       state.deletedTypeHints[file.entry.index] = String(file.type || "")
         .trim()
         .toLowerCase();
