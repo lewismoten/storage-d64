@@ -7789,9 +7789,7 @@
             ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
             : "";
         const renderLinkedDoctorText = function (value) {
-          return issue.code === "directory-block-count-mismatch"
-            ? escapeHtml(String(value || ""))
-            : renderDoctorTextWithSectorLinks(String(value || ""), issueIndex);
+          return renderDoctorTextWithSectorLinks(String(value || ""), issueIndex);
         };
         const hasSectorItemGrid = isDoctorSectorItemList(issue.items);
         const shouldCollapseSectorItems =
@@ -7799,8 +7797,48 @@
           Array.isArray(issue.items) &&
           issue.items.length > 18;
         const items =
-          issue.code === "cross-linked-file-sectors" &&
-          Array.isArray(issue.conflicts)
+          issue.code === "directory-block-count-mismatch" &&
+            Array.isArray(issue.items)
+            ? issue.items
+                .map(function (item) {
+                  const track = Math.max(
+                    0,
+                    Math.floor(Number(item && item.track) || 0),
+                  );
+                  const sector = Math.max(
+                    0,
+                    Math.floor(Number(item && item.sector) || 0),
+                  );
+                  const slot = Math.max(
+                    0,
+                    Math.floor(Number(item && item.slot) || 0),
+                  );
+                  const entryIndex = Math.max(
+                    0,
+                    Math.floor(Number(item && item.entryIndex) || 0),
+                  );
+                  return (
+                    '<li class="doctor-invalid-file-type-item">' +
+                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                    encodeHtmlAttribute(String(issueIndex)) +
+                    '" data-track="' +
+                    encodeHtmlAttribute(String(track)) +
+                    '" data-sector="' +
+                    encodeHtmlAttribute(String(sector)) +
+                    '">' +
+                    escapeHtml("T" + String(track) + " S" + String(sector)) +
+                    "</button> " +
+                    '<button type="button" class="doctor-sector-link" data-action="edit-doctor-entry" data-entry-index="' +
+                    encodeHtmlAttribute(String(entryIndex)) +
+                    '">' +
+                    escapeHtml("Slot " + String(slot)) +
+                    "</button>" +
+                    "</li>"
+                  );
+                })
+                .join("")
+            : issue.code === "cross-linked-file-sectors" &&
+                Array.isArray(issue.conflicts)
             ? issue.conflicts
                 .map(function (conflict) {
                   const track = Math.max(

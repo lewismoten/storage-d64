@@ -3986,9 +3986,12 @@
               String(fileChain.refs.length) +
               ".",
             items: [
-              formatTs(entry.track, entry.sector) +
-                " slot " +
-                String(entry.slot),
+              {
+                track: entry.track,
+                sector: entry.sector,
+                slot: entry.slot,
+                entryIndex: entry.index,
+              },
             ],
             sectorHighlights: [
               {
