@@ -21,6 +21,8 @@
     doctorEntryContext: null,
     bamDialogContext: null,
     bamDialogDraft: null,
+    bamHoverTrack: null,
+    bamHoverSector: null,
   };
 
   const createForm = document.getElementById("create-form");
@@ -195,6 +197,8 @@
   const bamDialogName = document.getElementById("bam-dialog-name");
   const bamGrid = document.getElementById("bam-grid");
   const bamTooltip = document.getElementById("bam-tooltip");
+  const bamBitmaskButton = document.getElementById("bam-bitmask-button");
+  const bamBitmask = document.getElementById("bam-bitmask");
   const bamCancel = document.getElementById("bam-cancel");
   const sectorDataDialog = document.getElementById("sector-data-dialog");
   const sectorDataDialogTitle = document.getElementById(
@@ -683,73 +687,218 @@
     return mismatches;
   };
 
+  const getBamRelevantDoctorIssues = function () {
+    return (
+      (state.doctorReport && Array.isArray(state.doctorReport.issues)
+        ? state.doctorReport.issues
+        : []
+      ).filter(function (issue) {
+        return (
+          issue &&
+          (issue.code === "incorrect-bam-free-counts" ||
+            issue.code === "bam-disagrees-used-blocks-marked-free" ||
+            issue.code === "orphaned-allocated-blocks")
+        );
+      }) || []
+    );
+  };
+
   const getBamLegendMarkup = function () {
     return [
       '<span class="bam-legend-item"><span class="bam-legend-swatch is-free"></span>Free</span>',
       '<span class="bam-legend-item"><span class="bam-legend-swatch is-used"></span>Used</span>',
-      '<span class="bam-legend-item"><span class="bam-legend-swatch is-problem"></span>Problem</span>',
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-active"></span>Active</span>',
+      '<span class="bam-legend-item"><span class="bam-legend-swatch is-unreachable"></span>Unreachable</span>',
       '<span class="bam-legend-item"><span class="bam-legend-swatch is-untracked"></span>Invalid</span>',
     ].join("");
+  };
+
+  const buildBamSectorPreview = function () {
+    if (!state.image || !state.bamDialogDraft) return null;
+    const previewImage = d64.writeBamFreeMap(state.image, state.bamDialogDraft);
+    const sectorBytes = d64.readSector(previewImage, 18, 0);
+    const bamStart = d64.headerOffsets.bamStart;
+    const bamEnd = bamStart + 35 * 4;
+    return sectorBytes.subarray(bamStart, bamEnd);
+  };
+
+  const renderBamBitmask = function () {
+    if (!bamBitmask || !bamBitmaskButton) return;
+    const bytes = buildBamSectorPreview();
+    if (!bytes || !bytes.length) {
+      bamBitmask.innerHTML = "";
+      bamBitmaskButton.disabled = true;
+      return;
+    }
+    bamBitmaskButton.disabled = false;
+    bamBitmask.setAttribute("viewBox", "0 0 " + String(bytes.length) + " 8");
+    const zones = [];
+    const zeroColumns = [];
+    const pixels = [];
+    for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
+      const role = "bam";
+      const value = Number(bytes[byteIndex]) || 0;
+      zones.push(
+        '<rect class="bam-bitmask-zone is-' +
+          role +
+          '" x="' +
+          String(byteIndex) +
+          '" y="0" width="1" height="8"></rect>',
+      );
+      if (value === 0) {
+        zeroColumns.push(
+          '<rect class="bam-bitmask-zero-column" x="' +
+            String(byteIndex) +
+            '" y="0" width="1" height="8"></rect>',
+        );
+      }
+      for (let bit = 0; bit < 8; bit += 1) {
+        if (((value >> bit) & 1) === 0) continue;
+        pixels.push(
+          '<rect class="bam-bitmask-pixel is-' +
+            role +
+            '" x="' +
+            String(byteIndex) +
+            '" y="' +
+            String(bit) +
+            '" width="1" height="1"></rect>',
+        );
+      }
+    }
+    bamBitmask.innerHTML =
+      zones.join("") + zeroColumns.join("") + pixels.join("");
+  };
+
+  const setBamGridHover = function (track, sector) {
+    state.bamHoverTrack =
+      track == null ? null : Math.max(1, Math.floor(Number(track) || 0));
+    state.bamHoverSector =
+      sector == null ? null : Math.max(0, Math.floor(Number(sector) || 0));
+    if (!bamGrid) return;
+    bamGrid.querySelectorAll(".is-hovered").forEach(function (node) {
+      node.classList.remove("is-hovered");
+    });
+    if (state.bamHoverTrack == null || state.bamHoverSector == null) return;
+    const selectors = [
+      '[data-track="' +
+        String(state.bamHoverTrack) +
+        '"][data-sector="' +
+        String(state.bamHoverSector) +
+        '"]',
+      '[data-track-header="' + String(state.bamHoverTrack) + '"]',
+      '[data-sector-header="' + String(state.bamHoverSector) + '"]',
+      '[data-freecount-track="' + String(state.bamHoverTrack) + '"]',
+    ];
+    selectors.forEach(function (selector) {
+      bamGrid.querySelectorAll(selector).forEach(function (node) {
+        node.classList.add("is-hovered");
+      });
+    });
   };
 
   const getBamCellIssueInfo = function (track, sector) {
     if (!state.image || !state.bamDialogDraft) return "";
     const key = String(track) + ":" + String(sector);
-    const issue = findDoctorIssueByIndex(
+    const draftValue =
+      state.bamDialogDraft[track] && state.bamDialogDraft[track][sector];
+    const relevantIssues = getBamRelevantDoctorIssues();
+    const selectedIssue = findDoctorIssueByIndex(
       Number(
         state.bamDialogContext && state.bamDialogContext.issueIndex != null
           ? state.bamDialogContext.issueIndex
           : -1,
       ),
     );
-    const trackMismatches = extractDoctorTrackMismatchMap(issue);
-    const draftValue =
-      state.bamDialogDraft[track] && state.bamDialogDraft[track][sector];
+    const concerns = [];
+    let issueClass = "";
+    let hasTrackWarning = false;
+    let isCurrentReview = false;
+    relevantIssues.forEach(function (issue) {
+      if (!issue) return;
+      if (issue.code === "bam-disagrees-used-blocks-marked-free") {
+        const issueKeys = extractDoctorSectorKeys(issue);
+        if (issueKeys[key] && draftValue === true) {
+          concerns.push({
+            code: issue.code,
+            detail:
+              "This sector is claimed by the directory or an active file chain, but the BAM still marks it free.",
+            className: "is-problem-free",
+          });
+        }
+      } else if (issue.code === "orphaned-allocated-blocks") {
+        const issueKeys = extractDoctorSectorKeys(issue);
+        if (issueKeys[key] && draftValue === false) {
+          concerns.push({
+            code: issue.code,
+            detail:
+              "The BAM marks this sector used, but no reachable active file or directory structure claims it.",
+            className: "is-problem-used",
+          });
+        }
+      } else if (issue.code === "incorrect-bam-free-counts") {
+        const trackMismatches = extractDoctorTrackMismatchMap(issue);
+        if (trackMismatches[track]) {
+          hasTrackWarning = true;
+          concerns.push({
+            code: issue.code,
+            detail:
+              "Track " +
+              String(track) +
+              " has a free-count mismatch. BAM says " +
+              String(trackMismatches[track].bamFreeCount) +
+              ", but the bitmap currently contains " +
+              String(trackMismatches[track].bitFreeCount) +
+              " free sectors.",
+            className:
+              draftValue === true ? "is-problem-free" : "is-problem-used",
+          });
+        }
+      }
+    });
+    if (concerns.length) {
+      issueClass = concerns[0].className;
+    }
+    if (selectedIssue) {
+      if (selectedIssue.code === "incorrect-bam-free-counts") {
+        const trackMismatches = extractDoctorTrackMismatchMap(selectedIssue);
+        isCurrentReview = Boolean(trackMismatches[track]);
+      } else {
+        const selectedKeys = extractDoctorSectorKeys(selectedIssue);
+        isCurrentReview = Boolean(
+          selectedKeys[key] &&
+          ((selectedIssue.code === "bam-disagrees-used-blocks-marked-free" &&
+            draftValue === true) ||
+            (selectedIssue.code === "orphaned-allocated-blocks" &&
+              draftValue === false)),
+        );
+      }
+    }
     const statusLabel =
       draftValue == null
         ? "Not in BAM"
         : draftValue
           ? "Marked Free"
           : "Marked Used";
-    let detail =
-      "This sector is currently " + statusLabel.toLowerCase() + " in the BAM.";
-    let issueClass = "";
-    if (issue && issue.code === "bam-disagrees-used-blocks-marked-free") {
-      const issueKeys = extractDoctorSectorKeys(issue);
-      if (issueKeys[key] && draftValue === true) {
-        detail =
-          "This sector is claimed by the directory or an active file chain, but the BAM still marks it free.";
-        issueClass = "is-problem-free";
-      }
-    } else if (issue && issue.code === "orphaned-allocated-blocks") {
-      const issueKeys = extractDoctorSectorKeys(issue);
-      if (issueKeys[key] && draftValue === false) {
-        detail =
-          "The BAM marks this sector used, but no reachable active file or directory structure claims it.";
-        issueClass = "is-problem-used";
-      }
-    } else if (
-      issue &&
-      issue.code === "incorrect-bam-free-counts" &&
-      trackMismatches[track]
-    ) {
-      detail =
-        "Track " +
-        String(track) +
-        " has a free-count mismatch. BAM says " +
-        String(trackMismatches[track].bamFreeCount) +
-        ", but the bitmap currently contains " +
-        String(trackMismatches[track].bitFreeCount) +
-        " free sectors.";
-      issueClass = draftValue === true ? "is-problem-free" : "is-problem-used";
-    } else if (track > 35) {
-      detail =
-        "This track is outside the standard 35-track D64 BAM area and is shown for reference only.";
-    }
+    const detail = concerns.length
+      ? concerns.map(function (concern) {
+          return concern.detail;
+        })
+      : track > 35
+        ? [
+            "This track is outside the standard 35-track D64 BAM area and is shown for reference only.",
+          ]
+        : [
+            "This sector is currently " +
+              statusLabel.toLowerCase() +
+              " in the BAM.",
+          ];
     return {
       statusLabel: statusLabel,
       detail: detail,
       issueClass: issueClass,
+      hasTrackWarning: hasTrackWarning,
+      isCurrentReview: isCurrentReview,
+      concerns: concerns,
     };
   };
 
@@ -761,9 +910,12 @@
       escapeHtml(String(track)) +
       " S" +
       escapeHtml(String(sector)) +
-      "</strong><p>" +
-      escapeHtml(info.detail) +
-      "</p>"
+      "</strong>" +
+      info.detail
+        .map(function (detail) {
+          return "<p>" + escapeHtml(detail) + "</p>";
+        })
+        .join("")
     );
   };
 
@@ -3626,7 +3778,11 @@
 
   const openImageRangeDialog = function (config) {
     const options = config || {};
-    if (!state.image) return;
+    const sourceBytes =
+      options.sourceBytes instanceof Uint8Array
+        ? options.sourceBytes
+        : state.image;
+    if (!sourceBytes) return;
     const absoluteOffsets = Array.isArray(options.absoluteOffsets)
       ? options.absoluteOffsets
           .map(function (value) {
@@ -3634,14 +3790,14 @@
           })
           .filter(function (value) {
             return (
-              Number.isFinite(value) && value >= 0 && value < state.image.length
+              Number.isFinite(value) && value >= 0 && value < sourceBytes.length
             );
           })
       : [];
     if (!absoluteOffsets.length) return;
     const subset = new Uint8Array(
       absoluteOffsets.map(function (absoluteOffset) {
-        return state.image[absoluteOffset];
+        return sourceBytes[absoluteOffset];
       }),
     );
     let invalidByteIndexes = Array.isArray(options.invalidByteIndexes)
@@ -3653,7 +3809,7 @@
         absoluteOffset,
         index,
       ) {
-        const value = state.image[absoluteOffset];
+        const value = sourceBytes[absoluteOffset];
         if (value === 0x00 || value === 0xa0 || value === 0x20) {
           return result;
         }
@@ -5414,6 +5570,8 @@
     }
     state.bamDialogContext = null;
     state.bamDialogDraft = null;
+    state.bamHoverTrack = null;
+    state.bamHoverSector = null;
     hideBamTooltip();
     if (typeof bamDialog.close === "function") {
       bamDialog.close();
@@ -5428,6 +5586,7 @@
   const renderBamDialog = function () {
     if (!state.image || !state.bamDialogDraft) {
       bamGrid.innerHTML = "";
+      renderBamBitmask();
       return;
     }
     bamDialogName.innerHTML = getBamLegendMarkup();
@@ -5438,21 +5597,17 @@
     }).reduce(function (max, sectorCount) {
       return Math.max(max, sectorCount);
     }, 0);
-    const issue = findDoctorIssueByIndex(
-      Number(
-        state.bamDialogContext && state.bamDialogContext.issueIndex != null
-          ? state.bamDialogContext.issueIndex
-          : -1,
-      ),
-    );
-    const trackMismatches = extractDoctorTrackMismatchMap(issue);
     bamGrid.innerHTML =
       '<table class="bam-grid-table">' +
       "<thead><tr>" +
       '<th class="bam-grid-corner">T/S</th>' +
       Array.from({ length: maxSectors }, function (_, sector) {
         return (
-          '<th class="bam-grid-sector">' + escapeHtml(String(sector)) + "</th>"
+          '<th class="bam-grid-sector" data-sector-header="' +
+          escapeHtml(String(sector)) +
+          '">' +
+          escapeHtml(String(sector)) +
+          "</th>"
         );
       }).join("") +
       '<th class="bam-grid-freecount">Free</th>' +
@@ -5470,7 +5625,9 @@
           : null;
         return (
           '<tr class="bam-grid-row">' +
-          '<th class="bam-grid-track" scope="row">' +
+          '<th class="bam-grid-track" scope="row" data-track-header="' +
+          escapeHtml(String(track)) +
+          '">' +
           escapeHtml(String(track)) +
           "</th>" +
           Array.from({ length: maxSectors }, function (_, sector) {
@@ -5499,6 +5656,12 @@
               (issueInfo && issueInfo.issueClass
                 ? " " + issueInfo.issueClass
                 : "") +
+              (issueInfo && issueInfo.hasTrackWarning
+                ? " is-track-warning"
+                : "") +
+              (issueInfo && issueInfo.isCurrentReview
+                ? " is-current-review"
+                : "") +
               '" data-track="' +
               encodeHtmlAttribute(String(track)) +
               '" data-sector="' +
@@ -5512,13 +5675,16 @@
               '"></button></td>'
             );
           }).join("") +
-          '<td class="bam-grid-freecount">' +
+          '<td class="bam-grid-freecount" data-freecount-track="' +
+          escapeHtml(String(track)) +
+          '">' +
           escapeHtml(freeCount == null ? "—" : String(freeCount)) +
           "</td>" +
           "</tr>"
         );
       }).join("") +
       "</tbody></table>";
+    renderBamBitmask();
   };
 
   const openBamDialog = function (options) {
@@ -7417,10 +7583,12 @@
       state.bamDialogDraft[track][sector] =
         !state.bamDialogDraft[track][sector];
       renderBamDialog();
+      setBamGridHover(track, sector);
     });
     bamGrid.addEventListener("mousemove", function (event) {
       const button = event.target.closest("button[data-track][data-sector]");
       if (!button) {
+        setBamGridHover(null, null);
         hideBamTooltip();
         return;
       }
@@ -7429,6 +7597,7 @@
         0,
         Math.floor(Number(button.dataset.sector) || 0),
       );
+      setBamGridHover(track, sector);
       const issueInfo = getBamCellIssueInfo(track, sector);
       const shouldShowTooltip =
         Boolean(issueInfo && issueInfo.issueClass) || track > 35;
@@ -7442,7 +7611,10 @@
         event.clientY,
       );
     });
-    bamGrid.addEventListener("mouseleave", hideBamTooltip);
+    bamGrid.addEventListener("mouseleave", function () {
+      setBamGridHover(null, null);
+      hideBamTooltip();
+    });
     bamForm.addEventListener("submit", saveBamDialog);
     bamCancel.addEventListener("click", function () {
       closeBamDialog();
@@ -7450,6 +7622,28 @@
     bamDialog.addEventListener("cancel", function (event) {
       event.preventDefault();
       closeBamDialog();
+    });
+    bamBitmaskButton.addEventListener("click", function () {
+      if (!state.image) return;
+      const previewImage = d64.writeBamFreeMap(
+        state.image,
+        state.bamDialogDraft,
+      );
+      const shouldReturnToDoctor = Boolean(state.returnToDoctorReport);
+      closeBamDialog({ preserveReturnTarget: shouldReturnToDoctor });
+      const bamStart = d64.trackOffset(18, 0) + d64.headerOffsets.bamStart;
+      const bamLength = 35 * 4;
+      openImageRangeDialog({
+        title: "BAM Bytes",
+        dialogTitle: "BAM Bytes",
+        note: "Only the 35 standard BAM track rows are shown.",
+        sourceBytes: previewImage,
+        absoluteOffsets: Array.from({ length: bamLength }, function (_, index) {
+          return bamStart + index;
+        }),
+        showOffsets: false,
+        highlightLinkBytes: false,
+      });
     });
     sectorByteValue.addEventListener("input", function () {
       sectorByteModeHex.checked = true;

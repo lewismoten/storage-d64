@@ -610,9 +610,23 @@
               </div>
               <div id="bam-grid" class="bam-grid-shell"></div>
               <div id="bam-tooltip" class="bam-tooltip" hidden></div>
+              <button
+                id="bam-bitmask-button"
+                type="button"
+                class="doctor-entry-bitmask-button bam-bitmask-button"
+                title="Open BAM sector bytes in the hex viewer"
+              >
+                <svg
+                  id="bam-bitmask"
+                  class="doctor-entry-bitmask bam-bitmask"
+                  viewBox="0 0 256 8"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                ></svg>
+              </button>
               <div class="dialog-actions">
                 <button id="bam-cancel" type="button">Cancel</button>
-                <button id="bam-save" type="submit">Save BAM</button>
+                <button id="bam-save" type="submit">Save</button>
               </div>
             </form>
           </dialog>
