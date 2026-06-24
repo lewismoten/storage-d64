@@ -5370,10 +5370,12 @@
       { label: "Format", value: toDisplayValue(header.format) },
       {
         label: "Tracks / Sectors",
-        value:
-          toDisplayValue(header.trackCount) +
+        html:
+          '<span class="meta-inline-value">' +
+          escapeHtml(toDisplayValue(header.trackCount)) +
           " / " +
-          toDisplayValue(header.sectorCount),
+          escapeHtml(toDisplayValue(header.sectorCount)) +
+          '</span> <button type="button" class="meta-inline-button" data-action="open-bam-dialog" aria-label="Open BAM dialog">BAM</button>',
       },
       {
         label: "DOS Version",
@@ -7752,6 +7754,10 @@
             (d64 && d64.dosTypes && d64.dosTypes.dos2a) ||
             "2A",
         );
+        return;
+      }
+      if (button.dataset.action === "open-bam-dialog") {
+        openBamDialog();
       }
     });
     doctorEntryType.addEventListener("change", function () {
