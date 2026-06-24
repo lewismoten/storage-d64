@@ -112,6 +112,9 @@
     "doctor-entry-dialog-meta",
   );
   const doctorEntryIndex = document.getElementById("doctor-entry-index");
+  const doctorEntryNameField = document.getElementById(
+    "doctor-entry-name-field",
+  );
   const doctorEntryType = document.getElementById("doctor-entry-type");
   const doctorEntryName = document.getElementById("doctor-entry-name");
   const doctorEntryStartTrack = document.getElementById(
@@ -655,6 +658,8 @@
               "</button> " +
               '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
               encodeHtmlAttribute(String(entryIndex)) +
+              '" data-issue-index="' +
+              encodeHtmlAttribute(String(issueIndex)) +
               '">' +
               escapeHtml("Slot " + String(slot)) +
               "</button>)</span>"
@@ -5598,7 +5603,7 @@
         ? state.doctorReport.issues
         : [];
       const issue = issues.find(function (candidate) {
-        return candidate && candidate.code === "duplicate-filenames";
+        return candidate && candidate.code === "duplicate-filenames-repairable";
       });
       if (
         !issue ||
@@ -5767,7 +5772,7 @@
       }
 
       const duplicateIssue = issues.find(function (issue) {
-        return issue && issue.code === "duplicate-filenames";
+        return issue && issue.code === "duplicate-filenames-repairable";
       });
       if (
         duplicateIssue &&
@@ -5874,6 +5879,7 @@
       "damaged-bam-or-header": true,
       "splat-files": true,
       "directory-block-count-mismatch": true,
+      "duplicate-filenames-repairable": true,
     };
     const autoRepairIssues = diagnosis.issues.filter(function (issue) {
       return issue && supportedAutoRepairCodes[issue.code];
@@ -5994,7 +6000,8 @@
       diagnosis.issues
         .map(function (issue, issueIndex) {
           const duplicateGroupMarkup =
-            issue.code === "duplicate-filenames" &&
+            (issue.code === "duplicate-filenames-repairable" ||
+              issue.code === "duplicate-filenames-warning") &&
             Array.isArray(issue.duplicateGroups) &&
             issue.duplicateGroups.length
               ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
@@ -6419,6 +6426,10 @@
     doctorEntryStartTrack.value = String(Number(entry.startTrack) || 0);
     doctorEntryStartSector.value = String(Number(entry.startSector) || 0);
     doctorEntryBlockCount.value = String(Number(entry.blockCount) || 0);
+    doctorEntryNameField.classList.toggle(
+      "is-significant",
+      Boolean(config.highlightName),
+    );
     doctorEntryBlockCountField.classList.toggle(
       "is-significant",
       Boolean(config.highlightBlockCount),
@@ -7176,9 +7187,24 @@
         return;
       }
       if (button.dataset.action === "edit-doctor-entry") {
+        const issueIndex = Math.max(
+          0,
+          Math.floor(Number(button.dataset.issueIndex) || 0),
+        );
+        const issue =
+          state.doctorReport &&
+          Array.isArray(state.doctorReport.issues) &&
+          state.doctorReport.issues[issueIndex]
+            ? state.doctorReport.issues[issueIndex]
+            : null;
         closeDoctorDialog();
         openDoctorEntryDialog(button.dataset.entryIndex, {
-          highlightBlockCount: true,
+          highlightBlockCount:
+            Boolean(issue) && issue.code === "directory-block-count-mismatch",
+          highlightName:
+            Boolean(issue) &&
+            (issue.code === "duplicate-filenames-repairable" ||
+              issue.code === "duplicate-filenames-warning"),
           returnToDoctor: true,
         });
         return;

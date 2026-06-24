@@ -2725,14 +2725,61 @@
           }),
         };
       });
-    if (duplicateLabels.length) {
+    const repairableDuplicateGroups = duplicateGroups.filter(function (group) {
+      return group && group.consolidatable;
+    });
+    const warningDuplicateGroups = duplicateGroups.filter(function (group) {
+      return !group || !group.consolidatable;
+    });
+    if (repairableDuplicateGroups.length) {
       addIssue(
         "repairable",
-        "duplicate-filenames",
+        "duplicate-filenames-repairable",
         "Duplicate active filenames were found in the directory.",
         {
-          items: duplicateLabels,
-          duplicateGroups: duplicateGroups,
+          items: repairableDuplicateGroups.map(function (group) {
+            return (
+              group.name +
+              " (" +
+              group.entries
+                .map(function (entry) {
+                  return (
+                    formatTs(entry.track, entry.sector) +
+                    "/" +
+                    String(entry.slot)
+                  );
+                })
+                .join(", ") +
+              ")"
+            );
+          }),
+          duplicateGroups: repairableDuplicateGroups,
+        },
+      );
+    }
+    if (warningDuplicateGroups.length) {
+      addIssue(
+        "warning",
+        "duplicate-filenames-warning",
+        "Duplicate active filenames were found in the directory.",
+        {
+          items: warningDuplicateGroups.map(function (group) {
+            return (
+              group.name +
+              " (" +
+              group.entries
+                .map(function (entry) {
+                  return (
+                    formatTs(entry.track, entry.sector) +
+                    "/" +
+                    String(entry.slot)
+                  );
+                })
+                .join(", ") +
+              ")"
+            );
+          }),
+          duplicateGroups: warningDuplicateGroups,
         },
       );
     }
