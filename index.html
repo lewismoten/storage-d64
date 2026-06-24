@@ -226,6 +226,41 @@
             <div id="deleted-files-list" class="deleted-files-list"></div>
           </section>
 
+          <section
+            id="unreachable-files-panel"
+            class="directory-panel deleted-panel"
+            hidden
+          >
+            <div class="section-heading">
+              <h3>Unreachable Files</h3>
+              <p id="unreachable-count">0 entries</p>
+            </div>
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Blocks</th>
+                    <th>Bytes</th>
+                    <th>State</th>
+                    <th>Protected</th>
+                    <th>Download</th>
+                    <th>Destroy</th>
+                  </tr>
+                </thead>
+                <tbody id="unreachable-files-list">
+                  <tr>
+                    <td colspan="9" class="empty-state">
+                      No unreachable files found.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <dialog id="restore-file-dialog" class="file-type-dialog">
             <form id="restore-file-form" method="dialog" class="file-type-form">
               <div class="section-heading">

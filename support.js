@@ -3408,8 +3408,8 @@
     bytes[headerOffset + d64.headerOffsets.dosTypeStart + 1] = 0x5a;
 
     const directorySector1 = d64.readSector(bytes, DIRECTORY_TRACK, 1).slice();
-    directorySector1[0] = DIRECTORY_TRACK;
-    directorySector1[1] = 2;
+    directorySector1[0] = 0;
+    directorySector1[1] = 0;
     bytes.set(directorySector1, d64.trackOffset(DIRECTORY_TRACK, 1));
 
     let entry0 = d64.createDirectoryEntry("LOCKEDA", "prg", 1, 0, 2, {
@@ -3507,10 +3507,12 @@
     let entry13 = d64.createDeletedDirectoryEntry("DELUNSAFE", 1, 0, 1);
     writeEntry(13, entry13);
 
-    const directorySector2 = d64.readSector(bytes, DIRECTORY_TRACK, 2).slice();
-    directorySector2[0] = DIRECTORY_TRACK;
-    directorySector2[1] = 1;
-    bytes.set(directorySector2, d64.trackOffset(DIRECTORY_TRACK, 2));
+    const relinkedDirectorySector2 = d64
+      .readSector(bytes, DIRECTORY_TRACK, 2)
+      .slice();
+    relinkedDirectorySector2[0] = 0;
+    relinkedDirectorySector2[1] = 0;
+    bytes.set(relinkedDirectorySector2, d64.trackOffset(DIRECTORY_TRACK, 2));
 
     bytes = d64.writeSectorError(bytes, 1, 0, 0x09, {
       format: "d64_40_track_error_info",

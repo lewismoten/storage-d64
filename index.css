@@ -2835,6 +2835,20 @@ tbody tr.is-drop-target {
   font-size: 0.84rem;
 }
 
+.deleted-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.deleted-file-actions .file-type-button,
+.deleted-file-actions .flag,
+.deleted-file-actions .delete-button {
+  flex: 0 0 auto;
+}
+
 .restore-controls {
   display: flex;
   gap: 10px;
