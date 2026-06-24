@@ -2128,9 +2128,21 @@
       ? "Show Media"
       : "Show Cover";
     heatmapButton.disabled = !hasImage;
-    heatmapButton.textContent = state.heatMapVisible
-      ? "Efficiency Map On"
-      : "Efficiency Map Off";
+    heatmapButton.classList.toggle("is-on", hasImage && state.heatMapVisible);
+    heatmapButton.classList.toggle(
+      "is-off",
+      !hasImage || !state.heatMapVisible,
+    );
+    heatmapButton.setAttribute(
+      "aria-label",
+      state.heatMapVisible ? "Turn speed map off" : "Turn speed map on",
+    );
+    heatmapButton.setAttribute(
+      "data-tooltip-text",
+      state.heatMapVisible
+        ? "Speed map is on. Toggle to hide the overlay that colors sectors by estimated read efficiency."
+        : "Speed map is off. Toggle to color sectors by estimated read efficiency.",
+    );
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
     diskMapZoomReset.disabled = !hasImage;

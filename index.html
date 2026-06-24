@@ -102,9 +102,6 @@
                 <button id="corrupt-button" type="button" disabled>
                   Corrupt
                 </button>
-                <button id="heatmap-button" type="button" disabled>
-                  Efficiency Map Off
-                </button>
               </div>
             </fieldset>
           </div>
@@ -123,6 +120,16 @@
                 <div class="disk-map-toolbar">
                   <div class="disk-map-toolbar-label">Pan and zoom</div>
                   <div class="disk-map-toolbar-actions">
+                    <button
+                      id="heatmap-button"
+                      type="button"
+                      class="disk-map-toggle-button is-off"
+                      disabled
+                      aria-label="Toggle speed map"
+                      data-tooltip-text="Toggle the speed map overlay to color sectors by estimated read efficiency."
+                    >
+                      🚦
+                    </button>
                     <button id="disk-map-cover-toggle" type="button" disabled>
                       Cover On
                     </button>
