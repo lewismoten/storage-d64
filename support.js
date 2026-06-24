@@ -1911,7 +1911,11 @@
     return d64.writeBamFreeMap(withRestoredEntry, freeMap);
   };
 
-  d64.destroyDeletedFile = function (image, deletedEntryOrName, options) {
+  d64.destroyDeletedFileWithReport = function (
+    image,
+    deletedEntryOrName,
+    options,
+  ) {
     const config = options || {};
     const deletedEntries = d64.readDeletedEntries(image, config);
     const entry =
@@ -1934,75 +1938,12 @@
     }
 
     const deletedFile = d64.readDeletedFile(image, entry);
-    const targetRefs = d64.collectFileSectorRefs(image, entry, {
+    const targetRefs = d64.collectFileSectorRefsBestEffort(image, entry, {
       restoredType: deletedFile.fileType,
     });
-    const targetKeys = {};
-    targetRefs.forEach(function (ref) {
-      targetKeys[String(ref.track) + ":" + String(ref.sector)] = true;
-    });
-
-    const overlapKey = function (refs) {
-      for (let index = 0; index < refs.length; index += 1) {
-        const key =
-          String(refs[index].track) + ":" + String(refs[index].sector);
-        if (targetKeys[key]) return key;
-      }
-      return "";
-    };
-
-    const activeEntries = d64.readDirectoryEntries(image, config);
-    for (let index = 0; index < activeEntries.length; index += 1) {
-      const refs = d64.collectFileSectorRefs(
-        image,
-        activeEntries[index],
-        config,
-      );
-      const key = overlapKey(refs);
-      if (key) {
-        throw new Error(
-          "Cannot destroy deleted file because sector " +
-            key +
-            " is referenced by active file " +
-            String(activeEntries[index].name || "") +
-            ".",
-        );
-      }
-    }
-
-    for (let index = 0; index < deletedEntries.length; index += 1) {
-      const other = deletedEntries[index];
-      if (String(other.index) === String(entry.index)) continue;
-      try {
-        const otherDeletedFile = d64.readDeletedFile(image, other);
-        const refs = d64.collectFileSectorRefs(image, other, {
-          restoredType: otherDeletedFile.fileType,
-        });
-        const key = overlapKey(refs);
-        if (key) {
-          throw new Error(
-            "Cannot destroy deleted file because sector " +
-              key +
-              " is also referenced by deleted entry " +
-              String(other.name || "") +
-              ".",
-          );
-        }
-      } catch (error) {
-        if (
-          error &&
-          /^Cannot destroy deleted file because sector /.test(
-            String(error.message || error),
-          )
-        ) {
-          throw error;
-        }
-      }
-    }
-
     const bytes =
       image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
-    targetRefs.forEach(function (ref) {
+    targetRefs.refs.forEach(function (ref) {
       bytes.fill(
         0,
         d64.trackOffset(ref.track, ref.sector),
@@ -2010,7 +1951,19 @@
       );
     });
     const clearedEntry = new Uint8Array(32);
-    return d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry);
+    return {
+      image: d64.writeDirectoryEntryBytes(bytes, entry, clearedEntry),
+      partial: Boolean(targetRefs.partial),
+      stoppedReason: String(targetRefs.stoppedReason || ""),
+      clearedSectors: Array.isArray(targetRefs.refs)
+        ? targetRefs.refs.length
+        : 0,
+    };
+  };
+
+  d64.destroyDeletedFile = function (image, deletedEntryOrName, options) {
+    return d64.destroyDeletedFileWithReport(image, deletedEntryOrName, options)
+      .image;
   };
 
   d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {

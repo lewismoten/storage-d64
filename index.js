@@ -259,6 +259,7 @@
     "scratchFileWithReport",
     "undeleteFile",
     "destroyDeletedFile",
+    "destroyDeletedFileWithReport",
     "repairBlockCounts",
     "diagnoseImage",
     "validateImage",
@@ -7097,10 +7098,35 @@
           return String(entry.index) === String(entryIndex);
         });
       if (!deletedEntry) throw new Error("Deleted file not found.");
+      const destroyResult = d64.destroyDeletedFileWithReport(
+        state.image,
+        deletedEntry,
+      );
+      let statusMessage = "Destroyed deleted entry " + deletedEntry.name + ".";
+      if (destroyResult && destroyResult.partial) {
+        const stopReasonMap = {
+          loop: "a loop in the deleted chain",
+          "crossed-other-chain": "a sector already claimed by another chain",
+          "invalid-pointer": "an invalid track/sector pointer",
+          "side-sector-error": "a REL side-sector problem",
+        };
+        const stopReason =
+          stopReasonMap[destroyResult.stoppedReason] || "a chain problem";
+        statusMessage =
+          "Destroyed deleted entry " +
+          deletedEntry.name +
+          " and cleared " +
+          numberFormatter.format(destroyResult.clearedSectors || 0) +
+          " sector" +
+          (Number(destroyResult.clearedSectors || 0) === 1 ? "" : "s") +
+          " before reaching " +
+          stopReason +
+          ".";
+      }
       loadImageBytes(
-        d64.destroyDeletedFile(state.image, deletedEntry),
+        destroyResult.image,
         state.sourceName || "disk.d64",
-        "Destroyed deleted entry " + deletedEntry.name + ".",
+        statusMessage,
         { resetDeletedTypeHints: false },
       );
       delete state.deletedTypeHints[deletedEntry.index];
