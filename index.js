@@ -121,6 +121,9 @@
   const doctorEntryNameField = document.getElementById(
     "doctor-entry-name-field",
   );
+  const doctorEntryTypeField = document.getElementById(
+    "doctor-entry-type-field",
+  );
   const doctorEntryType = document.getElementById("doctor-entry-type");
   const doctorEntryName = document.getElementById("doctor-entry-name");
   const doctorEntryStartTrack = document.getElementById(
@@ -2086,6 +2089,23 @@
       (file && file.closed === false ? "*" : "") +
       base +
       (file && file.locked ? "<" : "")
+    );
+  };
+
+  const formatDoctorEntryLocationLabel = function (item) {
+    const name = String((item && item.name) || "").trim() || "Unnamed";
+    const track = Math.max(0, Math.floor(Number(item && item.track) || 0));
+    const sector = Math.max(0, Math.floor(Number(item && item.sector) || 0));
+    const slot = Math.max(0, Math.floor(Number(item && item.slot) || 0));
+    return (
+      name +
+      " [T" +
+      String(track) +
+      " S" +
+      String(sector) +
+      "] [Slot " +
+      String(slot) +
+      "]"
     );
   };
 
@@ -6836,13 +6856,60 @@
             hasSectorItemGrid &&
             Array.isArray(issue.items) &&
             issue.items.length > 18;
-          const items = Array.isArray(issue.items)
-            ? issue.items
-                .map(function (item) {
-                  return "<li>" + renderLinkedDoctorText(item) + "</li>";
-                })
-                .join("")
-            : "";
+          const items =
+            issue.code === "invalid-file-types" && Array.isArray(issue.items)
+              ? issue.items
+                  .map(function (item) {
+                    const track = Math.max(
+                      0,
+                      Math.floor(Number(item && item.track) || 0),
+                    );
+                    const sector = Math.max(
+                      0,
+                      Math.floor(Number(item && item.sector) || 0),
+                    );
+                    const slot = Math.max(
+                      0,
+                      Math.floor(Number(item && item.slot) || 0),
+                    );
+                    const entryIndex = Math.max(
+                      0,
+                      Math.floor(Number(item && item.entryIndex) || 0),
+                    );
+                    const name =
+                      String((item && item.name) || "").trim() || "Unnamed";
+                    return (
+                      '<li class="doctor-invalid-file-type-item">' +
+                      '<span class="doctor-inline-name">' +
+                      escapeHtml(name) +
+                      "</span> " +
+                      '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                      encodeHtmlAttribute(String(issueIndex)) +
+                      '" data-track="' +
+                      encodeHtmlAttribute(String(track)) +
+                      '" data-sector="' +
+                      encodeHtmlAttribute(String(sector)) +
+                      '">' +
+                      escapeHtml("T" + String(track) + " S" + String(sector)) +
+                      "</button> " +
+                      '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+                      encodeHtmlAttribute(String(entryIndex)) +
+                      '" data-issue-index="' +
+                      encodeHtmlAttribute(String(issueIndex)) +
+                      '">' +
+                      escapeHtml("Slot " + String(slot)) +
+                      "</button>" +
+                      "</li>"
+                    );
+                  })
+                  .join("")
+              : Array.isArray(issue.items)
+                ? issue.items
+                    .map(function (item) {
+                      return "<li>" + renderLinkedDoctorText(item) + "</li>";
+                    })
+                    .join("")
+                : "";
           return (
             '<article class="doctor-issue doctor-issue-' +
             escapeHtml(issue.level || "informational") +
@@ -6875,6 +6942,9 @@
                     items +
                     "</ul></details>"
                   : '<ul class="doctor-issue-items' +
+                    (issue.code === "invalid-file-types"
+                      ? " doctor-invalid-file-type-items"
+                      : "") +
                     (hasSectorItemGrid ? " doctor-issue-items-grid" : "") +
                     '">' +
                     items +
@@ -7309,6 +7379,10 @@
     doctorEntryBlockCountField.classList.toggle(
       "is-significant",
       Boolean(config.highlightBlockCount),
+    );
+    doctorEntryTypeField.classList.toggle(
+      "is-significant",
+      Boolean(config.highlightType),
     );
     doctorEntryClosed.checked = Boolean(entry.closed);
     doctorEntryLocked.checked = Boolean(entry.locked);
@@ -8210,6 +8284,7 @@
             Boolean(issue) &&
             (issue.code === "duplicate-filenames-repairable" ||
               issue.code === "duplicate-filenames-warning"),
+          highlightType: Boolean(issue) && issue.code === "invalid-file-types",
           returnToDoctor: true,
         });
         return;

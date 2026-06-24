@@ -2737,10 +2737,17 @@
           entry.typeCode < 1 ||
           entry.typeCode > 4
         ) {
-          malformedEntries.push(
-            entry.name ||
+          malformedEntries.push({
+            entryIndex: entry.index,
+            track: entry.track,
+            sector: entry.sector,
+            slot: entry.slot,
+            name:
+              entry.name ||
               formatTs(entry.track, entry.sector) + " slot " + entry.slot,
-          );
+            typeByte: entry.typeByte,
+            fileType: entry.fileType,
+          });
         }
       }
     }

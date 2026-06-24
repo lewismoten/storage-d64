@@ -2649,6 +2649,26 @@ tbody tr.is-drop-target {
   margin-top: 4px;
 }
 
+.doctor-invalid-file-type-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.doctor-invalid-file-type-items li + li {
+  margin-top: 0;
+}
+
+.doctor-invalid-file-type-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .doctor-issue-items-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
