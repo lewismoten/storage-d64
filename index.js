@@ -754,6 +754,7 @@
     const hoverOutlines = [];
     for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
       const track = Math.floor(byteIndex / 4) + 1;
+      const sectorCount = d64.trackSectorCount(track);
       const byteInTrack = byteIndex % 4;
       const isEvenTrack = track % 2 === 0;
       const role = byteInTrack === 0 ? "count" : "bam";
@@ -777,11 +778,19 @@
         let pixelClass = "";
         let pixelAttributes = "";
         if (byteInTrack === 0) {
-          pixelClass =
-            ((value >> bit) & 1) === 1 ? "is-count-on" : "is-count-off";
+          const maxCountBit = Math.floor(Math.log2(Math.max(1, sectorCount)));
+          if (bit > maxCountBit) {
+            pixelClass = "is-unused";
+          } else {
+            pixelClass =
+              ((value >> bit) & 1) === 1 ? "is-count-on" : "is-count-off";
+            if (isEvenTrack) {
+              pixelClass += " is-track-even";
+            }
+          }
         } else {
           const sector = (byteInTrack - 1) * 8 + bit;
-          if (sector >= d64.trackSectorCount(track)) {
+          if (sector >= sectorCount) {
             pixelClass = "is-unused";
           } else {
             const baseClass = getBamBitmaskPixelClass(track, sector);

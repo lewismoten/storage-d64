@@ -2006,11 +2006,11 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-zero-column {
-  fill: rgba(0, 0, 0, 0.18);
+  fill: rgba(10, 18, 24, 0.22);
 }
 
 .bam-bitmask-pixel.is-unused {
-  fill: rgba(0, 0, 0, 0.82);
+  fill: rgba(22, 34, 42, 0.88);
 }
 
 .bam-bitmask-pixel.is-count-on {
@@ -2034,7 +2034,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-pixel.is-used-off {
-  fill: rgba(36, 70, 87, 0.3);
+  fill: rgba(74, 106, 122, 0.44);
 }
 
 .bam-bitmask-pixel.is-active-on {
@@ -2050,7 +2050,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-pixel.is-unreachable-off {
-  fill: rgba(217, 180, 59, 0.28);
+  fill: rgba(217, 180, 59, 0.42);
 }
 
 .bam-bitmask-pixel.is-track-even.is-used-on {
@@ -2058,7 +2058,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-pixel.is-track-even.is-used-off {
-  fill: rgba(28, 55, 69, 0.26);
+  fill: rgba(66, 95, 109, 0.42);
 }
 
 .bam-bitmask-pixel.is-track-even.is-count-on {
@@ -2090,7 +2090,7 @@ tbody tr.is-drop-target {
 }
 
 .bam-bitmask-pixel.is-track-even.is-unreachable-off {
-  fill: rgba(188, 154, 47, 0.24);
+  fill: rgba(188, 154, 47, 0.4);
 }
 
 .bam-bitmask-hover-outline {
