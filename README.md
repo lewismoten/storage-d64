@@ -12,6 +12,12 @@ The storage-medium support helpers live in [support.js](./support.js).
 
 The support API reference lives in [support.md](./support.md).
 
+The Doctor guide lives in [DOCTOR.md](./DOCTOR.md).
+
+The browser lab guide lives in [LAB.md](./LAB.md).
+
+Developer-facing structure notes live in [DEVELOPMENT.md](./DEVELOPMENT.md).
+
 The local browser test lab lives in [index.html](./index.html) and
 [index.js](./index.js).
 
