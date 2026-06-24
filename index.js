@@ -147,6 +147,9 @@
   const doctorEntryRecordLength = document.getElementById(
     "doctor-entry-record-length",
   );
+  const doctorEntryRecordCapacity = document.getElementById(
+    "doctor-entry-record-capacity",
+  );
   const doctorEntryCancel = document.getElementById("doctor-entry-cancel");
   const doctorEntrySave = document.getElementById("doctor-entry-save");
   const doctorEntryBitmaskButton = document.getElementById(
@@ -915,6 +918,54 @@
   const syncDoctorEntryDialog = function () {
     const isRel = String(doctorEntryType.value || "").toLowerCase() === "rel";
     doctorEntryRelGroup.hidden = !isRel;
+  };
+
+  const syncDoctorEntryRecordCapacity = function () {
+    if (!doctorEntryRecordCapacity) return;
+    const type = String(doctorEntryType.value || "").toLowerCase();
+    if (type !== "rel") {
+      doctorEntryRecordCapacity.textContent = "Max records: not applicable";
+      return;
+    }
+    const blockCount = Math.max(
+      0,
+      Math.floor(Number(doctorEntryBlockCount.value) || 0),
+    );
+    const recordLength = Math.max(
+      1,
+      Math.min(254, Math.floor(Number(doctorEntryRecordLength.value) || 32)),
+    );
+    if (blockCount < 2) {
+      doctorEntryRecordCapacity.textContent =
+        "Max records: 0 (" + formatNumber(blockCount) + " blocks)";
+      return;
+    }
+    const relDataSectorsPerSideSector = 120;
+    let dataSectors = 0;
+    let sideSectors = 0;
+    for (let candidate = blockCount - 1; candidate >= 1; candidate -= 1) {
+      const candidateSideSectors = Math.max(
+        1,
+        Math.ceil(candidate / relDataSectorsPerSideSector),
+      );
+      if (candidate + candidateSideSectors <= blockCount) {
+        dataSectors = candidate;
+        sideSectors = candidateSideSectors;
+        break;
+      }
+    }
+    const payloadBytes = dataSectors * 254;
+    const maxRecords = Math.floor(payloadBytes / recordLength);
+    doctorEntryRecordCapacity.textContent =
+      "Max records: " +
+      formatNumber(maxRecords) +
+      " (" +
+      formatNumber(dataSectors) +
+      " data, " +
+      formatNumber(sideSectors) +
+      " side, " +
+      formatByteSize(payloadBytes) +
+      ")";
   };
 
   const getDoctorEntrySourceEntry = function () {
@@ -6189,6 +6240,7 @@
     doctorEntrySideSector.value = String(Number(entry.sideSectorSector) || 0);
     doctorEntryRecordLength.value = String(Number(entry.recordLength) || 32);
     syncDoctorEntryDialog();
+    syncDoctorEntryRecordCapacity();
     validateDoctorEntryDialog();
     renderDoctorEntryBitmask();
     if (typeof doctorEntryDialog.showModal === "function") {
@@ -6735,6 +6787,7 @@
     });
     doctorEntryType.addEventListener("change", function () {
       syncDoctorEntryDialog();
+      syncDoctorEntryRecordCapacity();
       validateDoctorEntryDialog();
       renderDoctorEntryBitmask();
     });
@@ -6766,9 +6819,11 @@
       doctorEntryRecordLength,
     ].forEach(function (input) {
       input.addEventListener("input", function () {
+        syncDoctorEntryRecordCapacity();
         validateDoctorEntryDialog();
         renderDoctorEntryBitmask();
       });
+      input.addEventListener("change", syncDoctorEntryRecordCapacity);
     });
     doctorEntryClosed.addEventListener("change", renderDoctorEntryBitmask);
     doctorEntryLocked.addEventListener("change", renderDoctorEntryBitmask);
