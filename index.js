@@ -21,6 +21,7 @@
     doctorEntryContext: null,
     bamDialogContext: null,
     bamDialogDraft: null,
+    bamDialogAnalysis: null,
     bamHoverTrack: null,
     bamHoverSector: null,
   };
@@ -722,6 +723,27 @@
     return sectorBytes.subarray(bamStart, bamEnd);
   };
 
+  const buildBamPreviewImage = function () {
+    if (!state.image || !state.bamDialogDraft) return null;
+    return d64.writeBamFreeMap(state.image, state.bamDialogDraft);
+  };
+
+  const getBamDialogRelevantIssues = function () {
+    const report = state.bamDialogAnalysis;
+    return (
+      (report && Array.isArray(report.issues) ? report.issues : []).filter(
+        function (issue) {
+          return (
+            issue &&
+            (issue.code === "incorrect-bam-free-counts" ||
+              issue.code === "bam-disagrees-used-blocks-marked-free" ||
+              issue.code === "orphaned-allocated-blocks")
+          );
+        },
+      ) || []
+    );
+  };
+
   const getBamBitmaskPixelClass = function (track, sector) {
     const issueInfo = getBamCellIssueInfo(track, sector);
     let baseClass = "is-used";
@@ -968,7 +990,7 @@
     const key = String(track) + ":" + String(sector);
     const draftValue =
       state.bamDialogDraft[track] && state.bamDialogDraft[track][sector];
-    const relevantIssues = getBamRelevantDoctorIssues();
+    const relevantIssues = getBamDialogRelevantIssues();
     const selectedIssue = findDoctorIssueByIndex(
       Number(
         state.bamDialogContext && state.bamDialogContext.issueIndex != null
@@ -1026,11 +1048,18 @@
       issueClass = concerns[0].className;
     }
     if (selectedIssue) {
-      if (selectedIssue.code === "incorrect-bam-free-counts") {
-        const trackMismatches = extractDoctorTrackMismatchMap(selectedIssue);
+      const selectedIssueStillPresent = relevantIssues.find(function (issue) {
+        return issue && issue.code === selectedIssue.code;
+      });
+      if (!selectedIssueStillPresent) {
+        isCurrentReview = false;
+      } else if (selectedIssue.code === "incorrect-bam-free-counts") {
+        const trackMismatches = extractDoctorTrackMismatchMap(
+          selectedIssueStillPresent,
+        );
         isCurrentReview = Boolean(trackMismatches[track]);
       } else {
-        const selectedKeys = extractDoctorSectorKeys(selectedIssue);
+        const selectedKeys = extractDoctorSectorKeys(selectedIssueStillPresent);
         isCurrentReview = Boolean(
           selectedKeys[key] &&
           ((selectedIssue.code === "bam-disagrees-used-blocks-marked-free" &&
@@ -5753,8 +5782,17 @@
   const renderBamDialog = function () {
     if (!state.image || !state.bamDialogDraft) {
       bamGrid.innerHTML = "";
+      state.bamDialogAnalysis = null;
       renderBamBitmask();
       return;
+    }
+    try {
+      const previewImage = buildBamPreviewImage();
+      state.bamDialogAnalysis = previewImage
+        ? d64.diagnoseImage(previewImage)
+        : null;
+    } catch (error) {
+      state.bamDialogAnalysis = null;
     }
     bamDialogName.innerHTML = getBamLegendMarkup();
     const geometry = d64.describeGeometry(state.image);
