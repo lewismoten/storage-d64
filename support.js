@@ -1791,6 +1791,67 @@
     };
   };
 
+  d64.collectRawFileSectorRefsBestEffort = function (image, entry) {
+    if (!entry || !entry.startTrack) {
+      return {
+        refs: [],
+        partial: false,
+        stoppedReason: "",
+      };
+    }
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const geometry = d64.describeGeometry(bytes);
+    const refs = [];
+    const visited = {};
+    const isValidAddress = function (track, sector) {
+      const safeTrack = Math.max(0, Math.floor(Number(track) || 0));
+      const safeSector = Math.max(0, Math.floor(Number(sector) || 0));
+      return (
+        safeTrack >= 1 &&
+        safeTrack <= d64.normalizeTrackCount(geometry.trackCount) &&
+        safeSector >= 0 &&
+        safeSector < d64.trackSectorCount(safeTrack)
+      );
+    };
+
+    let track = Math.max(0, Math.floor(Number(entry.startTrack) || 0));
+    let sector = Math.max(0, Math.floor(Number(entry.startSector) || 0));
+    let stoppedReason = "";
+
+    while (track) {
+      if (!isValidAddress(track, sector)) {
+        stoppedReason = "invalid-pointer";
+        break;
+      }
+      const key = String(track) + ":" + String(sector);
+      if (visited[key]) {
+        stoppedReason = "loop";
+        break;
+      }
+      visited[key] = true;
+      refs.push({ track: track, sector: sector });
+      const block = d64.readSector(bytes, track, sector);
+      const nextTrack = block[0];
+      const nextSector = block[1];
+      if (!nextTrack) {
+        break;
+      }
+      if (!isValidAddress(nextTrack, nextSector)) {
+        stoppedReason = "invalid-pointer";
+        break;
+      }
+      track = nextTrack;
+      sector = nextSector;
+    }
+
+    return {
+      refs: refs,
+      partial: Boolean(stoppedReason),
+      stoppedReason: stoppedReason,
+    };
+  };
+
   d64.updateFreeMapSectors = function (freeMap, sectors, isFree) {
     const map = freeMap;
     (Array.isArray(sectors) ? sectors : []).forEach(function (ref) {
@@ -2491,6 +2552,8 @@
         fileType: entry.fileType,
         refs: [],
         readError: "",
+        partial: false,
+        stoppedReason: "",
         repairable: false,
         disabledReason: "",
         requiredSectorCount: 0,
@@ -2498,15 +2561,10 @@
         sharedRefs: [],
       };
       try {
-        const file = d64.readFile(bytes, entry, config);
-        plan.refs = Array.isArray(file && file.blocks)
-          ? file.blocks.map(function (block) {
-              return {
-                track: block.track,
-                sector: block.sector,
-              };
-            })
-          : [];
+        const chain = d64.collectRawFileSectorRefsBestEffort(bytes, entry);
+        plan.refs = Array.isArray(chain && chain.refs) ? chain.refs.slice() : [];
+        plan.partial = Boolean(chain && chain.partial);
+        plan.stoppedReason = String((chain && chain.stoppedReason) || "");
       } catch (error) {
         plan.readError = String(error && error.message ? error.message : error);
       }
@@ -2581,21 +2639,33 @@
     const repairable =
       repairableCandidates.length > 0 &&
       availableTargets.length >= requiredSectorCount;
+    const candidateReasonText = candidates
+      .map(function (plan) {
+        const name = String(plan.fileName || "(unnamed)");
+        const reason =
+          String(plan.disabledReason || "").trim() ||
+          "This conflicting chain could not be prepared for cloning.";
+        return '"' + name + '": ' + reason;
+      })
+      .join(" ");
     const disabledReason =
       repairableCandidates.length === 0
         ? candidates.length
-          ? candidates
-              .map(function (plan) {
-                return plan.fileName + ": " + plan.disabledReason;
-              })
-              .join(" ")
-          : "The shared-sector chains can not be cloned automatically."
+          ? "Cross-linked sectors were found, but none of the later conflicting file chains can be cloned automatically. " +
+            candidateReasonText
+          : "Cross-linked sectors were found, but no later conflicting file chain could be isolated for cloning."
         : availableTargets.length < requiredSectorCount
-          ? "Not enough free sectors are available to clone the duplicate file chains (" +
+          ? "Not enough free sectors are available to clone the later conflicting file chains (" +
             String(requiredSectorCount) +
             " needed, " +
             String(availableTargets.length) +
-            " available)."
+            " available). Affected files: " +
+            repairableCandidates
+              .map(function (plan) {
+                return '"' + String(plan.fileName || "(unnamed)") + '"';
+              })
+              .join(", ") +
+            "."
           : "";
 
     if (repairable) {
@@ -2651,6 +2721,9 @@
             nextRef;
           sourceBlock[0] = nextTarget.track;
           sourceBlock[1] = nextTarget.sector;
+        } else if (candidate.partial) {
+          sourceBlock[0] = 0;
+          sourceBlock[1] = 255;
         }
         const target = candidate.targetRefs[index];
         nextImage.set(
@@ -2675,6 +2748,13 @@
       repaired: movedFilesCount > 0,
       movedFilesCount: movedFilesCount,
       movedSectorCount: movedSectorCount,
+      truncatedEntryIndexes: plan.repairableCandidates
+        .filter(function (candidate) {
+          return candidate.partial;
+        })
+        .map(function (candidate) {
+          return candidate.entryIndex;
+        }),
       repairedEntryIndexes: plan.repairableCandidates.map(function (candidate) {
         return candidate.entryIndex;
       }),

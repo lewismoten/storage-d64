@@ -2837,11 +2837,21 @@ tbody tr.is-drop-target {
 .doctor-issue-actions {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   margin-top: 12px;
 }
 
 .doctor-disabled-action {
   display: inline-flex;
+}
+
+.doctor-disabled-reason {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  max-width: min(100%, 34rem);
 }
 
 .deleted-panel {

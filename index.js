@@ -6938,7 +6938,15 @@
               String(result.movedSectorCount) +
               " new sector" +
               (result.movedSectorCount === 1 ? "" : "s") +
-              "."
+              "." +
+              (Array.isArray(result.truncatedEntryIndexes) &&
+              result.truncatedEntryIndexes.length
+                ? " Truncated " +
+                  String(result.truncatedEntryIndexes.length) +
+                  " cloned chain" +
+                  (result.truncatedEntryIndexes.length === 1 ? "" : "s") +
+                  " at the last readable sector."
+                : "")
           : "No cross-linked file sectors needed repair.",
         { resetDeletedTypeHints: false },
       );
@@ -7312,6 +7320,22 @@
       return;
     }
     const renderDoctorAction = function (issue, issueIndex) {
+      const renderDisabledDoctorAction = function (buttonMarkup, reason) {
+        const disabledReason = String(reason || "").trim();
+        if (!disabledReason) {
+          return buttonMarkup;
+        }
+        return (
+          '<span class="doctor-disabled-action" tabindex="0" data-tooltip="' +
+          encodeHtmlAttribute(disabledReason) +
+          '">' +
+          buttonMarkup +
+          "</span>" +
+          '<span class="doctor-disabled-reason">' +
+          escapeHtml(disabledReason) +
+          "</span>"
+        );
+      };
       if (issue.code === "invalid-disk-name-field") {
         return (
           '<div class="doctor-issue-actions">' +
@@ -7411,11 +7435,7 @@
         return (
           '<div class="doctor-issue-actions">' +
           (disabledReason
-            ? '<span class="doctor-disabled-action" tabindex="0" data-tooltip="' +
-              encodeHtmlAttribute(disabledReason) +
-              '">' +
-              buttonMarkup +
-              "</span>"
+            ? renderDisabledDoctorAction(buttonMarkup, disabledReason)
             : buttonMarkup) +
           "</div>"
         );
@@ -7442,11 +7462,7 @@
         return (
           '<div class="doctor-issue-actions">' +
           (disabledReason
-            ? '<span class="doctor-disabled-action" tabindex="0" data-tooltip="' +
-              encodeHtmlAttribute(disabledReason) +
-              '">' +
-              buttonMarkup +
-              "</span>"
+            ? renderDisabledDoctorAction(buttonMarkup, disabledReason)
             : buttonMarkup) +
           "</div>"
         );
