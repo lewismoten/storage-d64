@@ -751,6 +751,7 @@
     const zones = [];
     const zeroColumns = [];
     const pixels = [];
+    const hoverOutlines = [];
     for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
       const track = Math.floor(byteIndex / 4) + 1;
       const byteInTrack = byteIndex % 4;
@@ -774,6 +775,7 @@
       }
       for (let bit = 0; bit < 8; bit += 1) {
         let pixelClass = "";
+        let pixelAttributes = "";
         if (byteInTrack === 0) {
           pixelClass =
             ((value >> bit) & 1) === 1 ? "is-count-on" : "is-count-off";
@@ -787,12 +789,42 @@
               baseClass +
               (((value >> bit) & 1) === 1 ? "-on" : "-off") +
               (isEvenTrack ? " is-track-even" : "");
+            pixelAttributes =
+              ' data-track="' +
+              String(track) +
+              '" data-sector="' +
+              String(sector) +
+              '"';
+            hoverOutlines.push(
+              '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-dark" data-track="' +
+                String(track) +
+                '" data-sector="' +
+                String(sector) +
+                '" x="' +
+                (byteIndex - 0.12).toFixed(3) +
+                '" y="' +
+                (bit - 0.12).toFixed(3) +
+                '" width="1.24" height="1.24"></rect>',
+            );
+            hoverOutlines.push(
+              '<rect class="bam-bitmask-hover-outline bam-bitmask-hover-outline-light" data-track="' +
+                String(track) +
+                '" data-sector="' +
+                String(sector) +
+                '" x="' +
+                (byteIndex - 0.12).toFixed(3) +
+                '" y="' +
+                (bit - 0.12).toFixed(3) +
+                '" width="1.24" height="1.24"></rect>',
+            );
           }
         }
         pixels.push(
           '<rect class="bam-bitmask-pixel ' +
             pixelClass +
-            '" x="' +
+            '"' +
+            pixelAttributes +
+            ' x="' +
             String(byteIndex) +
             '" y="' +
             String(bit) +
@@ -801,7 +833,10 @@
       }
     }
     bamBitmask.innerHTML =
-      zones.join("") + zeroColumns.join("") + pixels.join("");
+      zones.join("") +
+      zeroColumns.join("") +
+      pixels.join("") +
+      hoverOutlines.join("");
   };
 
   const setBamGridHover = function (track, sector) {
@@ -813,6 +848,11 @@
     bamGrid.querySelectorAll(".is-hovered").forEach(function (node) {
       node.classList.remove("is-hovered");
     });
+    if (bamBitmask) {
+      bamBitmask.querySelectorAll(".is-hovered").forEach(function (node) {
+        node.classList.remove("is-hovered");
+      });
+    }
     if (state.bamHoverTrack == null || state.bamHoverSector == null) return;
     const selectors = [
       '[data-track="' +
@@ -829,6 +869,19 @@
         node.classList.add("is-hovered");
       });
     });
+    if (bamBitmask) {
+      bamBitmask
+        .querySelectorAll(
+          '[data-track="' +
+            String(state.bamHoverTrack) +
+            '"][data-sector="' +
+            String(state.bamHoverSector) +
+            '"]',
+        )
+        .forEach(function (node) {
+          node.classList.add("is-hovered");
+        });
+    }
   };
 
   const getBamCellIssueInfo = function (track, sector) {

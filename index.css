@@ -2093,6 +2093,30 @@ tbody tr.is-drop-target {
   fill: rgba(188, 154, 47, 0.24);
 }
 
+.bam-bitmask-hover-outline {
+  fill: none;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.bam-bitmask-hover-outline-dark {
+  stroke: rgba(0, 0, 0, 0.95);
+  stroke-width: 0.4;
+  stroke-dasharray: 0.26 0.12;
+}
+
+.bam-bitmask-hover-outline-light {
+  stroke: rgba(255, 255, 255, 0.98);
+  stroke-width: 0.24;
+  stroke-dasharray: 0.26 0.12;
+  stroke-dashoffset: 0.13;
+}
+
+.bam-bitmask-hover-outline.is-hovered {
+  opacity: 1;
+}
+
 .doctor-entry-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
