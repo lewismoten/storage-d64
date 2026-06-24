@@ -2335,19 +2335,22 @@
     let file = null;
     let readError = "";
     try {
-      file = d64.readFile(image, entry);
+      file = entry.deleted ? d64.readDeletedFile(image, entry) : d64.readFile(image, entry);
     } catch (error) {
       readError = String(error && error.message ? error.message : error);
     }
     return {
       name: entry.name,
-      type: entry.fileType || "unknown",
+      type: entry.deleted
+        ? inferDeletedEntryType(entry)
+        : entry.fileType || "unknown",
       closed: entry.closed,
       locked: entry.locked,
       recordLength: entry.recordLength || undefined,
       data: file ? file.payload.slice() : new Uint8Array(0),
       unusedTailData: file ? file.unusedTailData.slice() : new Uint8Array(0),
       readError: readError,
+      deleted: entry.deleted === true,
       entry: entry,
     };
   };
@@ -2374,7 +2377,7 @@
           },
         );
         entry.deleted = d64.isDeletedDirectoryEntry(entry);
-        if (!entry.typeByte || entry.deleted) continue;
+        if (!entry.typeByte && !entry.deleted) continue;
         entries.push(entry);
       }
     }
@@ -4313,7 +4316,9 @@
     const fileInfo = findActiveFileByEntryIndex(entryIndex);
     const file =
       fileInfo && fileInfo.entry
-        ? d64.readFile(state.image, fileInfo.entry)
+        ? fileInfo.deleted
+          ? d64.readDeletedFile(state.image, fileInfo.entry)
+          : d64.readFile(state.image, fileInfo.entry)
         : null;
     if (!file) {
       setStatus("File not found.", true);
@@ -5612,10 +5617,13 @@
         const entryIndex = String(
           entry && entry.index != null ? entry.index : "",
         );
+        const isDeleted = file.deleted === true;
         return (
           "<tr>" +
           "<td>" +
-          '<button type="button" class="file-type-button" data-action="edit-doctor-entry" data-entry-index="' +
+          '<button type="button" class="file-type-button" data-action="' +
+          (isDeleted ? "open-doctor-deleted-entry" : "edit-doctor-entry") +
+          '" data-entry-index="' +
           encodeHtmlAttribute(entryIndex) +
           '" aria-label="' +
           escapeHtml(
@@ -5649,24 +5657,28 @@
           "</button>" +
           "</td>" +
           "<td>" +
-          actionIconMarkup({
-            action: "toggle-closed",
-            entryIndex: entryIndex,
-            title: file.closed ? "Open" : "Close",
-            ariaLabel: (file.closed ? "Open " : "Close ") + file.name,
-            defaultIcon: file.closed ? "📄" : "✏️",
-            hoverIcon: file.closed ? "✏️" : "📄",
-          }) +
+          (isDeleted
+            ? '<span class="table-placeholder">—</span>'
+            : actionIconMarkup({
+                action: "toggle-closed",
+                entryIndex: entryIndex,
+                title: file.closed ? "Open" : "Close",
+                ariaLabel: (file.closed ? "Open " : "Close ") + file.name,
+                defaultIcon: file.closed ? "📄" : "✏️",
+                hoverIcon: file.closed ? "✏️" : "📄",
+              })) +
           "</td>" +
           "<td>" +
-          actionIconMarkup({
-            action: "toggle-lock",
-            entryIndex: entryIndex,
-            title: file.locked ? "Unlock" : "Lock",
-            ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
-            defaultIcon: file.locked ? "🔒" : "🔓",
-            hoverIcon: file.locked ? "🔓" : "🔒",
-          }) +
+          (isDeleted
+            ? '<span class="table-placeholder">—</span>'
+            : actionIconMarkup({
+                action: "toggle-lock",
+                entryIndex: entryIndex,
+                title: file.locked ? "Unlock" : "Lock",
+                ariaLabel: (file.locked ? "Unlock " : "Lock ") + file.name,
+                defaultIcon: file.locked ? "🔒" : "🔓",
+                hoverIcon: file.locked ? "🔓" : "🔒",
+              })) +
           "</td>" +
           "<td>" +
           actionIconMarkup({
@@ -5680,17 +5692,19 @@
           "</td>" +
           "<td>" +
           actionIconMarkup({
-            action: "repair-unreachable-file",
+            action: isDeleted ? "restore-file" : "repair-unreachable-file",
             entryIndex: entryIndex,
-            title: "Repair",
-            ariaLabel: "Repair " + file.name,
-            defaultIcon: "🩹",
-            hoverIcon: "❤️‍🩹",
+            title: isDeleted ? "Restore" : "Repair",
+            ariaLabel: (isDeleted ? "Restore " : "Repair ") + file.name,
+            defaultIcon: isDeleted ? "↩️" : "🩹",
+            hoverIcon: isDeleted ? "♻️" : "❤️‍🩹",
           }) +
           "</td>" +
           "<td>" +
           actionIconMarkup({
-            action: "destroy-unreachable-file",
+            action: isDeleted
+              ? "destroy-deleted-file"
+              : "destroy-unreachable-file",
             entryIndex: entryIndex,
             title: "Destroy",
             ariaLabel: "Destroy " + file.name,
@@ -7968,9 +7982,10 @@
     const downloadName = /\.[^.\s]+$/.test(String(file.name || ""))
       ? file.name
       : file.name + extension;
+    const fileData = file.data || new Uint8Array(0);
     const link = document.createElement("a");
     const objectUrl = URL.createObjectURL(
-      new Blob([file.data || new Uint8Array(0)], {
+      new Blob([fileData], {
         type: "application/octet-stream",
       }),
     );
@@ -9575,6 +9590,17 @@
     unreachableFilesList.addEventListener("click", function (event) {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+      if (button.dataset.action === "destroy-deleted-file") {
+        destroyDeletedFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "restore-file") {
+        openDoctorEntryDialog(button.dataset.entryIndex, {
+          restoreDeleted: true,
+          returnToDoctor: false,
+        });
+        return;
+      }
       if (button.dataset.action === "destroy-unreachable-file") {
         destroyUnreachableFile(button.dataset.entryIndex);
         return;
@@ -9586,6 +9612,13 @@
       if (button.dataset.action === "edit-doctor-entry") {
         openDoctorEntryDialog(button.dataset.entryIndex, {
           highlightBlockCount: false,
+          returnToDoctor: false,
+        });
+        return;
+      }
+      if (button.dataset.action === "open-doctor-deleted-entry") {
+        openDoctorEntryDialog(button.dataset.entryIndex, {
+          restoreDeleted: true,
           returnToDoctor: false,
         });
         return;
