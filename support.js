@@ -2273,6 +2273,204 @@
     ).image;
   };
 
+  d64.analyzeReservedTrackFileRepair = function (image, entryOrName, options) {
+    const config = options || {};
+    const bytes =
+      image instanceof Uint8Array ? image : new Uint8Array(image || []);
+    const entry =
+      typeof entryOrName === "string"
+        ? d64.findDirectoryEntryByName(bytes, entryOrName, config)
+        : typeof entryOrName === "number"
+          ? d64.readDirectoryEntry(bytes, entryOrName)
+          : entryOrName || null;
+    if (!entry || !entry.typeByte || entry.deleted) {
+      throw new Error("Active file not found: " + String(entryOrName || ""));
+    }
+
+    const isAllZeroSector = function (block) {
+      for (let index = 0; index < SECTOR_SIZE; index += 1) {
+        if (block[index]) return false;
+      }
+      return true;
+    };
+
+    const header = d64.readHeader(bytes);
+    const geometry = d64.describeGeometry(bytes);
+    const directory = d64.readDirectoryEntriesFrom(
+      bytes,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+      Object.assign({}, config, { includeDeleted: true }),
+    );
+    const reservedOwners = {};
+    reservedOwners[String(DIRECTORY_TRACK) + ":" + String(BAM_SECTOR)] =
+      "BAM/header sector";
+    directory.sectors.forEach(function (sectorInfo) {
+      reservedOwners[String(sectorInfo.track) + ":" + String(sectorInfo.sector)] =
+        "live directory sector";
+    });
+
+    const chain = d64.collectFileSectorRefsBestEffort(bytes, entry, config);
+    const reservedRefs = chain.refs.filter(function (ref) {
+      return ref.track === DIRECTORY_TRACK;
+    });
+    const movableRefs = [];
+    const blockedRefs = [];
+    reservedRefs.forEach(function (ref) {
+      const key = String(ref.track) + ":" + String(ref.sector);
+      const owner = reservedOwners[key];
+      if (owner) {
+        blockedRefs.push({
+          track: ref.track,
+          sector: ref.sector,
+          reason: owner,
+        });
+        return;
+      }
+      movableRefs.push({
+        track: ref.track,
+        sector: ref.sector,
+      });
+    });
+
+    const freeMap = d64.readFreeMap(bytes);
+    const availableTargets = [];
+    const trackOrder = d64.centerOutTrackOrder(geometry.trackCount);
+    trackOrder.forEach(function (track) {
+      if (track === DIRECTORY_TRACK) return;
+      const sectorCount = d64.trackSectorCount(track);
+      for (let sector = 0; sector < sectorCount; sector += 1) {
+        if (!freeMap[track] || freeMap[track][sector] !== true) continue;
+        const block = d64.readSector(bytes, track, sector);
+        if (!isAllZeroSector(block)) continue;
+        availableTargets.push({ track: track, sector: sector });
+      }
+    });
+
+    let disabledReason = "";
+    if (!reservedRefs.length) {
+      disabledReason = "This file does not currently use the reserved directory track.";
+    } else if (blockedRefs.length) {
+      disabledReason =
+        "One or more reserved sectors belong to the live directory/BAM and can not be moved automatically.";
+    } else if (availableTargets.length < movableRefs.length) {
+      disabledReason =
+        "Not enough free all-zero sectors are available outside track 18 (" +
+        String(movableRefs.length) +
+        " needed, " +
+        String(availableTargets.length) +
+        " available).";
+    }
+
+    return {
+      entry: entry,
+      entryIndex: entry.index,
+      fileName: entry.name,
+      reservedRefs: reservedRefs,
+      movableRefs: movableRefs,
+      blockedRefs: blockedRefs,
+      requiredSectorCount: movableRefs.length,
+      availableSectorCount: availableTargets.length,
+      targetRefs: availableTargets.slice(0, movableRefs.length),
+      partial: Boolean(chain.partial),
+      stoppedReason: String(chain.stoppedReason || ""),
+      repairable:
+        !disabledReason &&
+        movableRefs.length > 0 &&
+        availableTargets.length >= movableRefs.length,
+      disabledReason: disabledReason,
+      chainRefs: chain.refs,
+    };
+  };
+
+  d64.repairReservedTrackFileWithReport = function (
+    image,
+    entryOrName,
+    options,
+  ) {
+    const bytes =
+      image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
+    const plan = d64.analyzeReservedTrackFileRepair(bytes, entryOrName, options);
+    if (!plan.repairable) {
+      throw new Error(
+        plan.disabledReason || "Reserved-track repair is not available.",
+      );
+    }
+
+    const nextImage = bytes.slice();
+    const freeMap = d64.readFreeMap(nextImage);
+    const mapping = {};
+    plan.movableRefs.forEach(function (ref, index) {
+      const target = plan.targetRefs[index];
+      mapping[String(ref.track) + ":" + String(ref.sector)] = {
+        track: target.track,
+        sector: target.sector,
+      };
+    });
+
+    plan.chainRefs.forEach(function (ref, index) {
+      const sourceKey = String(ref.track) + ":" + String(ref.sector);
+      const targetRef = mapping[sourceKey] || ref;
+      const block = d64.readSector(bytes, ref.track, ref.sector).slice();
+      if (index < plan.chainRefs.length - 1) {
+        const nextRef = plan.chainRefs[index + 1];
+        const nextTarget =
+          mapping[String(nextRef.track) + ":" + String(nextRef.sector)] ||
+          nextRef;
+        block[0] = nextTarget.track;
+        block[1] = nextTarget.sector;
+      }
+      nextImage.set(block, d64.trackOffset(targetRef.track, targetRef.sector));
+      if (mapping[sourceKey]) {
+        freeMap[targetRef.track][targetRef.sector] = false;
+      }
+    });
+
+    const firstRef = plan.chainRefs[0];
+    const movedFirstRef =
+      firstRef &&
+      mapping[String(firstRef.track) + ":" + String(firstRef.sector)];
+    let withUpdatedEntry = nextImage;
+    if (movedFirstRef) {
+      const entryBytes = plan.entry.raw.slice();
+      entryBytes[3] = movedFirstRef.track;
+      entryBytes[4] = movedFirstRef.sector;
+      withUpdatedEntry = d64.writeDirectoryEntryBytes(
+        withUpdatedEntry,
+        plan.entry,
+        entryBytes,
+      );
+    }
+
+    plan.movableRefs.forEach(function (ref) {
+      withUpdatedEntry.fill(
+        0,
+        d64.trackOffset(ref.track, ref.sector),
+        d64.trackOffset(ref.track, ref.sector) + SECTOR_SIZE,
+      );
+      if (freeMap[ref.track] && freeMap[ref.track][ref.sector] != null) {
+        freeMap[ref.track][ref.sector] = true;
+      }
+    });
+
+    return {
+      image: d64.writeBamFreeMap(withUpdatedEntry, freeMap),
+      repaired: true,
+      movedCount: plan.movableRefs.length,
+      movedFrom: plan.movableRefs.slice(),
+      movedTo: plan.targetRefs.slice(0, plan.movableRefs.length),
+      entryIndex: plan.entryIndex,
+      fileName: plan.fileName,
+      partial: plan.partial,
+      stoppedReason: plan.stoppedReason,
+    };
+  };
+
+  d64.repairReservedTrackFile = function (image, entryOrName, options) {
+    return d64.repairReservedTrackFileWithReport(image, entryOrName, options)
+      .image;
+  };
+
   d64.repairBlockCounts = function (image, entryOrOptions, maybeOptions) {
     const target =
       typeof entryOrOptions === "string" ||
@@ -2641,6 +2839,7 @@
             labelPrefix + " crosses into the reserved directory track.",
             {
               fileName: entry.name,
+              entryIndex: entry.index,
               items: [formatTs(track, sector)],
             },
           );

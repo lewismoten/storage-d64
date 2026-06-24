@@ -2840,6 +2840,10 @@ tbody tr.is-drop-target {
   margin-top: 12px;
 }
 
+.doctor-disabled-action {
+  display: inline-flex;
+}
+
 .deleted-panel {
   margin-top: 16px;
 }

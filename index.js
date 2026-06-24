@@ -272,6 +272,8 @@
     "destroyDeletedFileWithReport",
     "truncateBrokenFileChainWithReport",
     "truncateCircularFileChainWithReport",
+    "analyzeReservedTrackFileRepair",
+    "repairReservedTrackFileWithReport",
     "repairUnreachableDirectoryEntryWithReport",
     "repairBlockCounts",
     "diagnoseImage",
@@ -6832,6 +6834,56 @@
     }
   };
 
+  const getReservedTrackRepairPlan = function (issue, imageOverride) {
+    const image = imageOverride || state.image;
+    if (
+      !image ||
+      !issue ||
+      issue.code !== "file-uses-reserved-track-18" ||
+      issue.entryIndex == null
+    ) {
+      return null;
+    }
+    try {
+      return d64.analyzeReservedTrackFileRepair(
+        image,
+        Number(issue.entryIndex),
+      );
+    } catch (error) {
+      return {
+        repairable: false,
+        disabledReason: error.message || String(error),
+      };
+    }
+  };
+
+  const repairDoctorReservedTrackFile = function (entryIndex) {
+    if (!state.image || entryIndex == null) return;
+    try {
+      const result = d64.repairReservedTrackFileWithReport(
+        state.image,
+        Number(entryIndex),
+      );
+      loadImageBytes(
+        result.image,
+        state.sourceName || "disk.d64",
+        result.movedCount
+          ? 'Moved ' +
+              String(result.movedCount) +
+              ' reserved sector' +
+              (result.movedCount === 1 ? '' : 's') +
+              ' for "' +
+              String(result.fileName || "file") +
+              '" off track 18.'
+          : 'No reserved-track sectors needed repair.',
+        { resetDeletedTypeHints: false },
+      );
+      refreshDoctorReportAfterImageChange();
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
   const autoRepairDoctorIssues = function () {
     if (!state.image || !state.doctorReport) return;
     try {
@@ -7048,6 +7100,39 @@
         }
       }
 
+      const reservedTrackIssues = issues.filter(function (issue) {
+        return issue && issue.code === "file-uses-reserved-track-18";
+      });
+      if (reservedTrackIssues.length) {
+        const repairedEntries = {};
+        let movedCount = 0;
+        reservedTrackIssues.forEach(function (issue) {
+          const entryIndex = Math.max(
+            0,
+            Math.floor(Number(issue && issue.entryIndex) || 0),
+          );
+          if (repairedEntries[entryIndex]) return;
+          repairedEntries[entryIndex] = true;
+          const plan = getReservedTrackRepairPlan(issue, nextImage);
+          if (!plan || !plan.repairable) return;
+          const result = d64.repairReservedTrackFileWithReport(
+            nextImage,
+            entryIndex,
+          );
+          nextImage = result.image;
+          movedCount += Math.max(0, Number(result.movedCount) || 0);
+        });
+        if (movedCount) {
+          steps.push(
+            "moved " +
+              String(movedCount) +
+              " reserved sector" +
+              (movedCount === 1 ? "" : "s") +
+              " off track 18",
+          );
+        }
+      }
+
       if (
         hasIssue("damaged-bam-or-header") &&
         !(
@@ -7099,9 +7184,15 @@
       "splat-files": true,
       "directory-block-count-mismatch": true,
       "duplicate-filenames-repairable": true,
+      "file-uses-reserved-track-18": true,
     };
     const autoRepairIssues = diagnosis.issues.filter(function (issue) {
-      return issue && supportedAutoRepairCodes[issue.code];
+      if (!issue || !supportedAutoRepairCodes[issue.code]) return false;
+      if (issue.code === "file-uses-reserved-track-18") {
+        const plan = getReservedTrackRepairPlan(issue);
+        return Boolean(plan && plan.repairable);
+      }
+      return true;
     });
     doctorSummary.innerHTML =
       '<div class="doctor-summary-header">' +
@@ -7212,6 +7303,37 @@
           '">' +
           "Truncate" +
           "</button>" +
+          "</div>"
+        );
+      }
+      if (issue.code === "file-uses-reserved-track-18") {
+        const plan = getReservedTrackRepairPlan(issue);
+        const disabledReason =
+          plan && !plan.repairable
+            ? String(
+                plan.disabledReason ||
+                  "Reserved-track repair is not available for this file.",
+              )
+            : "";
+        const buttonMarkup =
+          '<button type="button" class="file-type-button" data-action="repair-doctor-reserved-track" data-entry-index="' +
+          encodeHtmlAttribute(String(Number(issue.entryIndex) || 0)) +
+          '"' +
+          (disabledReason
+            ? ' disabled aria-disabled="true"'
+            : "") +
+          ">" +
+          "Repair" +
+          "</button>";
+        return (
+          '<div class="doctor-issue-actions">' +
+          (disabledReason
+            ? '<span class="doctor-disabled-action" title="' +
+              encodeHtmlAttribute(disabledReason) +
+              '">' +
+              buttonMarkup +
+              "</span>"
+            : buttonMarkup) +
           "</div>"
         );
       }
@@ -8875,6 +8997,10 @@
       }
       if (button.dataset.action === "truncate-doctor-circular-chain") {
         truncateCircularDoctorFile(button.dataset.entryIndex);
+        return;
+      }
+      if (button.dataset.action === "repair-doctor-reserved-track") {
+        repairDoctorReservedTrackFile(button.dataset.entryIndex);
         return;
       }
       if (button.dataset.action === "repair-doctor-bam-allocations") {
