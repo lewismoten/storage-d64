@@ -4750,6 +4750,8 @@
     if (
       state.heatMapVisible &&
       layout &&
+      Number(layout.scoredSectorCount || 0) > 0 &&
+      layout.averageLinkScore != null &&
       Number.isFinite(Number(layout.averageLinkScore))
     ) {
       const averageScore = Math.max(
@@ -4764,6 +4766,12 @@
         formatNumber(layout.scoredSectorCount || 0) +
         " linked sectors.";
       diskMapHeatmapSummary.style.background = scoreToHeatColor(averageScore);
+    } else if (state.heatMapVisible && layout) {
+      diskMapHeatmapSummary.hidden = false;
+      diskMapHeatmapSummary.textContent = "Avg Read Score N/A";
+      diskMapHeatmapSummary.title =
+        "No valid linked-sector reads are available yet. A blank disk or image without chained follow-up sectors can not produce a meaningful average read score.";
+      diskMapHeatmapSummary.style.background = "rgba(91, 110, 120, 0.88)";
     } else {
       diskMapHeatmapSummary.hidden = true;
       diskMapHeatmapSummary.textContent = "";
