@@ -43,6 +43,7 @@
   const corruptButton = document.getElementById("corrupt-button");
   const heatmapButton = document.getElementById("heatmap-button");
   const currentFileName = document.getElementById("current-file-name");
+  const dialogScrim = document.getElementById("dialog-scrim");
   const status = document.getElementById("status");
   const headerSummary = document.getElementById("header-summary");
   const usageSummary = document.getElementById("usage-summary");
@@ -246,6 +247,7 @@
   const doctorSummary = document.getElementById("doctor-summary");
   const doctorReportBody = document.getElementById("doctor-report-body");
   const doctorTooltip = document.getElementById("doctor-tooltip");
+  const doctorToast = document.getElementById("doctor-toast");
   const doctorClose = document.getElementById("doctor-close");
   const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -476,22 +478,90 @@
     selectedSectorElement: null,
   };
   let statusTimerId = 0;
+  const managedDialogStack = [];
+
+  const isDoctorDialogOpen = function () {
+    if (!doctorDialog) return false;
+    if (typeof doctorDialog.open === "boolean") {
+      return doctorDialog.open;
+    }
+    return doctorDialog.hasAttribute("open");
+  };
+
+  const clearToastElement = function (element) {
+    if (!element) return;
+    element.textContent = "";
+    element.dataset.error = "false";
+    element.classList.remove("is-visible");
+    if (Object.prototype.hasOwnProperty.call(element, "hidden")) {
+      element.hidden = true;
+    }
+  };
+
+  const showToastElement = function (element, message, isError) {
+    if (!element) return;
+    element.textContent = message;
+    element.dataset.error = isError ? "true" : "false";
+    if (Object.prototype.hasOwnProperty.call(element, "hidden")) {
+      element.hidden = !message;
+    }
+    element.classList.toggle("is-visible", Boolean(message));
+  };
+
+  const updateManagedDialogState = function () {
+    const visibleStack = managedDialogStack.filter(function (dialog) {
+      return Boolean(dialog && dialog.hasAttribute && dialog.hasAttribute("open"));
+    });
+    managedDialogStack.length = 0;
+    visibleStack.forEach(function (dialog) {
+      managedDialogStack.push(dialog);
+    });
+    managedDialogStack.forEach(function (dialog, index) {
+      dialog.style.zIndex = String(2000 + index * 20);
+    });
+    const hasDialogs = managedDialogStack.length > 0;
+    if (dialogScrim) {
+      dialogScrim.hidden = !hasDialogs;
+      dialogScrim.style.zIndex = String(
+        hasDialogs ? 1990 + (managedDialogStack.length - 1) * 20 : 1990,
+      );
+    }
+    if (document && document.body) {
+      document.body.classList.toggle("has-managed-dialog", hasDialogs);
+    }
+  };
+
+  const openManagedDialog = function (dialog) {
+    if (!dialog) return;
+    if (dialog.hasAttribute("open")) {
+      const existingIndex = managedDialogStack.indexOf(dialog);
+      if (existingIndex >= 0) {
+        managedDialogStack.splice(existingIndex, 1);
+      }
+    } else {
+      dialog.setAttribute("open", "open");
+    }
+    managedDialogStack.push(dialog);
+    updateManagedDialogState();
+  };
+
+  const closeManagedDialog = function (dialog) {
+    if (!dialog) return;
+    dialog.removeAttribute("open");
+    const existingIndex = managedDialogStack.indexOf(dialog);
+    if (existingIndex >= 0) {
+      managedDialogStack.splice(existingIndex, 1);
+    }
+    updateManagedDialogState();
+  };
 
   const clearStatus = function () {
     if (statusTimerId) {
       window.clearTimeout(statusTimerId);
       statusTimerId = 0;
     }
-    status.textContent = "";
-    status.dataset.error = "false";
-    status.classList.remove("is-visible");
-    if (status && typeof status.hidePopover === "function") {
-      try {
-        status.hidePopover();
-      } catch (error) {
-        // Ignore if the popover was not open.
-      }
-    }
+    clearToastElement(status);
+    clearToastElement(doctorToast);
   };
 
   const getDefaultDiskName = function () {
@@ -507,25 +577,12 @@
       window.clearTimeout(statusTimerId);
       statusTimerId = 0;
     }
-    status.textContent = message;
-    status.dataset.error = isError ? "true" : "false";
-    status.classList.toggle("is-visible", Boolean(message));
-    if (status && typeof status.showPopover === "function") {
-      if (message) {
-        try {
-          status.showPopover();
-        } catch (error) {
-          // Ignore if the popover is already open.
-        }
-      } else if (typeof status.hidePopover === "function") {
-        try {
-          status.hidePopover();
-        } catch (error) {
-          // Ignore if the popover was not open.
-        }
-      }
+    if (!message) {
+      clearStatus();
+      return;
     }
-    if (!message) return;
+    clearToastElement(doctorToast);
+    showToastElement(status, message, isError);
     statusTimerId = window.setTimeout(clearStatus, isError ? 6500 : 4200);
   };
 
@@ -4095,11 +4152,7 @@
 
   const closeSectorDataDialog = function () {
     state.hexViewContext = null;
-    if (typeof sectorDataDialog.close === "function") {
-      sectorDataDialog.close();
-    } else {
-      sectorDataDialog.removeAttribute("open");
-    }
+    closeManagedDialog(sectorDataDialog);
     if (state.returnToBamDialog && state.image) {
       const bamReturn = Object.assign({}, state.returnToBamDialog);
       state.returnToBamDialog = null;
@@ -4171,11 +4224,7 @@
   };
 
   const closeSectorByteDialog = function () {
-    if (typeof sectorByteDialog.close === "function") {
-      sectorByteDialog.close();
-    } else {
-      sectorByteDialog.removeAttribute("open");
-    }
+    closeManagedDialog(sectorByteDialog);
   };
 
   const getSelectedHexRange = function () {
@@ -4286,11 +4335,7 @@
       selectionAnchor: null,
     };
     renderActiveHexView();
-    if (typeof sectorDataDialog.showModal === "function") {
-      sectorDataDialog.showModal();
-    } else {
-      sectorDataDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(sectorDataDialog);
   };
 
   const openImageRangeDialog = function (config) {
@@ -4375,11 +4420,7 @@
       selectionAnchor: null,
     };
     renderActiveHexView();
-    if (typeof sectorDataDialog.showModal === "function") {
-      sectorDataDialog.showModal();
-    } else {
-      sectorDataDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(sectorDataDialog);
   };
 
   const openImageByteDialog = function (config) {
@@ -4469,11 +4510,7 @@
           ".",
       });
     }
-    if (typeof sectorByteDialog.showModal === "function") {
-      sectorByteDialog.showModal();
-    } else {
-      sectorByteDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(sectorByteDialog);
     sectorByteValue.focus();
     sectorByteValue.select();
   };
@@ -4539,11 +4576,7 @@
       selectionAnchor: null,
     };
     renderActiveHexView();
-    if (typeof sectorDataDialog.showModal === "function") {
-      sectorDataDialog.showModal();
-    } else {
-      sectorDataDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(sectorDataDialog);
   };
 
   const openSectorByteDialog = function (track, sector, byteIndex) {
@@ -6077,19 +6110,11 @@
 
   const openCreateDialog = function () {
     diskNameInput.value = getDefaultDiskName();
-    if (typeof createDialog.showModal === "function") {
-      createDialog.showModal();
-    } else {
-      createDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(createDialog);
   };
 
   const closeCreateDialog = function () {
-    if (typeof createDialog.close === "function") {
-      createDialog.close();
-    } else {
-      createDialog.removeAttribute("open");
-    }
+    closeManagedDialog(createDialog);
   };
 
   const loadSelectedFile = async function () {
@@ -6209,19 +6234,11 @@
       state.returnToDoctorReport = false;
     }
     hideDoctorTooltip();
-    if (typeof doctorDialog.close === "function") {
-      doctorDialog.close();
-    } else {
-      doctorDialog.removeAttribute("open");
-    }
+    closeManagedDialog(doctorDialog);
   };
 
   const closeDoctorDiskIdDialog = function () {
-    if (typeof doctorDiskIdDialog.close === "function") {
-      doctorDiskIdDialog.close();
-    } else {
-      doctorDiskIdDialog.removeAttribute("open");
-    }
+    closeManagedDialog(doctorDiskIdDialog);
   };
 
   const closeBamDialog = function (options) {
@@ -6239,11 +6256,7 @@
     state.bamHoverTrack = null;
     state.bamHoverSector = null;
     hideBamTooltip();
-    if (typeof bamDialog.close === "function") {
-      bamDialog.close();
-    } else {
-      bamDialog.removeAttribute("open");
-    }
+    closeManagedDialog(bamDialog);
     if (shouldReturnToDoctor) {
       reopenDoctorReport();
     }
@@ -6373,11 +6386,7 @@
     state.bamDialogDraft = d64.readFreeMap(state.image);
     bamDialogName.innerHTML = getBamLegendMarkup();
     renderBamDialog();
-    if (typeof bamDialog.showModal === "function") {
-      bamDialog.showModal();
-    } else {
-      bamDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(bamDialog);
   };
 
   const saveBamDialog = function (event) {
@@ -6409,21 +6418,13 @@
     doctorDiskIdDialog.dataset.source = config.source || "header";
     doctorDiskIdInput.value = normalizedValue;
     doctorDiskIdInput.setCustomValidity("");
-    if (typeof doctorDiskIdDialog.showModal === "function") {
-      doctorDiskIdDialog.showModal();
-    } else {
-      doctorDiskIdDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(doctorDiskIdDialog);
     doctorDiskIdInput.focus();
     doctorDiskIdInput.select();
   };
 
   const closeHeaderDiskNameDialog = function () {
-    if (typeof headerDiskNameDialog.close === "function") {
-      headerDiskNameDialog.close();
-    } else {
-      headerDiskNameDialog.removeAttribute("open");
-    }
+    closeManagedDialog(headerDiskNameDialog);
   };
 
   const openHeaderDiskNameDialog = function (value) {
@@ -6432,29 +6433,17 @@
       "Set the 16-character disk name stored in the header.";
     headerDiskNameInput.value = normalizedValue;
     headerDiskNameInput.setCustomValidity("");
-    if (typeof headerDiskNameDialog.showModal === "function") {
-      headerDiskNameDialog.showModal();
-    } else {
-      headerDiskNameDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(headerDiskNameDialog);
     headerDiskNameInput.focus();
     headerDiskNameInput.select();
   };
 
   const closeDoctorDosTypeDialog = function () {
-    if (typeof doctorDosTypeDialog.close === "function") {
-      doctorDosTypeDialog.close();
-    } else {
-      doctorDosTypeDialog.removeAttribute("open");
-    }
+    closeManagedDialog(doctorDosTypeDialog);
   };
 
   const closeDoctorDosVersionDialog = function () {
-    if (typeof doctorDosVersionDialog.close === "function") {
-      doctorDosVersionDialog.close();
-    } else {
-      doctorDosVersionDialog.removeAttribute("open");
-    }
+    closeManagedDialog(doctorDosVersionDialog);
   };
 
   const openDoctorDosTypeDialog = function (value) {
@@ -6481,11 +6470,7 @@
         );
       })
       .join("");
-    if (typeof doctorDosTypeDialog.showModal === "function") {
-      doctorDosTypeDialog.showModal();
-    } else {
-      doctorDosTypeDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(doctorDosTypeDialog);
     doctorDosTypeSelect.focus();
   };
 
@@ -6526,11 +6511,7 @@
         );
       })
       .join("");
-    if (typeof doctorDosVersionDialog.showModal === "function") {
-      doctorDosVersionDialog.showModal();
-    } else {
-      doctorDosVersionDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(doctorDosVersionDialog);
     doctorDosVersionSelect.focus();
   };
 
@@ -7832,11 +7813,7 @@
     if (!state.image) return;
     try {
       refreshDoctorReport();
-      if (typeof doctorDialog.showModal === "function") {
-        doctorDialog.showModal();
-      } else {
-        doctorDialog.setAttribute("open", "open");
-      }
+      openManagedDialog(doctorDialog);
       const report = state.doctorReport || { summary: { total: 0 } };
       setStatus(
         report.summary.total
@@ -7865,14 +7842,6 @@
   const reopenDoctorReport = function () {
     if (!state.image) return;
     runDoctorDiagnosis();
-  };
-
-  const isDoctorDialogOpen = function () {
-    if (!doctorDialog) return false;
-    if (typeof doctorDialog.open === "boolean") {
-      return doctorDialog.open;
-    }
-    return doctorDialog.hasAttribute("open");
   };
 
   const refreshDoctorReportAfterImageChange = function (options) {
@@ -8312,11 +8281,7 @@
       Math.max(1, Math.min(254, Number(file.recordLength) || 32)),
     );
     syncFileTypeDialog();
-    if (typeof fileTypeDialog.showModal === "function") {
-      fileTypeDialog.showModal();
-    } else {
-      fileTypeDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(fileTypeDialog);
   };
 
   const openFileNameDialog = function (entryIndex) {
@@ -8332,27 +8297,15 @@
     fileNameDialogName.textContent = file.name;
     fileNameInput.value = file.name;
     validateFileNameInput();
-    if (typeof fileNameDialog.showModal === "function") {
-      fileNameDialog.showModal();
-    } else {
-      fileNameDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(fileNameDialog);
   };
 
   const closeFileTypeDialog = function () {
-    if (typeof fileTypeDialog.close === "function") {
-      fileTypeDialog.close();
-    } else {
-      fileTypeDialog.removeAttribute("open");
-    }
+    closeManagedDialog(fileTypeDialog);
   };
 
   const closeFileNameDialog = function () {
-    if (typeof fileNameDialog.close === "function") {
-      fileNameDialog.close();
-    } else {
-      fileNameDialog.removeAttribute("open");
-    }
+    closeManagedDialog(fileNameDialog);
   };
 
   const openDoctorEntryDialog = function (entryIndexValue, options) {
@@ -8423,20 +8376,12 @@
     syncDoctorEntryRecordCapacity();
     validateDoctorEntryDialog();
     renderDoctorEntryBitmask();
-    if (typeof doctorEntryDialog.showModal === "function") {
-      doctorEntryDialog.showModal();
-    } else {
-      doctorEntryDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(doctorEntryDialog);
   };
 
   const closeDoctorEntryDialog = function () {
     state.doctorEntryContext = null;
-    if (typeof doctorEntryDialog.close === "function") {
-      doctorEntryDialog.close();
-    } else {
-      doctorEntryDialog.removeAttribute("open");
-    }
+    closeManagedDialog(doctorEntryDialog);
   };
 
   const reopenDoctorFromEntryDialog = function (rerun) {
@@ -8446,11 +8391,7 @@
       refreshDoctorReportAfterImageChange({ inline: false });
       return;
     }
-    if (typeof doctorDialog.showModal === "function") {
-      doctorDialog.showModal();
-    } else {
-      doctorDialog.setAttribute("open", "open");
-    }
+    openManagedDialog(doctorDialog);
   };
 
   const saveFileTypeDialog = function (event) {
