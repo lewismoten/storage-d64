@@ -1,7 +1,9 @@
 # D64 Lab Guide
 
-This guide focuses on the browser test lab in [index.html](./index.html) and
-[index.js](./index.js).
+[Project home](../README.md) · [Visual tour](./visual-tour.md) · [Doctor guide](./doctor.md) · [Support API](./api.md) · [Development notes](./development.md)
+
+This guide focuses on the browser test lab in [index.html](../index.html) and
+[index.js](../index.js).
 
 The lab is both a disk-image editor and a visualization tool for understanding
 how directory layout, sector placement, and timing-related disk behavior affect
@@ -145,7 +147,7 @@ move between form-based editing and raw storage layout.
 
 ## Doctor Workflow
 
-Doctor is documented more fully in [DOCTOR.md](./DOCTOR.md), but the lab
+Doctor is documented more fully in the [Doctor guide](./doctor.md), but the lab
 workflow is:
 
 1. run a read-only diagnosis
@@ -189,5 +191,5 @@ That means:
 - exact rotational placement is modeled approximately, not preserved
 - copy-protection tricks may be normalized or lost during repair or rebuild
 
-For more on those limits, see [README.md](./README.md) and
-[DOCTOR.md](./DOCTOR.md).
+For more on those limits, see the [project home](../README.md) and the
+[Doctor guide](./doctor.md).

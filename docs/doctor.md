@@ -1,5 +1,7 @@
 # D64 Doctor Guide
 
+[Project home](../README.md) · [Visual tour](./visual-tour.md) · [Lab guide](./lab.md) · [Support API](./api.md) · [Development notes](./development.md)
+
 The Doctor utility is a best-effort reviewer and repair assistant for ordinary
 disk images.
 

@@ -1,21 +1,29 @@
 # D64 Development Notes
 
+[Project home](../README.md) · [Visual tour](./visual-tour.md) · [Lab guide](./lab.md) · [Doctor guide](./doctor.md) · [Support API](./api.md)
+
 This document is aimed at people working on the storage module itself.
 
 It explains how the repository is split between the public support layer, the
 thin storage plug-in, and the browser lab UI.
 
+The plug-in's `window.TPP` integration targets the Tiny Pockets Press API. Its
+original print workflow arranged double-sided pages for cutting, signature
+sewing, and binding into very small books; the wider project later added
+creative tooling such as an emulator-readable e-reader. Keep the storage
+module's host integration thin so its D64 helpers remain independently useful.
+
 ## File Map
 
-- [plugin.js](./plugin.js): registers the `d64` storage medium with a host `TPP` runtime
-- [support.js](./support.js): the main reusable D64 support namespace
-- [support.md](./support.md): API reference for `window.TPP.d64`
-- [index.html](./index.html): browser lab markup and dialog structure
-- [index.css](./index.css): browser lab styling
-- [index.js](./index.js): browser lab behavior, rendering, dialogs, Doctor UI, and editing flows
-- [README.md](./README.md): project overview
-- [LAB.md](./LAB.md): browser lab usage guide
-- [DOCTOR.md](./DOCTOR.md): Doctor behavior and repair policy
+- [plugin.js](../plugin.js): registers the `d64` storage medium with a host `TPP` runtime
+- [support.js](../support.js): the main reusable D64 support namespace
+- [api.md](./api.md): API reference for `window.TPP.d64`
+- [index.html](../index.html): browser lab markup and dialog structure
+- [index.css](../index.css): browser lab styling
+- [index.js](../index.js): browser lab behavior, rendering, dialogs, Doctor UI, and editing flows
+- [README.md](../README.md): project overview
+- [lab.md](./lab.md): browser lab usage guide
+- [doctor.md](./doctor.md): Doctor behavior and repair policy
 
 ## Layer Responsibilities
 
@@ -86,7 +94,7 @@ Common families include:
 - BAM inspection and validation helpers
 - Doctor diagnosis and repair helpers
 
-The reference for the exported API remains [support.md](./support.md). This
+The reference for the exported API remains [api.md](./api.md). This
 document is intentionally more architectural than exhaustive.
 
 ## UI And Support Boundary
@@ -119,7 +127,7 @@ When adding Doctor behavior:
 2. decide whether the repair is safe, destructive, or ambiguous
 3. expose the right UI action in `index.js`
 4. include or exclude it from `Auto Repair` intentionally
-5. document the behavior in [DOCTOR.md](./DOCTOR.md) when the policy changes
+5. document the behavior in [doctor.md](./doctor.md) when the policy changes
 
 ## Editing Philosophy
 
@@ -171,10 +179,10 @@ UI behavior.
 
 When features change, these are the most likely docs to need updates:
 
-- [README.md](./README.md): project overview and major user-facing capabilities
-- [LAB.md](./LAB.md): lab workflows and UI behavior
-- [DOCTOR.md](./DOCTOR.md): detection, repair, and auto-repair policy
-- [support.md](./support.md): public API reference
+- [README.md](../README.md): project overview and major user-facing capabilities
+- [lab.md](./lab.md): lab workflows and UI behavior
+- [doctor.md](./doctor.md): detection, repair, and auto-repair policy
+- [api.md](./api.md): public API reference
 
 If a change affects only internal code structure, update this file instead of
 expanding the public README unnecessarily.

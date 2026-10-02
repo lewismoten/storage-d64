@@ -135,9 +135,34 @@ main {
 
 .hero-title-row {
   display: grid;
-  grid-template-columns: auto minmax(340px, 1fr);
+  grid-template-columns: auto minmax(340px, 1fr) auto;
   gap: 18px;
   align-items: end;
+}
+
+.hero-help-link {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(142, 243, 230, 0.72);
+  border-radius: 50%;
+  color: #082432;
+  background: var(--accent-strong);
+  box-shadow: 0 5px 18px rgba(63, 209, 194, 0.26);
+  font-family: "SFMono-Regular", "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.hero-help-link:hover,
+.hero-help-link:focus-visible {
+  color: #082432;
+  background: #fff;
+  outline: 3px solid rgba(142, 243, 230, 0.45);
+  outline-offset: 3px;
 }
 
 .hero h1,
@@ -428,7 +453,6 @@ button:disabled {
   border-color: rgba(142, 243, 230, 0.28);
   color: var(--paper-strong);
 }
-
 
 .summary-grid {
   display: grid;

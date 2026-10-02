@@ -1,6 +1,8 @@
 # D64 Support API
 
-This document describes the low-level support API exposed by [support.js](./support.js).
+[Project home](../README.md) · [Visual tour](./visual-tour.md) · [Lab guide](./lab.md) · [Doctor guide](./doctor.md) · [Development notes](./development.md)
+
+This document describes the low-level support API exposed by [support.js](../support.js).
 
 When loaded, the file creates:
 
@@ -64,7 +66,7 @@ type D64File = {
 };
 ```
 
-Common Commodore file types include:
+Common D64 file types include:
 
 - `0x80`: DEL
 - `0x81`: SEQ
@@ -109,7 +111,7 @@ type D64ImageOptions = {
 
 ## Final-Sector Tail Data
 
-Commodore file chains only use as many bytes as the final sector header indicates. Any remaining bytes in that last 254-byte data area are technically unused tail space.
+D64 file chains only use as many bytes as the final sector header indicates. Any remaining bytes in that last 254-byte data area are technically unused tail space.
 
 This support layer now exposes that tail explicitly:
 
@@ -684,7 +686,7 @@ Returns:
 
 ### `readFileChain(image, startTrack, startSector)`
 
-Reads a normal Commodore file chain starting from the given track and sector.
+Reads a normal D64 file chain starting from the given track and sector.
 
 Parameters:
 
@@ -883,7 +885,7 @@ Notes:
   mismatches, orphaned allocated blocks, nonzero slack bytes, and optional D64
   error-byte observations.
 - The higher-level Doctor behavior and repair policy are documented in
-  [DOCTOR.md](./DOCTOR.md).
+  [Doctor guide](./doctor.md).
 - The diagnosis is read-only. Repair helpers are separate and intentionally try
   to normalize an image toward a conventional, emulator-friendly logical D64
   layout.
@@ -1245,7 +1247,7 @@ Notes:
 
 ### `writeFile(image, data, allocation, unusedTailData)`
 
-Writes one file into a D64 image using Commodore sector chaining.
+Writes one file into a D64 image using D64 sector chaining.
 
 Parameters:
 
@@ -1414,7 +1416,7 @@ Current limitations of this support layer:
 - `REL` support currently assumes up to `6` side sectors per file.
 - File-type state bits such as custom locked/open combinations are not modeled separately from the normalized type byte.
 - Disk header customization is minimal and not exposed as a richer API for disk ID or DOS type variations.
-- This layer does not validate Commodore semantics beyond the structural image layout.
+- This layer does not validate platform-specific semantics beyond the structural image layout.
 - There is no visual disk-map API yet.
 - Images can be rebuilt with either sequential allocation or an intentionally fragmented allocation strategy.
 
