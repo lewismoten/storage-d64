@@ -4,6 +4,7 @@
     { id: "lab", label: "Lab guide", path: "docs/lab.md" },
     { id: "doctor", label: "Doctor guide", path: "docs/doctor.md" },
     { id: "api", label: "Support API", path: "docs/api.md" },
+    { id: "timing", label: "Drive timing", path: "docs/drive-timing.md" },
     {
       id: "development",
       label: "Development notes",

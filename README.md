@@ -24,16 +24,19 @@ low-risk correction is clear. The lab also makes routine transfer easier: drop
 files onto an image and download individual files directly to your filesystem.
 
 Once image integrity was covered, the focus expanded to how placement affects
-reading. The lab accounts for starting head position, disk speed, sector
-placement, and chained-file access to estimate a read score. Its heat map,
-Optimize, and Deoptimize controls make those tradeoffs visible and testable.
+reading. The lab models a stock 1541 from its DOS ROM: rotation, head
+stepping, read-ahead, and the slow C64 serial bus. Its speed map shows both the
+delay each link adds to a stock `LOAD` and how closely the layout follows the
+DOS's own placement rule, and Optimize and Deoptimize make those tradeoffs
+visible and testable.
 
 ## Highlights
 
 - Create, load, inspect, and download 35-, 40-, and 42-track images, with
   optional per-sector error information.
 - Browse a visual disk map with sector details, usage data, file types,
-  pan/zoom controls, a cover view, and a read-efficiency overlay.
+  pan/zoom controls, a cover view, a speed-map overlay, and an animated
+  1541 `LOAD`.
 - Manage files and metadata: import by drag and drop, export individual files,
   rename, reorder, lock, open/close, delete, restore, and repair entries.
 - Inspect and edit headers, directory records, allocation data, sectors, file
@@ -110,6 +113,7 @@ no third-party runtime dependency.
 - [Lab guide](./docs/lab.md) — controls, editing surfaces, and workflows.
 - [Doctor guide](./docs/doctor.md) — diagnosis, repair policy, and limitations.
 - [Support API](./docs/api.md) — the `window.TPP.d64` reference.
+- [Drive timing](./docs/drive-timing.md) — how the lab models a stock 1541, with sources.
 - [Development notes](./docs/development.md) — architecture and contribution guidance.
 
 ## Acknowledgments

@@ -1,0 +1,148 @@
+# 1541 Drive Timing
+
+[Project home](../README.md) · [Visual tour](./visual-tour.md) · [Lab guide](./lab.md) · [Doctor guide](./doctor.md) · [Support API](./api.md) · [Development notes](./development.md)
+
+This page records how the lab models a stock Commodore 1541 reading a disk for
+a stock Commodore 64 `LOAD` with no fast loader, JiffyDOS, or speeder
+cartridge. The speed map, the **Optimize** button, and the
+`LOAD "*",8,1` animation all use this model. The constants live in
+`window.TPP.d64.driveTiming` in [support.js](../support.js).
+
+## Timing Constants
+
+Most values come from the 1541 DOS 2.6 ROM. The disk controller code runs in a
+VIA timer interrupt whose latch is `$3A00` cycles at 1 MHz, about 14.85 ms, and
+the DOS counts most mechanical delays in those interrupts. Commodore's own
+source comments quote older, rounder figures (for example "1.5 sec" for
+spin-up); where they disagree with the register values, the lab uses the
+register values.
+
+| Constant                    | Value                                          | Source                                                |
+| --------------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| Rotation                    | 300 RPM, 200 ms per revolution                 | 1540/1541 Service Manual                              |
+| One sector passing the head | 9.5 ms (tracks 1-17) to 11.8 ms (tracks 31-35) | 200 ms divided by the zone's sector count             |
+| Controller interrupt        | about 14.85 ms                                 | ROM timer latch `$3A00`                               |
+| Head step                   | one half-track per interrupt, 29.7 ms a track  | ROM stepper code; fast stepping needs 200+ half-steps |
+| Settle after a seek         | 5 interrupts, about 74 ms                      | ROM                                                   |
+| Motor spin-up wait          | 60 interrupts, about 0.89 s                    | ROM `$F98A`                                           |
+| Motor run-on after last job | 255 interrupts, about 3.8 s                    | ROM `$F997`                                           |
+| Bump                        | 92 half-steps outward, about 1.37 s            | ROM `$F388`                                           |
+| Serial transfer to a C64    | about 400 bytes/s; 0.63 s per 254-byte block   | Service Manual (400 B/s); measured 403 B/s            |
+| File interleave             | 10 sectors                                     | DOS source, inherited from the PET 4040 drive         |
+| Directory interleave        | 3 sectors                                      | DOS source, inherited from the PET 4040 drive         |
+
+The C64 transfers more slowly than the VIC-20 because its video chip pauses the
+CPU about every 0.5 ms, so the serial protocol uses longer hold times. The
+drive's `UI-` command selects the faster VIC-20 timing.
+
+## What A Stock LOAD Does
+
+For `LOAD "*",8,1` on a freshly inserted disk:
+
+1. The motor turns on, and the DOS waits about 0.89 s for it to spin up.
+2. The drive initializes: it steps to track 18 and reads the BAM and disk ID
+   at 18/0.
+3. It follows the directory chain looking for the first closed PRG entry.
+   With no earlier `LOAD`, `"*"` means the first PRG; SEQ, USR, REL, and
+   scratched entries are skipped. After a `LOAD`, `"*"` reopens the last
+   program instead (1541 User's Guide).
+4. It reads the file's first block and starts sending it. The DOS
+   double-buffers read channels (`STRDBL` `$D0AF`, `DBLBUF` `$CF1E`): when it
+   starts sending a block, it queues the read of the next one into the other
+   buffer. The head reads ahead while the serial bus is busy for about 0.63 s.
+5. If the next block is not in its buffer when a send ends, the C64 waits.
+6. The motor keeps running for about 3.8 s after the last job.
+
+During a normal load "over 60 sectors may pass while one is being sent"
+(Transactor, March 1987). That read-ahead window hides interleave,
+rotational waits, and short seeks. A 1987 Transactor test found that changing
+the interleave "didn't have much effect at normal loading speeds", while it
+mattered a lot with fast loaders.
+
+## The Speed Map's Two Views
+
+The 🚦 button cycles through **Stock LOAD**, **DOS layout**, and off.
+
+**Stock LOAD** colors each file link by the delay it adds to a stock `LOAD`.
+The read-ahead has the whole 0.63 s send to finish, so a link stalls only when
+seek, settle, rotational wait, and the sector itself take longer than that. In
+practice only jumps of about 16 tracks or more stall. The score is the share of
+the link's time the bus spends sending data. Rotational waits use the average
+of half a revolution, because the read is queued at a time set by the serial
+transfer, and because a real disk does not record where each track starts
+relative to the others. The directory is searched inside the drive before any
+data is sent, so this view does not score directory links.
+
+**DOS layout** colors each link by how closely it follows the placement the
+1541 DOS itself uses when it writes a file (`NXTTS`, `$F11E`):
+
+- Stay on the current track while it has free blocks.
+- Aim 10 sectors past the previous block. If that runs off the track, subtract
+  the sector count, then 1 more unless the result is 0. Take that sector if
+  free, otherwise the next free sector above it, otherwise the first free one.
+- When the track is full, move one track further from track 18 and keep going
+  in that direction, wrapping to the other side after the last track.
+- Start each new file on the first track with free blocks in the order 17, 19,
+  16, 20, and so on, at its lowest free sector.
+- Lay the directory out on track 18 with interleave 3:
+  1, 4, 7, 10, 13, 16, 2, 5, and so on.
+
+A link that skips its target scores 100% when every sector it skipped is used
+by another file or by an earlier block of the same file, because the DOS
+skips taken sectors. A D64 does not record which file was written first, so
+the score gives other files the benefit of the doubt. This view measures
+conformance to Commodore's design, not speed.
+
+**Optimize** rewrites files using the same DOS placement rule.
+
+## Official Advice And Practice
+
+Commodore's 1541 User's Guide says only that "the DOS fills up the diskette
+from the center outward"; no official guidance on optimizing layout was found.
+The stock 1541 has no interleave command (the 1571 and 1581 add `U0>S`).
+Magazines such as Transactor showed how to change the interleave by poking the
+DOS's interleave variable, and concluded it barely matters for stock loads.
+In practice, commercial software and users relied on fast loaders, which are
+far faster than the stock `LOAD` (one benchmark measured Epyx FastLoad at about
+2,100 bytes/s and JiffyDOS at about 3,700 bytes/s) and are sensitive to
+interleave.
+
+## Simplifications And Open Questions
+
+- The read job only starts when the wanted sector is a few sectors away, and
+  waiting for it briefly pauses the serial transfer. The animation and speed
+  map do not model this; it is small and depends little on layout.
+- The KERNAL's own overhead before and between transfers is not modelled.
+- The animation draws sector 0 of every track at the same angle. On a real
+  1541 each track starts wherever formatting began.
+- Disk rotation is drawn clockwise as seen from the label side. The 5.25-inch
+  standard (ECMA-66) specifies counterclockwise rotation seen from the
+  recorded side, and the 1541's head reads the side away from the label, so
+  the two agree. No 1541-specific statement was found.
+- How long the disk coasts after the motor stops is not documented; the
+  animation uses half a second.
+- No measured VIC-20 transfer rate or PAL versus NTSC difference was found,
+  nor why the 4040's designers chose interleaves of 10 and 3.
+
+## Sources
+
+- Commented 1541 DOS ROM disassembly (Frank Kontros):
+  <http://www.ffd2.com/fridge/docs/1541dis.html>
+- _Inside Commodore DOS_ (Immers & Neufeld), annotated ROM listing:
+  <https://g3sl.github.io/c1541rom.html>
+- Commodore's DOS source for the 1541, 1540, and 4040:
+  <https://github.com/mist64/cbmsrc>
+- 1540/1541 Service Manual:
+  <https://www.classic-computing.org/wp-content/uploads/2016/01/15401541_SERVICE-MANUAL.pdf>
+- 1541 User's Guide:
+  <http://www.zimmers.net/anonftp/pub/cbm/manuals/drives/1541_Users_Guide.pdf>
+- Michael Steil, "Commodore Peripheral Bus: Part 4":
+  <https://www.pagetable.com/?p=1135>
+- Transactor Vol. 7 No. 5 (March 1987), "The 1541 Interleave Factor":
+  <https://archive.org/download/transactor-magazines-v7-i05/trans_v7_i05_djvu.txt>
+- 1541 load-speed benchmark (403 bytes/s):
+  <https://www.obliterator918.com/dtb/>
+- D64 format notes (Peter Schepers):
+  <http://unusedino.de/ec64/technical/formats/d64.html>
+- ECMA-66, 130 mm flexible disk cartridges:
+  <https://www.ecma-international.org/wp-content/uploads/ECMA-66_1st_edition_september_1980.pdf>

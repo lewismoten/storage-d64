@@ -42,7 +42,7 @@ The disk layout panel is the main visualization surface.
 It includes:
 
 - a pan-and-zoom platter view
-- optional speed-map overlay
+- optional speed-map overlay with Stock LOAD and DOS layout views
 - cover/sleeve presentation mode
 - sector and structure legends
 - track and sector hover details
@@ -54,6 +54,36 @@ It includes:
 The disk map is intended to help explain both where data lives and why one
 layout may read more efficiently than another in emulators that model rotation,
 head movement, and transfer timing.
+
+### 1541 Drive
+
+The magnet button in the disk map toolbar shows the drive's read/write head in
+the head window. The head carries two LEDs: green while it reads and red while
+it writes.
+
+The **1541 Drive** panel beside the disk map animates the drive:
+
+- **LOAD "\*",8,1** plays what a stock 1541 does when it first loads from a
+  freshly inserted disk. The motor spins up for about 0.9 s and the head steps
+  to track 18 to read the BAM and disk ID at 18/0. The drive follows the
+  directory chain to the first closed PRG file, then follows that file's
+  sector links. It reads each block ahead while it sends the previous one to
+  the C64, which takes about 0.63 s per block, so the readout often shows the
+  head reading while the bus is sending. The green LED lights as each sector
+  passes under the head, and sectors already read are outlined in green. The
+  motor keeps running for about 3.8 s afterwards.
+- **Initialize** runs the ROM's bump: 92 half-steps outward, knocking against
+  the stop once the head reaches track 1. The stock DOS bumps during error
+  recovery and before formatting.
+- **Stop** ends a LOAD early and lets the disk coast to a stop.
+- **LOAD playback** slows the animation to 1/4 or 1/10 speed. At real speed a
+  sector passes the head in about 10 ms.
+
+The readout shows what the head and the serial bus are doing, the head's
+track and the sector under it, the motor state, and how many blocks have been
+sent. The timing comes from the 1541 ROM and is shared with the speed map; see
+[Drive timing](./drive-timing.md) for the values, sources, and
+simplifications.
 
 ## Directory Files
 
@@ -163,7 +193,7 @@ preserving unusual protection tricks or nonstandard disk behavior.
 The utilities are related but distinct:
 
 - `Validate` rebuilds or reconciles structural allocation state more conservatively
-- `Optimize` reflows files and directory sectors toward more efficient reading
+- `Optimize` reflows files and directory sectors the way the 1541 DOS lays them out
 - `Deoptimize` intentionally scatters layout so timing and fragmentation effects are easier to study
 - `Corrupt` introduces sample faults so Doctor and the editing tools can be exercised
 

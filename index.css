@@ -3082,3 +3082,131 @@ body.has-managed-dialog {
   pointer-events: none;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
 }
+
+.disk-map-head-led {
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.8;
+}
+
+.disk-map-head-led.is-read {
+  fill: #17452a;
+}
+
+.disk-map-head-led.is-write {
+  fill: #4a1a1c;
+}
+
+.disk-map-head-led.is-read.is-on {
+  fill: #5dff8a;
+  filter: drop-shadow(0 0 3px #5dff8a);
+}
+
+.disk-map-head-led.is-write.is-on {
+  fill: #ff5a5f;
+  filter: drop-shadow(0 0 3px #ff5a5f);
+}
+
+.disk-map-sector.is-drive-read {
+  stroke: rgba(93, 255, 138, 0.55) !important;
+  stroke-width: 1 !important;
+}
+
+.disk-map-sector.is-drive-reading {
+  filter: brightness(1.35);
+  stroke: #5dff8a !important;
+  stroke-width: 2 !important;
+}
+
+.drive-panel {
+  padding: 12px;
+  border: 1px solid rgba(185, 227, 242, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+}
+
+.drive-panel h4 {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.drive-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.drive-panel-actions button {
+  width: auto;
+  flex: 1 1 auto;
+  padding: 0 12px;
+}
+
+.drive-panel-speed {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.drive-panel-readout {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+}
+
+.drive-panel-readout div {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  gap: 8px;
+}
+
+.drive-panel-readout dt {
+  color: var(--muted);
+}
+
+.drive-panel-readout dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.drive-panel-leds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drive-led {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+}
+
+.drive-led-write {
+  margin-left: 8px;
+}
+
+.drive-led-read {
+  background: #17452a;
+}
+
+.drive-led-write {
+  background: #4a1a1c;
+}
+
+.drive-led-read.is-on {
+  background: #5dff8a;
+  box-shadow: 0 0 6px #5dff8a;
+}
+
+.drive-led-write.is-on {
+  background: #ff5a5f;
+  box-shadow: 0 0 6px #ff5a5f;
+}

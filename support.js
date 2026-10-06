@@ -4868,69 +4868,282 @@
     return null;
   };
 
-  d64.estimateNextSectorWindow = function (previousBlock, targetTrack) {
-    if (!previousBlock) return 0;
-    const previousSectorCount = d64.trackSectorCount(previousBlock.track);
-    const targetSectorCount = d64.trackSectorCount(targetTrack);
-    const seekDistance = Math.abs(targetTrack - previousBlock.track);
-    const rotationalLead = Math.min(
-      previousSectorCount + targetSectorCount,
-      seekDistance === 0 ? 10 : seekDistance === 1 ? 4 : 2 + seekDistance * 2,
-    );
-    return (previousBlock.sector + rotationalLead) % targetSectorCount;
+  // Timing of a stock 1541 driving a stock C64 KERNAL LOAD (no fast loader).
+  // Most values come from the 1541 DOS 2.6 ROM: the disk controller runs in a
+  // VIA timer interrupt with a latch of $3A00 cycles at 1 MHz, and the DOS
+  // counts most mechanical delays in those interrupts. Commodore's own source
+  // comments quote older, rounder figures; the register values win.
+  //   rotation: 300 RPM (1540/1541 Service Manual).
+  //   step: one half-track per interrupt; "fast stepping" only engages for
+  //     200+ half-steps, which a 35-track disk never needs.
+  //   settle: 5 interrupts after the last step.
+  //   spin-up: 60 interrupts before the DOS steps or reads ($F98A).
+  //   run-on: the motor stays on 255 interrupts after the last job ($F997).
+  //   bump: 92 half-steps outward ($F388), used for error recovery and NEW.
+  //   serial: about 400 bytes/s to a C64 (Service Manual), measured at 403
+  //     bytes/s on a 177-block load, so about 0.63 s per 254-byte block.
+  const DRIVE_INTERRUPT_MS = 0x3a00 / 1000;
+  d64.driveTiming = Object.freeze({
+    rotationMs: 200,
+    interruptMs: DRIVE_INTERRUPT_MS,
+    halfStepMs: DRIVE_INTERRUPT_MS,
+    trackStepMs: DRIVE_INTERRUPT_MS * 2,
+    settleMs: DRIVE_INTERRUPT_MS * 5,
+    spinUpMs: DRIVE_INTERRUPT_MS * 60,
+    runOnMs: DRIVE_INTERRUPT_MS * 255,
+    bumpHalfSteps: 92,
+    serialBytesPerSecond: 403,
+    fileInterleave: 10,
+    directoryInterleave: 3,
+  });
+
+  // Time for one sector to pass under the head on `track`.
+  d64.driveSectorMs = function (track) {
+    return d64.driveTiming.rotationMs / d64.trackSectorCount(track);
   };
 
-  d64.findNearestSmartSector = function (allocation, previousBlock) {
-    const freePool = d64.collectAllocatableSectors(allocation);
-    if (!freePool.length) return null;
-    const previousSide = previousBlock
-      ? previousBlock.track < DIRECTORY_TRACK
-        ? "inner"
-        : "outer"
-      : null;
-    let best = null;
-    let bestScore = Infinity;
-    for (let index = 0; index < freePool.length; index += 1) {
-      const candidate = freePool[index];
-      const candidateSide =
-        candidate.track < DIRECTORY_TRACK ? "inner" : "outer";
-      const seekDistance = previousBlock
-        ? Math.abs(candidate.track - previousBlock.track)
-        : Math.abs(candidate.track - DIRECTORY_TRACK);
-      const predictedSector = d64.estimateNextSectorWindow(
-        previousBlock,
-        candidate.track,
-      );
-      const sectorCount = d64.trackSectorCount(candidate.track);
-      const rotationalDistance =
-        previousBlock == null
-          ? candidate.sector
-          : (candidate.sector - predictedSector + sectorCount) % sectorCount;
-      const totalDelay =
-        seekDistance * 3 + (rotationalDistance / sectorCount) * 200;
-      const rank = [
-        totalDelay,
-        rotationalDistance,
-        seekDistance,
-        previousSide && candidateSide !== previousSide ? 1 : 0,
-        Math.abs(candidate.track - DIRECTORY_TRACK),
-        candidate.sector,
-      ];
-      if (
-        !best ||
-        rank.some(
-          (value, index) =>
-            value < bestScore[index] &&
-            rank
-              .slice(0, index)
-              .every((item, prior) => item === bestScore[prior]),
-        )
-      ) {
-        bestScore = rank;
-        best = candidate;
-      }
+  // Time to move the head between tracks, including the settle delay.
+  d64.driveSeekMs = function (fromTrack, toTrack) {
+    const distance = Math.abs(
+      Math.floor(Number(toTrack) || 0) - Math.floor(Number(fromTrack) || 0),
+    );
+    if (!distance) return 0;
+    return distance * d64.driveTiming.trackStepMs + d64.driveTiming.settleMs;
+  };
+
+  // Time to send `bytes` file bytes to a stock C64.
+  d64.driveSendMs = function (bytes) {
+    return (
+      (Math.max(0, Number(bytes) || 0) / d64.driveTiming.serialBytesPerSecond) *
+      1000
+    );
+  };
+
+  // The sector the 1541 DOS aims for after `previousSector` (NXTTS, $F11E):
+  // add the interleave, and if that runs off the track, subtract the sector
+  // count and then 1 more unless the result is 0. The DOS takes this sector
+  // if it is free, otherwise the next free sector above it.
+  d64.dosNextSector = function (previousSector, sectorCount, interleave) {
+    const step =
+      interleave == null
+        ? d64.driveTiming.fileInterleave
+        : Math.floor(Number(interleave) || 0);
+    let sector = Math.max(0, Math.floor(Number(previousSector) || 0)) + step;
+    if (sector >= sectorCount) {
+      sector -= sectorCount;
+      if (sector !== 0) sector -= 1;
     }
-    return best;
+    return Math.max(0, Math.min(sectorCount - 1, sector));
+  };
+
+  // The sector the DOS aims for on `targetTrack` after `previousBlock`.
+  d64.estimateNextSectorWindow = function (previousBlock, targetTrack) {
+    if (!previousBlock) return 0;
+    return d64.dosNextSector(
+      previousBlock.sector,
+      d64.trackSectorCount(targetTrack),
+    );
+  };
+
+  // The track the DOS moves to when the current one is full: one further from
+  // track 18 in the same direction, wrapping from the last track to 17 and
+  // from track 1 to 19.
+  d64.dosNextTrack = function (track, trackCount) {
+    const lastTrack = d64.normalizeTrackCount(
+      trackCount || DEFAULT_TRACK_COUNT,
+    );
+    if (track < DIRECTORY_TRACK) {
+      return track > 1 ? track - 1 : DIRECTORY_TRACK + 1;
+    }
+    return track < lastTrack ? track + 1 : DIRECTORY_TRACK - 1;
+  };
+
+  // How closely a file link follows the 1541 DOS's own placement rule. 100%
+  // is the block the DOS aims for; lower scores wait further past it on the
+  // same (or the DOS's next) track. Any other track scores 0. This measures
+  // conformance to Commodore's design, not speed: with a stock LOAD, layout
+  // barely changes the load time (see estimateStockLoadLink).
+  //
+  // `isTaken(track, sector)`, when given, says whether a sector was already in
+  // use when the block was written. The DOS skips taken sectors, so a link
+  // that lands past its target still matches if every sector it skipped was
+  // taken, and the DOS only changes track once the current one is full.
+  d64.scoreDosLayoutLink = function (
+    previousBlock,
+    nextBlock,
+    trackCount,
+    isTaken,
+  ) {
+    const previousTrack = Math.floor(Number(previousBlock.track) || 0);
+    const nextTrack = Math.floor(Number(nextBlock.track) || 0);
+    const sectorCount = d64.trackSectorCount(nextTrack);
+    const trackIsFull = function (track) {
+      for (let sector = 0; sector < d64.trackSectorCount(track); sector += 1) {
+        if (!isTaken(track, sector)) return false;
+      }
+      return true;
+    };
+    const followsTrack =
+      nextTrack === previousTrack ||
+      (nextTrack === d64.dosNextTrack(previousTrack, trackCount) &&
+        (!isTaken || trackIsFull(previousTrack)));
+    const wrapped =
+      Math.abs(nextTrack - previousTrack) > 1 &&
+      nextTrack === d64.dosNextTrack(previousTrack, trackCount);
+    // After wrapping to the other side of track 18 the DOS starts at sector 0.
+    const idealSector = wrapped
+      ? 0
+      : d64.estimateNextSectorWindow(previousBlock, nextTrack);
+    const rotationalDistance =
+      (Math.floor(Number(nextBlock.sector) || 0) - idealSector + sectorCount) %
+      sectorCount;
+    let skippedOnlyTaken = Boolean(isTaken);
+    for (
+      let step = 0;
+      skippedOnlyTaken && step < rotationalDistance;
+      step += 1
+    ) {
+      skippedOnlyTaken = isTaken(nextTrack, (idealSector + step) % sectorCount);
+    }
+    return {
+      idealTrack: followsTrack ? nextTrack : previousTrack,
+      idealSector: idealSector,
+      rotationalDistance: rotationalDistance,
+      followsTrack: followsTrack,
+      skippedOnlyTaken: followsTrack && skippedOnlyTaken,
+      score: !followsTrack
+        ? 0
+        : skippedOnlyTaken
+          ? 100
+          : ((sectorCount - 1 - rotationalDistance) / (sectorCount - 1)) * 100,
+    };
+  };
+
+  // Scores every file link on the disk against the DOS placement rule, keyed
+  // by the link's first block ("track:sector"). A sector counts as taken for
+  // a link when it belongs to another file or to an earlier block of the same
+  // file. A D64 does not record which file was written first, so this gives
+  // other files the benefit of the doubt.
+  d64.scoreDosLayout = function (image) {
+    const trackCount = d64.describeGeometry(image).trackCount;
+    // Each file's blocks in chain order. A broken chain contributes no links.
+    const files = d64.readDirectoryEntries(image).map(function (entry) {
+      try {
+        return d64.readFileChain(image, entry.startTrack, entry.startSector)
+          .blocks;
+      } catch (error) {
+        return [];
+      }
+    });
+    const owners = {};
+    files.forEach(function (blocks, fileIndex) {
+      blocks.forEach(function (block, blockIndex) {
+        owners[String(block.track) + ":" + String(block.sector)] = {
+          fileIndex: fileIndex,
+          blockIndex: blockIndex,
+        };
+      });
+    });
+    const links = {};
+    let total = 0;
+    let count = 0;
+    files.forEach(function (blocks, fileIndex) {
+      for (let index = 1; index < blocks.length; index += 1) {
+        const isTaken = function (track, sector) {
+          const owner = owners[String(track) + ":" + String(sector)];
+          return Boolean(
+            owner &&
+            (owner.fileIndex !== fileIndex || owner.blockIndex < index),
+          );
+        };
+        const previous = blocks[index - 1];
+        const result = d64.scoreDosLayoutLink(
+          previous,
+          blocks[index],
+          trackCount,
+          isTaken,
+        );
+        links[String(previous.track) + ":" + String(previous.sector)] = result;
+        total += result.score;
+        count += 1;
+      }
+    });
+    return { links: links, average: count ? total / count : null };
+  };
+
+  // Expected delay a file link adds to a stock C64 LOAD.
+  //
+  // The DOS double-buffers read channels (STRDBL $D0AF, DBLBUF $CF1E): when it
+  // starts sending a block to the C64 it queues the read of the next block,
+  // so that read only has to finish within the ~0.63 s send. The link costs
+  // extra time only when seek + rotational wait + reading the sector takes
+  // longer than that.
+  //
+  // The rotational wait uses the average of half a revolution: when the read
+  // is queued depends on serial timing, and on a real disk the rotational
+  // position of one track relative to another is not recorded anywhere.
+  d64.estimateStockLoadLink = function (previousBlock, nextBlock, sendBytes) {
+    const seekMs = d64.driveSeekMs(previousBlock.track, nextBlock.track);
+    const rotationMs = d64.driveTiming.rotationMs / 2;
+    const sectorMs = d64.driveSectorMs(nextBlock.track);
+    const readMs = seekMs + rotationMs + sectorMs;
+    const sendMs = d64.driveSendMs(sendBytes == null ? 254 : sendBytes);
+    const stallMs = Math.max(0, readMs - sendMs);
+    return {
+      seekMs: seekMs,
+      rotationMs: rotationMs,
+      sectorMs: sectorMs,
+      readMs: readMs,
+      sendMs: sendMs,
+      stallMs: stallMs,
+      // Share of the link's time the serial bus spends sending data.
+      score: sendMs > 0 ? (sendMs / (sendMs + stallMs)) * 100 : 100,
+    };
+  };
+
+  // Picks the next block the way the 1541 DOS does (NXTTS, $F11E): stay on
+  // the current track while it has free blocks, aiming for the interleave
+  // sector, else the next free sector above it, else the first free one.
+  // When the track is full, move one track further from track 18 and keep
+  // going in that direction, wrapping to the other side after the last
+  // track.
+  d64.findNextDosSector = function (allocation, previousBlock) {
+    if (!previousBlock) return d64.findNextCenterOutStartSector(allocation);
+    const lastTrack = d64.normalizeTrackCount(
+      allocation.trackCount || DEFAULT_TRACK_COUNT,
+    );
+    let track = previousBlock.track;
+    let baseSector = previousBlock.sector;
+    let wrapped = false;
+    for (let attempts = 0; attempts < lastTrack * 2; attempts += 1) {
+      if (track !== DIRECTORY_TRACK && track >= 1 && track <= lastTrack) {
+        const sectorCount = d64.trackSectorCount(track);
+        allocation.map[track] =
+          allocation.map[track] || new Array(sectorCount).fill(true);
+        const free = allocation.map[track];
+        const ideal = wrapped ? 0 : d64.dosNextSector(baseSector, sectorCount);
+        for (let offset = 0; offset < sectorCount; offset += 1) {
+          const sector = ideal + offset;
+          if (sector < sectorCount && free[sector]) {
+            return { track: track, sector: sector };
+          }
+        }
+        for (let sector = 0; sector < ideal; sector += 1) {
+          if (free[sector]) return { track: track, sector: sector };
+        }
+      }
+      const nextTrack = d64.dosNextTrack(track, lastTrack);
+      wrapped = Math.abs(nextTrack - track) > 1;
+      // After wrapping, the DOS counts on from sector 0.
+      if (wrapped) baseSector = 0;
+      track = nextTrack;
+    }
+    return null;
+  };
+
+  // Kept for callers of the earlier name.
+  d64.findNearestSmartSector = function (allocation, previousBlock) {
+    return d64.findNextDosSector(allocation, previousBlock);
   };
 
   d64.findFarthestSlowSector = function (allocation, previousBlock) {
@@ -5535,24 +5748,9 @@
     );
   };
 
+  // Average DOS-layout score of every file link on the disk.
   d64.averageFileLinkScore = function (image) {
-    const scores = [];
-    d64.readFiles(image).forEach(function (file) {
-      const blocks = Array.isArray(file.blocks) ? file.blocks : [];
-      for (let index = 0; index + 1 < blocks.length; index += 1) {
-        const previous = blocks[index];
-        const next = blocks[index + 1];
-        const predicted = d64.estimateNextSectorWindow(previous, next.track);
-        const sectorCount = d64.trackSectorCount(next.track);
-        const distance = (next.sector - predicted + sectorCount) % sectorCount;
-        scores.push(((sectorCount - 1 - distance) / (sectorCount - 1)) * 100);
-      }
-    });
-    return scores.length
-      ? scores.reduce(function (sum, score) {
-          return sum + score;
-        }, 0) / scores.length
-      : null;
+    return d64.scoreDosLayout(image).average;
   };
 
   d64.defragmentImage = function (image, options) {

@@ -141,8 +141,8 @@
                       type="button"
                       class="disk-map-toggle-button is-off"
                       disabled
-                      aria-label="Toggle speed map"
-                      data-tooltip-text="Toggle the speed map overlay to color sectors by estimated read efficiency."
+                      aria-label="Speed map: off"
+                      data-tooltip-text="Speed map is off. Click for the Stock LOAD view."
                     >
                       🚦
                     </button>
@@ -155,14 +155,6 @@
                       data-tooltip-text="Toggle the drive read head shown in the head window."
                     >
                       🧲
-                    </button>
-                    <button
-                      id="read-head-initialize-button"
-                      type="button"
-                      disabled
-                      title="Initialize the drive: bump the head down 40 tracks toward track 1."
-                    >
-                      Initialize
                     </button>
                     <button id="disk-map-cover-toggle" type="button" disabled>
                       Cover On
@@ -202,6 +194,74 @@
               </div>
               <div class="disk-map-legend-wrap">
                 <div id="disk-map-legend" class="disk-map-legend"></div>
+                <section
+                  class="drive-panel"
+                  aria-labelledby="drive-panel-title"
+                >
+                  <h4 id="drive-panel-title">1541 Drive</h4>
+                  <div class="drive-panel-actions">
+                    <button
+                      id="drive-load-button"
+                      type="button"
+                      disabled
+                      title="Watch the drive load the first program in the directory: spin up, seek, and follow each linked sector."
+                    >
+                      LOAD "*",8,1
+                    </button>
+                    <button
+                      id="read-head-initialize-button"
+                      type="button"
+                      disabled
+                      title="Run the 1541 ROM bump: step the head 92 half-tracks outward, knocking against the track 1 stop."
+                    >
+                      Initialize
+                    </button>
+                    <button id="drive-stop-button" type="button" disabled>
+                      Stop
+                    </button>
+                  </div>
+                  <label class="drive-panel-speed">
+                    <span>LOAD playback</span>
+                    <select id="drive-speed-select">
+                      <option value="1">Real speed (300 RPM)</option>
+                      <option value="0.25">1/4 speed</option>
+                      <option value="0.1">1/10 speed</option>
+                    </select>
+                  </label>
+                  <dl class="drive-panel-readout">
+                    <div>
+                      <dt>Status</dt>
+                      <dd id="drive-status">Idle</dd>
+                    </div>
+                    <div>
+                      <dt>Head</dt>
+                      <dd id="drive-head-position">Track 18</dd>
+                    </div>
+                    <div>
+                      <dt>Motor</dt>
+                      <dd id="drive-motor">Off</dd>
+                    </div>
+                    <div>
+                      <dt>Progress</dt>
+                      <dd id="drive-progress">&mdash;</dd>
+                    </div>
+                    <div>
+                      <dt>LEDs</dt>
+                      <dd class="drive-panel-leds">
+                        <span
+                          id="drive-read-led"
+                          class="drive-led drive-led-read"
+                        ></span>
+                        Read
+                        <span
+                          id="drive-write-led"
+                          class="drive-led drive-led-write"
+                        ></span>
+                        Write
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
                 <div
                   id="disk-map-inspector"
                   class="disk-map-inspector"

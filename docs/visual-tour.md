@@ -51,14 +51,16 @@ system from their rows.
 
 ![Fragmented layout with low estimated read score](./heatmap.jpg)
 
-Enable the speed-map overlay to color file and directory chains by estimated
-read efficiency. It considers starting head position, disk speed, sector
-placement, and chained access to reveal layout that may require unnecessary
-head movement or rotational waits in timing-aware emulators.
+The speed-map overlay has two views. **Stock LOAD** colors each file link by
+the delay it adds to a stock C64 `LOAD`; because the 1541 reads the next block
+while it sends the current one, only long head jumps slow it down. **DOS
+layout** colors links by how closely they follow the placement the 1541 DOS
+itself uses: interleave 10, filling outward from track 18. See
+[Drive timing](./drive-timing.md) for the model and its sources.
 
 ![Optimized layout with high estimated read score](./heatmap-optimized.jpg)
 
-Use **Optimize** to rebuild toward a more efficient reading layout, or use
+Use **Optimize** to rebuild files the way the 1541 DOS lays them out, or use
 **Deoptimize** to intentionally scatter sectors for comparison and testing.
 These values are explanatory estimates derived from the logical image layout;
 they are not preserved physical timing measurements. More detail is in the

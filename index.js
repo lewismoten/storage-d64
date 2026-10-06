@@ -13,9 +13,19 @@
     selectedSectorKey: "",
     diskCoverVisible: false,
     heatMapVisible: false,
+    // "stock": delay each link adds to a stock C64 LOAD.
+    // "dos": how closely each link follows the 1541 DOS placement rule.
+    heatMapMode: "stock",
     readHeadVisible: false,
     readHeadTrack: 18,
     readHeadInitializing: false,
+    // Clockwise rotation of the disk media in radians, kept between renders.
+    driveRotation: 0,
+    driveLoad: null,
+    // Status shown once nothing is running, and the sectors the most recent
+    // LOAD read, outlined on the disk map until the image changes.
+    driveLastStatus: "Idle",
+    driveReadKeys: [],
     hexViewContext: null,
     doctorReport: null,
     returnToDoctorReport: false,
@@ -52,6 +62,15 @@
   const readHeadInitializeButton = document.getElementById(
     "read-head-initialize-button",
   );
+  const driveLoadButton = document.getElementById("drive-load-button");
+  const driveStopButton = document.getElementById("drive-stop-button");
+  const driveSpeedSelect = document.getElementById("drive-speed-select");
+  const driveStatus = document.getElementById("drive-status");
+  const driveHeadPosition = document.getElementById("drive-head-position");
+  const driveMotor = document.getElementById("drive-motor");
+  const driveProgress = document.getElementById("drive-progress");
+  const driveReadLed = document.getElementById("drive-read-led");
+  const driveWriteLed = document.getElementById("drive-write-led");
   const currentFileName = document.getElementById("current-file-name");
   const dialogScrim = document.getElementById("dialog-scrim");
   const status = document.getElementById("status");
@@ -474,12 +493,16 @@
     diskCenterX: 275,
     diskCenterY: 276,
   });
-  // A 1541 "bump" drives the stepper toward track 1 well past the point
-  // where the head hits the stop, which produces the familiar knocking.
-  // The stepper takes roughly 30 ms per track, so a 40-step bump lasts
-  // about 1.2 seconds.
-  const READ_HEAD_BUMP_STEPS = 40;
-  const READ_HEAD_STEP_MS = 30;
+  // Drive timing (rotation, stepping, spin-up, serial speed) comes from
+  // d64.driveTiming in support.js, shared with the speed map.
+  //
+  // How long the disk takes to coast to a stop once the motor is off. The ROM
+  // does not control this, and no measurement was found; it only affects the
+  // animation.
+  const DRIVE_COAST_MS = 500;
+  // The head sits at the bottom of the disk. Disk map angles start at 12
+  // o'clock and grow clockwise, so the bottom is half a turn.
+  const DRIVE_HEAD_ANGLE = Math.PI;
   let readHeadAudioContext = null;
   let readHeadNoiseBuffer = null;
   const diskMapView = {
@@ -1979,6 +2002,8 @@
     corruptButton.disabled = !state.image;
     heatmapButton.disabled = !state.image;
     doctorButton.textContent = "Doctor";
+    // Sectors outlined by a previous LOAD may no longer hold the same data.
+    state.driveReadKeys = [];
   };
 
   const resetDeletedTypeHints = function () {
@@ -2516,15 +2541,19 @@
       "is-off",
       !hasImage || !state.heatMapVisible,
     );
-    heatmapButton.setAttribute(
-      "aria-label",
-      state.heatMapVisible ? "Turn speed map off" : "Turn speed map on",
-    );
+    const heatMapLabel = !state.heatMapVisible
+      ? "off"
+      : state.heatMapMode === "dos"
+        ? "DOS layout"
+        : "Stock LOAD";
+    heatmapButton.setAttribute("aria-label", "Speed map: " + heatMapLabel);
     heatmapButton.setAttribute(
       "data-tooltip-text",
-      state.heatMapVisible
-        ? "Speed map is on. Toggle to hide the overlay that colors sectors by estimated read efficiency."
-        : "Speed map is off. Toggle to color sectors by estimated read efficiency.",
+      !state.heatMapVisible
+        ? "Speed map is off. Click for the Stock LOAD view."
+        : state.heatMapMode === "dos"
+          ? "Speed map: DOS layout. Colors links by how closely they follow the 1541 DOS placement rule. Click to turn off."
+          : "Speed map: Stock LOAD. Colors links by the delay they add to a stock C64 LOAD. Click for the DOS layout view.",
     );
     readHeadButton.disabled = !hasImage;
     readHeadButton.classList.toggle("is-on", hasImage && state.readHeadVisible);
@@ -2542,10 +2571,14 @@
         ? "Read head is on. Toggle to hide it."
         : "Read head is off. Toggle to show it in the head window.") +
         " Head is on track " +
-        String(state.readHeadTrack) +
+        formatDriveTrack(state.readHeadTrack) +
         ".",
     );
-    readHeadInitializeButton.disabled = !hasImage || state.readHeadInitializing;
+    const driveBusy = state.readHeadInitializing || Boolean(state.driveLoad);
+    readHeadInitializeButton.disabled = !hasImage || driveBusy;
+    driveLoadButton.disabled = !hasImage || driveBusy;
+    driveStopButton.disabled = !state.driveLoad || state.driveLoad.stopping;
+    updateDrivePanel();
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
     diskMapZoomReset.disabled = !hasImage;
@@ -2578,22 +2611,27 @@
       readHeadTransform(state.readHeadTrack) +
       '">' +
       "<title>Read head on track " +
-      String(state.readHeadTrack) +
+      formatDriveTrack(state.readHeadTrack) +
       "</title>" +
-      '<rect x="-18" y="-7.5" width="36" height="15" rx="3" fill="#c7cfd4" stroke="#20262b" stroke-width="1.2" />' +
+      // The read/write gap sits at y=0, centered on the current track.
+      '<rect x="-18" y="-7.5" width="36" height="23" rx="3" fill="#c7cfd4" stroke="#20262b" stroke-width="1.2" />' +
       '<rect x="-10" y="-3" width="20" height="6" rx="1.5" fill="#1b2126" />' +
       '<path d="M -8 0 H 8" stroke="#e8bd52" stroke-width="1" />' +
+      '<circle id="disk-map-read-led" class="disk-map-head-led is-read" cx="-8" cy="9.5" r="3" />' +
+      '<circle id="disk-map-write-led" class="disk-map-head-led is-write" cx="8" cy="9.5" r="3" />' +
       "</g>"
     );
   };
 
   const syncReadHeadElement = function () {
+    updateDrivePanel();
     const head = diskMap.querySelector("#disk-map-read-head");
     if (!head) return;
     head.setAttribute("transform", readHeadTransform(state.readHeadTrack));
     const title = head.querySelector("title");
     if (title) {
-      title.textContent = "Read head on track " + String(state.readHeadTrack);
+      title.textContent =
+        "Read head on track " + formatDriveTrack(state.readHeadTrack);
     }
   };
 
@@ -2651,28 +2689,625 @@
     knock.stop(now + 0.06);
   };
 
+  // The 1541 ROM's bump job ($F388) steps the head outward 92 half-tracks
+  // (46 tracks), one per controller interrupt, without checking where it
+  // starts. Once the head reaches track 1 it hits the stop, and every further
+  // half-step knocks against it. The stock DOS bumps during error recovery
+  // and before formatting.
   const initializeReadHead = function () {
-    if (!state.image || state.readHeadInitializing) return;
+    if (!state.image || state.readHeadInitializing || state.driveLoad) return;
     ensureReadHeadAudio();
     state.readHeadInitializing = true;
+    state.driveLastStatus =
+      "Bumping: 92 half-steps outward toward the track 1 stop";
     syncDiskMapControls();
-    let stepsRemaining = READ_HEAD_BUMP_STEPS;
+    let halfStepsRemaining = d64.driveTiming.bumpHalfSteps;
+    // Schedule against a fixed start time; chained timeouts drift late.
+    const startedAt = window.performance.now();
+    let halfStepsDone = 0;
     const step = function () {
       if (state.readHeadTrack > 1) {
-        state.readHeadTrack -= 1;
+        state.readHeadTrack = Math.max(1, state.readHeadTrack - 0.5);
         syncReadHeadElement();
       } else {
         playReadHeadStopClick();
       }
-      stepsRemaining -= 1;
-      if (stepsRemaining > 0) {
-        window.setTimeout(step, READ_HEAD_STEP_MS);
+      halfStepsRemaining -= 1;
+      halfStepsDone += 1;
+      if (halfStepsRemaining > 0) {
+        window.setTimeout(
+          step,
+          Math.max(
+            0,
+            startedAt +
+              halfStepsDone * d64.driveTiming.halfStepMs -
+              window.performance.now(),
+          ),
+        );
       } else {
         state.readHeadInitializing = false;
+        state.driveLastStatus = "Bump finished: the head is on track 1";
         syncDiskMapControls();
       }
     };
     step();
+  };
+
+  // --- LOAD "*",8,1 animation ----------------------------------------------
+  //
+  // Plans what a stock 1541 does for LOAD "*",8,1 on a freshly inserted disk,
+  // following the DOS 2.6 ROM, then plays the plan back on the disk map:
+  //
+  //   1. Turn the motor on and wait for it to spin up.
+  //   2. Initialize: step to track 18 and read the BAM and disk ID at 18/0.
+  //   3. Follow the directory chain until the first closed PRG entry. With no
+  //      earlier LOAD, "*" means the first PRG; other file types are skipped.
+  //   4. Read the file's first block, then send blocks to the C64 one at a
+  //      time. The DOS double-buffers: when it starts sending a block it
+  //      queues the read of the next one, so the head reads ahead while the
+  //      slow serial bus (about 0.63 s per block) is busy. If a read is not
+  //      finished when the send ends, the C64 waits.
+  //   5. Leave the motor running for 255 controller interrupts after the last
+  //      job, then switch it off.
+  //
+  // The head and the serial bus work at the same time, so the plan has two
+  // lanes of phases: `mech` for the head and `bus` for the serial transfer.
+  // The disk turns at a constant speed, so every sector's arrival under the
+  // head is known in advance and the whole plan is computed up front.
+  //
+  // Simplifications: the read job's exact "how far ahead is the sector"
+  // window, the brief pauses it puts on the serial transfer, and the KERNAL's
+  // own overhead are not modelled. Sector 0 of every track is drawn at the
+  // same angle; on a real disk each track starts wherever formatting began.
+
+  const positiveModulo = function (value, modulus) {
+    return ((value % modulus) + modulus) % modulus;
+  };
+
+  const driveRotorTransform = function () {
+    return (
+      "rotate(" +
+      ((state.driveRotation * 180) / Math.PI).toFixed(3) +
+      " " +
+      DISK_MAP_VIEWBOX.diskCenterX +
+      " " +
+      DISK_MAP_VIEWBOX.diskCenterY +
+      ")"
+    );
+  };
+
+  // Media angle of the sector edge that reaches the head first. The disk
+  // turns clockwise, so that is the sector's clockwise-most edge. Matches the
+  // sector angles drawn by renderDiskMap.
+  const driveSectorLeadingEdge = function (track, sector) {
+    const sectorCount = d64.trackSectorCount(track);
+    return (
+      ((sectorCount - sector) / sectorCount) * Math.PI * 2 +
+      DISK_MAP_PHYSICAL.indexHoleAngle
+    );
+  };
+
+  // Which sector of `track` is under the head at the given disk rotation.
+  const driveSectorUnderHead = function (track, rotation) {
+    const sectorCount = d64.trackSectorCount(track);
+    const angle = positiveModulo(
+      DRIVE_HEAD_ANGLE - rotation - DISK_MAP_PHYSICAL.indexHoleAngle,
+      Math.PI * 2,
+    );
+    const slice = Math.floor((angle / (Math.PI * 2)) * sectorCount);
+    return sectorCount - 1 - Math.min(sectorCount - 1, slice);
+  };
+
+  // Follows next-track/next-sector links from a starting sector. Stops at
+  // the end of the chain, or with `error` set if a link leaves the disk or
+  // loops, so a damaged disk still animates up to the damage.
+  const walkDriveSectorChain = function (image, startTrack, startSector) {
+    const trackCount = d64.describeGeometry(image).trackCount;
+    const blocks = [];
+    const visited = {};
+    let track = startTrack;
+    let sector = startSector;
+    while (track) {
+      const key = String(track) + ":" + String(sector);
+      if (track > trackCount || sector >= d64.trackSectorCount(track)) {
+        return { blocks: blocks, error: "Link points off the disk at " + key };
+      }
+      if (visited[key]) {
+        return { blocks: blocks, error: "Link loops back to " + key };
+      }
+      visited[key] = true;
+      const block = d64.readSector(image, track, sector);
+      blocks.push({
+        track: track,
+        sector: sector,
+        nextTrack: block[0],
+        nextSector: block[1],
+        block: block,
+      });
+      track = block[0];
+      sector = block[1];
+    }
+    return { blocks: blocks, error: "" };
+  };
+
+  const setTextIfChanged = function (element, text) {
+    if (element.textContent !== text) element.textContent = text;
+  };
+
+  const markDriveSectors = function (key, className, isOn) {
+    if (!key) return;
+    diskMap
+      .querySelectorAll('.disk-map-sector[data-key="' + key + '"]')
+      .forEach(function (element) {
+        element.classList.toggle(className, isOn);
+      });
+  };
+
+  const clearDriveReadMarks = function () {
+    state.driveReadKeys = [];
+    driveMarkedReadCount = 0;
+    diskMap.querySelectorAll(".is-drive-read").forEach(function (element) {
+      element.classList.remove("is-drive-read");
+    });
+  };
+
+  const driveLoadTime = function (load, now) {
+    return load.simAnchor + (now - load.realAnchor) * load.speed;
+  };
+
+  const readDriveSpeed = function () {
+    const speed = Number(driveSpeedSelect.value);
+    return speed > 0 ? speed : 1;
+  };
+
+  // How many of state.driveReadKeys are outlined on the current SVG, and the
+  // sector highlighted as being read right now.
+  let driveMarkedReadCount = 0;
+  let driveReadingKey = "";
+
+  // Disk rotation in radians at simulated time `t` (ms). The motor ramps up
+  // during the DOS's spin-up wait, runs at 300 RPM, and coasts to a stop
+  // after `load.motorOffAt`.
+  const driveRotationAt = function (load, t) {
+    const omega = (Math.PI * 2) / d64.driveTiming.rotationMs;
+    const spinUp = d64.driveTiming.spinUpMs;
+    if (t <= 0) return load.startRotation;
+    if (t <= spinUp) {
+      return load.startRotation + (omega * t * t) / (2 * spinUp);
+    }
+    const fullSpeedStart = load.startRotation + (omega * spinUp) / 2;
+    if (t <= load.motorOffAt) return fullSpeedStart + omega * (t - spinUp);
+    const motorOffRotation =
+      fullSpeedStart + omega * (load.motorOffAt - spinUp);
+    const coasting = Math.min(t - load.motorOffAt, DRIVE_COAST_MS);
+    return (
+      motorOffRotation +
+      omega * (coasting - (coasting * coasting) / (2 * DRIVE_COAST_MS))
+    );
+  };
+
+  const formatDriveTrack = function (track) {
+    return Number.isInteger(track) ? String(track) : track.toFixed(1);
+  };
+
+  const planDriveLoad = function (image, startTrack) {
+    const timing = d64.driveTiming;
+    const fullTurn = Math.PI * 2;
+    const omega = fullTurn / timing.rotationMs;
+    const load = {
+      startRotation: state.driveRotation,
+      motorOffAt: Infinity,
+      mech: [],
+      bus: [],
+      fileName: "",
+      blockCount: 0,
+      transferEnd: 0,
+      finalStatus: "",
+    };
+    let headTrack = startTrack;
+    let headFree = 0;
+
+    // The disk controller runs in a timer interrupt, so a queued job starts
+    // on the next interrupt.
+    const nextInterrupt = function (t) {
+      return Math.ceil(t / timing.interruptMs - 1e-9) * timing.interruptMs;
+    };
+
+    const addPhase = function (lane, type, start, end, details) {
+      lane.push(
+        Object.assign({ type: type, start: start, end: end }, details || {}),
+      );
+      return end;
+    };
+
+    // Runs a read job queued at `queuedAt` and returns when the read ends.
+    const readSector = function (queuedAt, track, sector, label) {
+      let t = Math.max(queuedAt, headFree);
+      if (t < timing.spinUpMs) {
+        t = addPhase(load.mech, "spin-up", t, timing.spinUpMs, {
+          status: "Waiting for the motor to spin up",
+        });
+      }
+      t = nextInterrupt(t);
+      if (track !== headTrack) {
+        t = addPhase(
+          load.mech,
+          "seek",
+          t,
+          t + Math.abs(track - headTrack) * 2 * timing.halfStepMs,
+          {
+            fromTrack: headTrack,
+            toTrack: track,
+            status: "Stepping to track " + String(track),
+          },
+        );
+        t = addPhase(load.mech, "settle", t, t + timing.settleMs, {
+          status: "Head settling on track " + String(track),
+        });
+        headTrack = track;
+      }
+      const wait =
+        positiveModulo(
+          DRIVE_HEAD_ANGLE -
+            driveSectorLeadingEdge(track, sector) -
+            driveRotationAt(load, t),
+          fullTurn,
+        ) / omega;
+      t = addPhase(load.mech, "wait", t, t + wait, {
+        status: "Waiting for sector " + String(sector) + " to reach the head",
+      });
+      headFree = addPhase(load.mech, "read", t, t + d64.driveSectorMs(track), {
+        track: track,
+        sector: sector,
+        status:
+          "Reading " + String(track) + "/" + String(sector) + ": " + label,
+      });
+      return headFree;
+    };
+
+    // 1-2. Spin up, then initialize: read the BAM and disk ID.
+    const header = d64.readHeader(image);
+    let ready = readSector(0, 18, 0, "BAM and disk ID");
+
+    // 3. Search the directory for the first closed PRG entry.
+    const directory = walkDriveSectorChain(
+      image,
+      header.nextDirectoryTrack,
+      header.nextDirectorySector,
+    );
+    let match = null;
+    for (let index = 0; index < directory.blocks.length && !match; index += 1) {
+      const block = directory.blocks[index];
+      ready = readSector(ready, block.track, block.sector, "directory");
+      for (let slot = 0; slot < 8 && !match; slot += 1) {
+        const entry = d64.parseDirectoryEntryBytes(
+          block.block.subarray(slot * 32, slot * 32 + 32),
+        );
+        if (entry.fileType === "prg" && entry.closed) match = entry;
+      }
+    }
+
+    if (!match) {
+      load.transferEnd = ready;
+      load.finalStatus = directory.error
+        ? "?DISK ERROR: directory " + directory.error.toLowerCase()
+        : "?FILE NOT FOUND ERROR: no PRG file in the directory";
+    } else {
+      // 4. Read the first block, then send each block while reading ahead.
+      const chain = walkDriveSectorChain(
+        image,
+        match.startTrack,
+        match.startSector,
+      );
+      const blocks = chain.blocks;
+      const count = blocks.length;
+      load.fileName = match.name;
+      load.blockCount = count;
+      const label = function (index) {
+        return (
+          '"' +
+          match.name +
+          '" block ' +
+          String(index + 1) +
+          " of " +
+          String(count)
+        );
+      };
+      const readEnds = [];
+      if (count) {
+        readEnds[0] = readSector(
+          ready,
+          blocks[0].track,
+          blocks[0].sector,
+          label(0),
+        );
+      }
+      let busFree = count ? readEnds[0] : ready;
+      for (let index = 0; index < count; index += 1) {
+        if (readEnds[index] > busFree) {
+          busFree = addPhase(load.bus, "stall", busFree, readEnds[index], {
+            status: "C64 waiting for block " + String(index + 1),
+          });
+        }
+        const sendStart = busFree;
+        if (index + 1 < count) {
+          readEnds[index + 1] = readSector(
+            sendStart,
+            blocks[index + 1].track,
+            blocks[index + 1].sector,
+            label(index + 1) + " (read ahead)",
+          );
+        }
+        const usedBytes = blocks[index].nextTrack
+          ? 254
+          : Math.max(0, Math.min(254, blocks[index].nextSector - 1));
+        busFree = addPhase(
+          load.bus,
+          "send",
+          sendStart,
+          sendStart + d64.driveSendMs(usedBytes),
+          {
+            bytes: usedBytes,
+            status:
+              "Sending block " +
+              String(index + 1) +
+              " of " +
+              String(count) +
+              " to the C64",
+          },
+        );
+      }
+      load.transferEnd = busFree;
+      load.finalStatus = chain.error
+        ? "?DISK ERROR: " + chain.error
+        : 'Loaded "' +
+          match.name +
+          '": ' +
+          String(count) +
+          " blocks in " +
+          (busFree / 1000).toFixed(1) +
+          " s";
+    }
+
+    // 5. Motor run-on after the last job, then coast to a stop.
+    load.motorOffAt = headFree + timing.runOnMs;
+    load.end = load.motorOffAt + DRIVE_COAST_MS;
+    return load;
+  };
+
+  // The phase of `lane` at the current playback position, if one is active.
+  const currentDriveLanePhase = function (load, lane) {
+    const phases = load[lane];
+    const phase = phases[load.index[lane]];
+    return phase && phase.start <= load.time && load.time < phase.end
+      ? phase
+      : null;
+  };
+
+  // The read in progress, or one that finished since the last frame.
+  const currentDriveRead = function (load) {
+    const phase = currentDriveLanePhase(load, "mech");
+    return phase && phase.type === "read" ? phase : load.flashRead || null;
+  };
+
+  const describeDriveStatus = function (load) {
+    if (load.stopping) return "Stopped";
+    const parts = [];
+    const mech = currentDriveLanePhase(load, "mech");
+    const bus = currentDriveLanePhase(load, "bus");
+    if (mech) parts.push(mech.status);
+    if (bus) parts.push(bus.status);
+    if (parts.length) return parts.join(" · ");
+    if (load.time >= load.transferEnd) {
+      return load.time < load.motorOffAt
+        ? load.finalStatus + " · motor running on"
+        : load.finalStatus;
+    }
+    return "Processing";
+  };
+
+  const updateDrivePanel = function () {
+    const load = state.driveLoad;
+    const reading = Boolean(load && currentDriveRead(load));
+    const track = state.readHeadTrack;
+    let head = "Track " + formatDriveTrack(track);
+    if (load && state.image && Number.isInteger(track)) {
+      head +=
+        " · over sector " +
+        String(driveSectorUnderHead(track, state.driveRotation));
+    }
+    let motor = "Off";
+    if (load) {
+      motor =
+        load.time < d64.driveTiming.spinUpMs
+          ? "Spinning up"
+          : load.time < load.motorOffAt
+            ? "On · 300 RPM"
+            : "Coasting to a stop";
+    }
+    setTextIfChanged(
+      driveStatus,
+      load ? describeDriveStatus(load) : state.driveLastStatus,
+    );
+    setTextIfChanged(driveHeadPosition, head);
+    setTextIfChanged(driveMotor, motor);
+    if (load) {
+      setTextIfChanged(
+        driveProgress,
+        load.blockCount
+          ? "Sent " +
+              String(load.sentBlocks) +
+              " of " +
+              String(load.blockCount) +
+              " blocks · " +
+              formatNumber(load.sentBytes) +
+              " bytes"
+          : load.time < load.transferEnd
+            ? "Reading the directory"
+            : "Nothing loaded",
+      );
+    }
+    driveReadLed.classList.toggle("is-on", reading);
+    // LOAD never writes, so the write LED stays dark.
+    driveWriteLed.classList.toggle("is-on", false);
+  };
+
+  // Pushes the drive state onto the disk map. `rebuilt` means renderDiskMap
+  // just replaced the SVG, so every sector mark has to be applied again.
+  const applyDriveLoadToDiskMap = function (rebuilt) {
+    const rotor = diskMap.querySelector("#disk-map-media-rotor");
+    if (rotor) rotor.setAttribute("transform", driveRotorTransform());
+    syncReadHeadElement();
+    const load = state.driveLoad;
+    const reading = load ? currentDriveRead(load) : null;
+    if (reading) load.shownRead = reading;
+    const readLed = diskMap.querySelector("#disk-map-read-led");
+    if (readLed) readLed.classList.toggle("is-on", Boolean(reading));
+    if (rebuilt || driveMarkedReadCount > state.driveReadKeys.length) {
+      driveMarkedReadCount = 0;
+    }
+    while (driveMarkedReadCount < state.driveReadKeys.length) {
+      markDriveSectors(
+        state.driveReadKeys[driveMarkedReadCount],
+        "is-drive-read",
+        true,
+      );
+      driveMarkedReadCount += 1;
+    }
+    const readingKey = reading
+      ? String(reading.track) + ":" + String(reading.sector)
+      : "";
+    if (rebuilt || readingKey !== driveReadingKey) {
+      markDriveSectors(driveReadingKey, "is-drive-reading", false);
+      markDriveSectors(readingKey, "is-drive-reading", true);
+      driveReadingKey = readingKey;
+    }
+  };
+
+  // Applies everything that finished up to the current time in one lane.
+  const advanceDriveLane = function (load, lane) {
+    const phases = load[lane];
+    while (
+      load.index[lane] < phases.length &&
+      phases[load.index[lane]].end <= load.time
+    ) {
+      const done = phases[load.index[lane]];
+      if (done.type === "read") {
+        if (done !== load.shownRead) load.flashRead = done;
+        state.driveReadKeys.push(
+          String(done.track) + ":" + String(done.sector),
+        );
+      } else if (done.type === "seek") {
+        load.track = done.toTrack;
+      } else if (done.type === "send") {
+        load.sentBlocks += 1;
+        load.sentBytes += done.bytes;
+      }
+      load.index[lane] += 1;
+    }
+  };
+
+  const stepDriveLoad = function (now) {
+    const load = state.driveLoad;
+    if (!load) return;
+    load.time = Math.min(driveLoadTime(load, now), load.end);
+    // At real speed a sector passes the head in about 10 ms, often between
+    // two animation frames. Remember a read that finished since the last
+    // frame so its LED flash and highlight still show for one frame.
+    load.flashRead = null;
+    advanceDriveLane(load, "mech");
+    advanceDriveLane(load, "bus");
+    const mech = currentDriveLanePhase(load, "mech");
+    // The stepper moves one half-track per controller interrupt.
+    state.readHeadTrack =
+      mech && mech.type === "seek"
+        ? mech.fromTrack +
+          (Math.sign(mech.toTrack - mech.fromTrack) *
+            Math.floor((load.time - mech.start) / d64.driveTiming.halfStepMs)) /
+            2
+        : load.track;
+    state.driveRotation = driveRotationAt(load, load.time);
+    applyDriveLoadToDiskMap(false);
+    if (load.time >= load.end) {
+      finishDriveLoad();
+      return;
+    }
+    load.frameId = window.requestAnimationFrame(stepDriveLoad);
+  };
+
+  const finishDriveLoad = function () {
+    const load = state.driveLoad;
+    if (!load) return;
+    window.cancelAnimationFrame(load.frameId);
+    state.driveLastStatus = load.stopping ? "Stopped" : load.finalStatus;
+    state.driveLoad = null;
+    // Keep the angle small so it stays precise across many runs.
+    state.driveRotation = positiveModulo(state.driveRotation, Math.PI * 2);
+    applyDriveLoadToDiskMap(false);
+    syncDiskMapControls();
+  };
+
+  const startDriveLoad = function () {
+    if (!state.image || state.driveLoad || state.readHeadInitializing) return;
+    let load;
+    try {
+      load = planDriveLoad(state.image, state.readHeadTrack);
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+      return;
+    }
+    load.track = state.readHeadTrack;
+    load.index = { mech: 0, bus: 0 };
+    load.time = 0;
+    load.sentBlocks = 0;
+    load.sentBytes = 0;
+    load.speed = readDriveSpeed();
+    load.simAnchor = 0;
+    load.realAnchor = window.performance.now();
+    load.stopping = false;
+    clearDriveReadMarks();
+    state.driveLoad = load;
+    // The animation is about the head and the media, so show both.
+    const needsRender = !state.readHeadVisible || state.diskCoverVisible;
+    state.readHeadVisible = true;
+    state.diskCoverVisible = false;
+    if (needsRender) {
+      renderDiskMap(state.image);
+    } else {
+      applyDriveLoadToDiskMap(false);
+      syncDiskMapControls();
+    }
+    load.frameId = window.requestAnimationFrame(stepDriveLoad);
+  };
+
+  // Ends the LOAD early: the head stops where it is and the motor coasts down.
+  const stopDriveLoad = function () {
+    const load = state.driveLoad;
+    if (!load || load.stopping || load.time >= load.motorOffAt) return;
+    const t = load.time;
+    ["mech", "bus"].forEach(function (lane) {
+      const phases = load[lane].slice(0, load.index[lane] + 1);
+      const last = phases[phases.length - 1];
+      if (last && last.start < t) {
+        // A partly read sector or partly sent block does not count.
+        phases[phases.length - 1] = Object.assign({}, last, {
+          type:
+            last.type === "read" || last.type === "send"
+              ? "stopped"
+              : last.type,
+          end: Math.min(last.end, t),
+        });
+      } else if (last) {
+        phases.pop();
+      }
+      load[lane] = phases;
+    });
+    if (state.readHeadTrack !== load.track) load.track = state.readHeadTrack;
+    load.transferEnd = t;
+    load.motorOffAt = Math.max(t, d64.driveTiming.spinUpMs);
+    load.end = load.motorOffAt + DRIVE_COAST_MS;
+    load.stopping = true;
+    syncDiskMapControls();
   };
 
   const resetDiskMapView = function () {
@@ -3289,60 +3924,47 @@
     );
   };
 
+  // DOS-layout scores for every file link, or none if the files can't be
+  // read (a damaged image falls back to scoring links on their own).
+  const readDosLayoutLinks = function (image) {
+    try {
+      return d64.scoreDosLayout(image).links;
+    } catch (error) {
+      return {};
+    }
+  };
+
+  // Scores one file link for the speed map. See estimateStockLoadLink and
+  // scoreDosLayoutLink in support.js for the models.
   const estimateSectorLinkMetrics = function (
     track,
     sector,
     nextTrack,
     nextSector,
+    dosLinks,
   ) {
     if (!isValidSectorAddress(nextTrack, nextSector, state.image)) {
       return null;
     }
-    const previousBlock = {
-      track: Math.max(1, Math.floor(Number(track) || 0)),
-      sector: Math.max(0, Math.floor(Number(sector) || 0)),
-    };
-    const targetTrack = Math.max(1, Math.floor(Number(nextTrack) || 0));
-    const targetSector = Math.max(0, Math.floor(Number(nextSector) || 0));
-    const rotationMsPerRevolution = 200;
-    const headStepMsPerTrack = 3;
-    const targetSectorCount = d64.trackSectorCount(targetTrack);
-    const predictedSector = d64.estimateNextSectorWindow(
-      previousBlock,
-      targetTrack,
+    const previousBlock = { track: track, sector: sector };
+    const nextBlock = { track: nextTrack, sector: nextSector };
+    if (state.heatMapMode === "dos") {
+      const links = dosLinks || readDosLayoutLinks(state.image);
+      const scored = links[String(track) + ":" + String(sector)];
+      return Object.assign(
+        { model: "dos" },
+        scored ||
+          d64.scoreDosLayoutLink(
+            previousBlock,
+            nextBlock,
+            d64.describeGeometry(state.image).trackCount,
+          ),
+      );
+    }
+    return Object.assign(
+      { model: "stock" },
+      d64.estimateStockLoadLink(previousBlock, nextBlock),
     );
-    const seekDistance = Math.abs(targetTrack - previousBlock.track);
-    const rotationalDistance =
-      (targetSector - predictedSector + targetSectorCount) % targetSectorCount;
-    const seekMs = seekDistance * headStepMsPerTrack;
-    const rotationMs =
-      (rotationalDistance / targetSectorCount) * rotationMsPerRevolution;
-    const totalMs = seekMs + rotationMs;
-    const worstRotationMs =
-      targetSectorCount > 1
-        ? ((targetSectorCount - 1) / targetSectorCount) *
-          rotationMsPerRevolution
-        : rotationMsPerRevolution;
-    const bestMs = seekMs;
-    const worstMs = seekMs + worstRotationMs;
-    const score =
-      worstMs <= bestMs
-        ? 100
-        : Math.max(
-            0,
-            Math.min(100, ((worstMs - totalMs) / (worstMs - bestMs)) * 100),
-          );
-    return {
-      predictedSector: predictedSector,
-      seekDistance: seekDistance,
-      rotationalDistance: rotationalDistance,
-      seekMs: seekMs,
-      rotationMs: rotationMs,
-      totalMs: totalMs,
-      bestMs: bestMs,
-      worstMs: worstMs,
-      score: score,
-    };
   };
 
   const estimateDirectoryLinkMetrics = function (
@@ -3351,6 +3973,9 @@
     nextSector,
     usedSectors,
   ) {
+    // A stock LOAD searches the directory inside the drive, before any data
+    // is sent, so directory links only appear in the DOS layout view.
+    if (state.heatMapMode !== "dos") return null;
     if (Math.floor(Number(nextTrack) || 0) !== 18) {
       return null;
     }
@@ -3379,7 +4004,7 @@
       trackSectorCount;
     const extraDistance =
       (actualDistance - idealDistance + trackSectorCount) % trackSectorCount;
-    const rotationMsPerRevolution = 200;
+    const rotationMsPerRevolution = d64.driveTiming.rotationMs;
     const totalMs =
       (actualDistance / trackSectorCount) * rotationMsPerRevolution;
     const bestMs = (idealDistance / trackSectorCount) * rotationMsPerRevolution;
@@ -3511,7 +4136,7 @@
     const linkMetrics =
       info && info.linkMetrics
         ? info.linkMetrics
-        : hasNextSectorLink
+        : hasNextSectorLink && track !== 18
           ? estimateSectorLinkMetrics(track, sector, nextTrack, nextSector)
           : null;
 
@@ -3589,56 +4214,101 @@
       );
     };
 
+    const renderTimingChip = function (kind, label, value, title) {
+      return (
+        '<span class="sector-physical-chip ' +
+        kind +
+        '" title="' +
+        escapeHtml(title) +
+        '">' +
+        "<strong>" +
+        escapeHtml(label) +
+        "</strong><span>" +
+        escapeHtml(value) +
+        "</span></span>"
+      );
+    };
+
     const renderTimingSummary = function () {
       if (!linkMetrics) return "";
-      return (
-        '<div class="sector-physical-timing">' +
-        '<span class="sector-physical-chip is-inferred" title="' +
-        escapeHtml(
-          linkMetrics.model === "directory"
-            ? "Estimated directory follow-up delay on track 18. Directory sectors treat interleave 3 as the ideal next placement."
-            : "Estimated delay before the drive can start reading the linked sector. Based on ~300 RPM rotation and ~3 ms per track head step.",
-        ) +
-        '">' +
-        "<strong>Next Read</strong><span>" +
-        linkMetrics.totalMs.toFixed(1) +
-        " ms</span></span>" +
-        '<span class="sector-physical-chip is-expected" title="' +
-        escapeHtml(
-          linkMetrics.model === "directory"
-            ? "Ideal directory interleave target is sector " +
-                String(linkMetrics.predictedSector) +
-                ". Actual follow-up waits " +
-                linkMetrics.rotationalDistance +
-                " physical sector" +
-                (linkMetrics.rotationalDistance === 1 ? "" : "s") +
-                "."
-            : "Predicted arrival window lands near sector " +
-                String(linkMetrics.predictedSector) +
-                ". Rotational wait is " +
-                linkMetrics.rotationalDistance +
-                " sector" +
-                (linkMetrics.rotationalDistance === 1 ? "" : "s") +
-                ".",
-        ) +
-        '">' +
-        "<strong>Window</strong><span>S" +
-        String(linkMetrics.predictedSector).padStart(2, "0") +
-        " +" +
-        String(linkMetrics.rotationalDistance) +
-        "</span></span>" +
-        '<span class="sector-physical-chip is-stored" title="' +
-        escapeHtml(
-          linkMetrics.model === "directory"
-            ? "Read optimization score for this directory link. 100% matches the preferred interleave-3 follow-up placement on track 18."
-            : "Optimization score for this link. 100% is the best reachable next sector without overshooting the estimated arrival window; 0% is nearly a full extra rotation.",
-        ) +
-        '">' +
-        "<strong>Score</strong><span>" +
-        linkMetrics.score.toFixed(0) +
-        "%</span></span>" +
-        "</div>"
-      );
+      let chips = "";
+      if (linkMetrics.model === "stock") {
+        chips =
+          renderTimingChip(
+            "is-inferred",
+            "Read Ahead",
+            linkMetrics.readMs.toFixed(0) + " ms",
+            "Expected time to read the linked sector: seek " +
+              linkMetrics.seekMs.toFixed(0) +
+              " ms + average rotational wait " +
+              linkMetrics.rotationMs.toFixed(0) +
+              " ms + " +
+              linkMetrics.sectorMs.toFixed(1) +
+              " ms for the sector to pass the head. The 1541 starts this read while it sends the current block to the C64.",
+          ) +
+          renderTimingChip(
+            "is-expected",
+            "Stall",
+            linkMetrics.stallMs.toFixed(0) + " ms",
+            "Extra LOAD time this link adds: how much the read ahead overruns the " +
+              linkMetrics.sendMs.toFixed(0) +
+              " ms it takes to send a block over the stock serial bus.",
+          ) +
+          renderTimingChip(
+            "is-stored",
+            "Bus",
+            linkMetrics.score.toFixed(0) + "%",
+            "Share of this link's time the serial bus spends sending data. 100% means the drive kept up with the bus.",
+          );
+      } else if (linkMetrics.model === "dos") {
+        chips =
+          renderTimingChip(
+            "is-inferred",
+            "DOS Aims",
+            "T" +
+              String(linkMetrics.idealTrack) +
+              " S" +
+              String(linkMetrics.idealSector).padStart(2, "0"),
+            linkMetrics.followsTrack
+              ? "The 1541 DOS aims 10 sectors past the previous block, then takes the next free sector after that."
+              : "The 1541 DOS stays on the same track while it has free blocks, then moves one track further from track 18.",
+          ) +
+          renderTimingChip(
+            "is-expected",
+            "Window",
+            linkMetrics.followsTrack
+              ? "+" + String(linkMetrics.rotationalDistance)
+              : "Other track",
+            "How many sectors past the DOS's target the link lands.",
+          ) +
+          renderTimingChip(
+            "is-stored",
+            "DOS Match",
+            linkMetrics.score.toFixed(0) + "%",
+            "How closely this link follows the 1541 DOS placement rule. This is Commodore's design, not a speed measure: a stock LOAD is limited by the serial bus.",
+          );
+      } else {
+        chips =
+          renderTimingChip(
+            "is-inferred",
+            "DOS Aims",
+            "T18 S" + String(linkMetrics.predictedSector).padStart(2, "0"),
+            "The 1541 DOS places each directory sector 3 sectors past the previous one.",
+          ) +
+          renderTimingChip(
+            "is-expected",
+            "Window",
+            "+" + String(linkMetrics.rotationalDistance),
+            "Sectors between this directory sector and the next.",
+          ) +
+          renderTimingChip(
+            "is-stored",
+            "DOS Match",
+            linkMetrics.score.toFixed(0) + "%",
+            "How closely this directory link follows the DOS's interleave-3 placement on track 18.",
+          );
+      }
+      return '<div class="sector-physical-timing">' + chips + "</div>";
     };
 
     return (
@@ -3972,6 +4642,8 @@
       sectorInfo.unusedFraction = 0;
     });
 
+    const dosLinks =
+      state.heatMapMode === "dos" ? readDosLayoutLinks(image) : null;
     Object.keys(sectorMap).forEach(function (key) {
       const sectorInfo = sectorMap[key];
       if (
@@ -3993,6 +4665,7 @@
         sectorInfo.sector,
         nextTrack,
         nextSector,
+        dosLinks,
       );
       if (!metrics) return;
       sectorInfo.linkMetrics = metrics;
@@ -4032,6 +4705,9 @@
         );
       },
     );
+    const totalStallMs = scoredSectors.reduce(function (sum, sectorInfo) {
+      return sum + (Number(sectorInfo.linkMetrics.stallMs) || 0);
+    }, 0);
     const averageLinkScore = scoredSectors.length
       ? scoredSectors.reduce(function (sum, sectorInfo) {
           return sum + (Number(sectorInfo.linkMetrics.score) || 0);
@@ -4044,6 +4720,7 @@
       directorySectors: directory.sectors.length,
       activeFiles: activeEntries.length,
       averageLinkScore: averageLinkScore,
+      totalStallMs: totalStallMs,
       scoredSectorCount: scoredSectors.length,
     };
   };
@@ -5088,6 +5765,8 @@
       })
       .join("");
     const sectors = [];
+    // Kept out of the spinning media so the labels stay readable.
+    const trackLabels = [];
 
     for (let track = 1; track <= geometry.trackCount; track += 1) {
       const sectorCount = d64.trackSectorCount(track);
@@ -5114,7 +5793,11 @@
             : null;
         const efficiencySuffix =
           info && info.linkMetrics
-            ? " · efficiency " + info.linkMetrics.score.toFixed(0) + "%"
+            ? (info.linkMetrics.model === "stock"
+                ? " · bus "
+                : " · DOS match ") +
+              info.linkMetrics.score.toFixed(0) +
+              "%"
             : "";
         const usedStartAngle =
           endAngle - (endAngle - startAngle) * totalFraction;
@@ -5232,7 +5915,7 @@
           trackInner + trackBand / 2,
           labelAngle,
         );
-        sectors.push(
+        trackLabels.push(
           '<text class="disk-map-track-label" x="' +
             labelPoint.x.toFixed(2) +
             '" y="' +
@@ -5264,18 +5947,32 @@
         Math.min(100, Number(layout.averageLinkScore) || 0),
       );
       diskMapHeatmapSummary.hidden = false;
-      diskMapHeatmapSummary.textContent =
-        "Avg Layout Score " + averageScore.toFixed(0) + "%";
-      diskMapHeatmapSummary.title =
-        "Average deterministic D64 layout score across " +
-        formatNumber(layout.scoredSectorCount || 0) +
-        " linked sectors. A D64 has no recorded rotational phase, so this is not a measured drive-time benchmark.";
+      if (state.heatMapMode === "dos") {
+        diskMapHeatmapSummary.textContent =
+          "DOS Layout Match " + averageScore.toFixed(0) + "%";
+        diskMapHeatmapSummary.title =
+          "Average match across " +
+          formatNumber(layout.scoredSectorCount || 0) +
+          " links to the placement the 1541 DOS itself uses: interleave 10 for files and 3 for the directory, filling outward from track 18. This is Commodore's design, not a speed measure.";
+      } else {
+        diskMapHeatmapSummary.textContent =
+          "Stock LOAD Bus " +
+          averageScore.toFixed(0) +
+          "% · +" +
+          (layout.totalStallMs / 1000).toFixed(1) +
+          " s stalls";
+        diskMapHeatmapSummary.title =
+          "Across " +
+          formatNumber(layout.scoredSectorCount || 0) +
+          " file links: how much of a stock C64 LOAD the serial bus spends sending data, and the expected time links add by making the drive wait. The 1541 reads each block ahead while it sends the previous one (about 0.63 s), so only long seeks stall it. Rotational waits use the average, because a real disk does not record where each track starts.";
+      }
       diskMapHeatmapSummary.style.background = scoreToHeatColor(averageScore);
     } else if (state.heatMapVisible && layout) {
       diskMapHeatmapSummary.hidden = false;
-      diskMapHeatmapSummary.textContent = "Avg Read Score N/A";
+      diskMapHeatmapSummary.textContent =
+        state.heatMapMode === "dos" ? "DOS Layout N/A" : "Stock LOAD N/A";
       diskMapHeatmapSummary.title =
-        "No valid linked-sector reads are available yet. A blank disk or image without chained follow-up sectors can not produce a meaningful average read score.";
+        "No linked sectors to score yet. A blank disk or an image without chained follow-up sectors has no links.";
       diskMapHeatmapSummary.style.background = "rgba(91, 110, 120, 0.88)";
     } else {
       diskMapHeatmapSummary.hidden = true;
@@ -5504,7 +6201,12 @@
           '" r="' +
           mechanismInnerRadius.toFixed(2) +
           '" fill="none" stroke="rgba(231, 213, 184, 0.14)" stroke-width="1.2" stroke-dasharray="4 6" />' +
+          '<g id="disk-map-media-rotor" transform="' +
+          driveRotorTransform() +
+          '">' +
           sectors.join("") +
+          "</g>" +
+          trackLabels.join("") +
           '<circle cx="' +
           cx +
           '" cy="' +
@@ -5718,6 +6420,7 @@
       "</svg>";
     applyDiskMapTransform();
     applySelectedDiskMapSector();
+    applyDriveLoadToDiskMap(true);
     syncDiskMapControls();
     renderDiskMapInspector();
   };
@@ -9299,7 +10002,15 @@
     });
     heatmapButton.addEventListener("click", function () {
       if (!state.image) return;
-      state.heatMapVisible = !state.heatMapVisible;
+      // Off -> Stock LOAD -> DOS layout -> Off.
+      if (!state.heatMapVisible) {
+        state.heatMapVisible = true;
+        state.heatMapMode = "stock";
+      } else if (state.heatMapMode === "stock") {
+        state.heatMapMode = "dos";
+      } else {
+        state.heatMapVisible = false;
+      }
       syncDiskMapControls();
       renderDiskMap(state.image);
     });
@@ -9310,6 +10021,17 @@
       renderDiskMap(state.image);
     });
     readHeadInitializeButton.addEventListener("click", initializeReadHead);
+    driveLoadButton.addEventListener("click", startDriveLoad);
+    driveStopButton.addEventListener("click", stopDriveLoad);
+    driveSpeedSelect.addEventListener("change", function () {
+      const load = state.driveLoad;
+      if (!load) return;
+      // Re-anchor so changing speed mid-LOAD does not jump the timeline.
+      const now = window.performance.now();
+      load.simAnchor = driveLoadTime(load, now);
+      load.realAnchor = now;
+      load.speed = readDriveSpeed();
+    });
     diskMapZoomOut.addEventListener("click", function () {
       zoomDiskMap(-1);
     });
