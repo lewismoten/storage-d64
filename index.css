@@ -267,6 +267,10 @@ main {
   margin-top: 14px;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field:first-of-type {
   margin-top: 0;
 }

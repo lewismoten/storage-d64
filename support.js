@@ -2366,7 +2366,8 @@
 
     let disabledReason = "";
     if (!reservedRefs.length) {
-      disabledReason = "This file does not currently use the reserved directory track.";
+      disabledReason =
+        "This file does not currently use the reserved directory track.";
     }
     const firstReservedIndex = reservedRefs.length
       ? chain.refs.findIndex(function (ref) {
@@ -2395,7 +2396,11 @@
   ) {
     const bytes =
       image instanceof Uint8Array ? image.slice() : new Uint8Array(image || []);
-    const plan = d64.analyzeReservedTrackFileRepair(bytes, entryOrName, options);
+    const plan = d64.analyzeReservedTrackFileRepair(
+      bytes,
+      entryOrName,
+      options,
+    );
     if (!plan.repairable) {
       throw new Error(
         plan.disabledReason || "Reserved-track repair is not available.",
@@ -2477,7 +2482,9 @@
       };
       try {
         const chain = d64.collectRawFileSectorRefsBestEffort(bytes, entry);
-        plan.refs = Array.isArray(chain && chain.refs) ? chain.refs.slice() : [];
+        plan.refs = Array.isArray(chain && chain.refs)
+          ? chain.refs.slice()
+          : [];
         plan.partial = Boolean(chain && chain.partial);
         plan.stoppedReason = String((chain && chain.stoppedReason) || "");
       } catch (error) {
@@ -2640,7 +2647,9 @@
           candidate.targetRefs[index];
       });
       candidate.refs.forEach(function (ref, index) {
-        const sourceBlock = d64.readSector(bytes, ref.track, ref.sector).slice();
+        const sourceBlock = d64
+          .readSector(bytes, ref.track, ref.sector)
+          .slice();
         if (index < candidate.refs.length - 1) {
           const nextRef = candidate.refs[index + 1];
           const nextTarget =
@@ -2657,7 +2666,10 @@
           sourceBlock,
           d64.trackOffset(target.track, target.sector),
         );
-        if (freeMap[target.track] && freeMap[target.track][target.sector] != null) {
+        if (
+          freeMap[target.track] &&
+          freeMap[target.track][target.sector] != null
+        ) {
           freeMap[target.track][target.sector] = false;
         }
       });
@@ -3117,10 +3129,10 @@
         return result;
       }
       while (track) {
-      if (!isValidPointer(track, sector, false)) {
-        addIssue(
-          "repairable",
-          "invalid-file-pointer",
+        if (!isValidPointer(track, sector, false)) {
+          addIssue(
+            "repairable",
+            "invalid-file-pointer",
             labelPrefix + " points outside the image geometry.",
             {
               fileName: entry.name,
@@ -3775,12 +3787,9 @@
               {
                 track: entry.track,
                 sector: entry.sector,
-                byteIndexes: Array.from(
-                  { length: 16 },
-                  function (_, index) {
-                    return entry.slot * 32 + 5 + index;
-                  },
-                ),
+                byteIndexes: Array.from({ length: 16 }, function (_, index) {
+                  return entry.slot * 32 + 5 + index;
+                }),
               },
             ],
           },
@@ -3926,9 +3935,7 @@
                   {
                     fileName: entry.name,
                     entryIndex: entry.index,
-                    items: [
-                      formatTs(sideSector.track, sideSector.sector),
-                    ],
+                    items: [formatTs(sideSector.track, sideSector.sector)],
                   },
                 );
               }
@@ -3944,9 +3951,7 @@
                     {
                       fileName: entry.name,
                       entryIndex: entry.index,
-                      items: [
-                        formatTs(sideSector.track, sideSector.sector),
-                      ],
+                      items: [formatTs(sideSector.track, sideSector.sector)],
                     },
                   );
                 }
@@ -4108,23 +4113,21 @@
         return;
       }
       if (deletedChain.refs.length) {
-        recoverableDeleted.push(
-          {
-            name: String(entry.name || "(unnamed)"),
-            entryIndex: entry.index,
-            track: entry.track,
-            sector: entry.sector,
-            slot: entry.slot,
-            sectors: deletedChain.refs.length,
-            message:
-              label +
-              " may still be recoverable from " +
-              String(deletedChain.refs.length) +
-              " sector" +
-              (deletedChain.refs.length === 1 ? "" : "s") +
-              ".",
-          },
-        );
+        recoverableDeleted.push({
+          name: String(entry.name || "(unnamed)"),
+          entryIndex: entry.index,
+          track: entry.track,
+          sector: entry.sector,
+          slot: entry.slot,
+          sectors: deletedChain.refs.length,
+          message:
+            label +
+            " may still be recoverable from " +
+            String(deletedChain.refs.length) +
+            " sector" +
+            (deletedChain.refs.length === 1 ? "" : "s") +
+            ".",
+        });
       }
     });
     if (recoverableDeleted.length) {
@@ -4903,7 +4906,8 @@
         previousBlock == null
           ? candidate.sector
           : (candidate.sector - predictedSector + sectorCount) % sectorCount;
-      const totalDelay = seekDistance * 3 + (rotationalDistance / sectorCount) * 200;
+      const totalDelay =
+        seekDistance * 3 + (rotationalDistance / sectorCount) * 200;
       const rank = [
         totalDelay,
         rotationalDistance,
@@ -4912,7 +4916,16 @@
         Math.abs(candidate.track - DIRECTORY_TRACK),
         candidate.sector,
       ];
-      if (!best || rank.some((value, index) => value < bestScore[index] && rank.slice(0, index).every((item, prior) => item === bestScore[prior]))) {
+      if (
+        !best ||
+        rank.some(
+          (value, index) =>
+            value < bestScore[index] &&
+            rank
+              .slice(0, index)
+              .every((item, prior) => item === bestScore[prior]),
+        )
+      ) {
         bestScore = rank;
         best = candidate;
       }
@@ -5536,7 +5549,9 @@
       }
     });
     return scores.length
-      ? scores.reduce(function (sum, score) { return sum + score; }, 0) / scores.length
+      ? scores.reduce(function (sum, score) {
+          return sum + score;
+        }, 0) / scores.length
       : null;
   };
 

@@ -57,12 +57,11 @@ npm run lab
 
 Open <http://localhost:1541/>. The project has no build step.
 
-## Inspect a D64 from GitHub Pages
+## Inspect a D64 from another site
 
-The hosted lab can receive a disk image from an opener on
-`https://lewismoten.github.io`. The opener opens the lab with a unique
-`#receive=<request-id>` fragment, waits for the `storage-d64:ready` message,
-then sends this message back to the lab:
+Any page can open the hosted lab and send it a disk image. The opener opens the
+lab with a unique `#receive=<request-id>` fragment, waits for the
+`storage-d64:ready` message, then sends this message back to the lab:
 
 ```js
 {
@@ -72,9 +71,14 @@ then sends this message back to the lab:
 }
 ```
 
+`bytes` can be a `Uint8Array`, an `ArrayBuffer`, any other typed array or
+`DataView`, or a plain array of integers from `0` to `255`. Sending bytes lets a
+page inspect a disk it generated or a file the visitor picked, without hosting
+the image at a URL. The lab's "Link a website to this D64 inspector" button
+generates a copy-and-paste loader for either a URL or bytes.
+
 The lab loads the received bytes through the same inspection path used for a
-locally selected image. The receiver intentionally accepts messages only from
-the GitHub Pages origin above.
+locally selected image.
 
 ## Use the plug-in
 

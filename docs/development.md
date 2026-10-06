@@ -21,6 +21,7 @@ module's host integration thin so its D64 helpers remain independently useful.
 - [index.html](../index.html): browser lab markup and dialog structure
 - [index.css](../index.css): browser lab styling
 - [index.js](../index.js): browser lab behavior, rendering, dialogs, Doctor UI, and editing flows
+- [external-load.js](../external-load.js): receives D64 images from other websites through `postMessage`, opens D64 URLs, and generates the website integration script
 - [README.md](../README.md): project overview
 - [lab.md](./lab.md): browser lab usage guide
 - [doctor.md](./doctor.md): Doctor behavior and repair policy
@@ -76,6 +77,23 @@ It owns:
 
 As a rule of thumb, if code depends on the DOM, visual state, or user
 interaction flow, it belongs here rather than in `support.js`.
+
+## `external-load.js`
+
+`external-load.js` holds every way a disk image arrives from outside the page,
+so the cross-site contract can be reviewed in one place:
+
+- the `storage-d64:ready` / `storage-d64:load` `postMessage` handshake with an
+  opener on another website, including byte validation
+- the **Open from URL** dialog
+- the website integration dialog and the script it generates for website
+  developers
+
+It loads before `index.js` and exposes `window.TPP.d64ExternalLoad.install`.
+`index.js` calls `install` with `loadImageBytes`, `setStatus`, and the dialog
+helpers, and then calls the returned `notifyOpenerReady` after the default
+blank disk has loaded. External loading reaches the rest of the lab only
+through those functions.
 
 ## Support-Layer API Families
 
