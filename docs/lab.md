@@ -57,31 +57,46 @@ head movement, and transfer timing.
 
 ### 1541 Drive
 
-The magnet button in the disk map toolbar shows the drive's read/write head in
-the head window. The head carries two LEDs: green while it reads and red while
-it writes.
+The 💿 button in the disk map toolbar shows the drive simulation: the
+read/write head in the head window, the spinning disk, and the **1541 Drive**
+panel beside the disk map. Hiding it stops anything the drive is doing. The
+head carries two LEDs: green while it reads and red while it writes.
 
-The **1541 Drive** panel beside the disk map animates the drive:
+Pick a **Command** and press **Run**. The panel shows the exact BASIC command:
 
-- **LOAD "\*",8,1** plays what a stock 1541 does when it first loads from a
-  freshly inserted disk. The motor spins up for about 0.9 s and the head steps
-  to track 18 to read the BAM and disk ID at 18/0. The drive follows the
-  directory chain to the first closed PRG file, then follows that file's
-  sector links. It reads each block ahead while it sends the previous one to
-  the C64, which takes about 0.63 s per block, so the readout often shows the
-  head reading while the bus is sending. The green LED lights as each sector
-  passes under the head, and sectors already read are outlined in green. The
-  motor keeps running for about 3.8 s afterwards.
+- **LOAD "\*",8,1** loads the first program in the directory. On a fresh disk
+  the motor spins up for about 0.9 s, the head reads the BAM at 18/0, and the
+  drive searches the directory. Run it again and the drive reopens the same
+  program directly, as a real 1541 does.
+- **LOAD a program by name** loads the PRG you pick. The drive takes the first
+  directory entry with that name; if it is not a PRG, it reports
+  `64,FILE TYPE MISMATCH`.
+- **Read a SEQ or USR file** opens the file with `OPEN 2,8,2,"NAME,S,R"` and
+  reads it to the end.
+- **LOAD "$",8** sends the directory listing, 32 bytes per line, reading the
+  directory sectors as it goes.
+- **Read a REL record** opens a REL file and positions to the record number
+  you type, reading the side sector and data blocks the record needs.
+
+For files, the drive sends block 1, waits while it reads block 2, and then
+reads each next block while it sends the current one, about 0.63 s per block,
+so the readout often shows the head reading while the bus is sending. The
+green LED lights as each sector passes under the head, and sectors already
+read are outlined in green. The motor keeps running for about 3.8 s
+afterwards; another command in that time skips the spin-up.
+
 - **Initialize** runs the ROM's bump: 92 half-steps outward, knocking against
   the stop once the head reaches track 1. The stock DOS bumps during error
   recovery and before formatting.
-- **Stop** ends a LOAD early and lets the disk coast to a stop.
-- **LOAD playback** slows the animation to 1/4 or 1/10 speed. At real speed a
+- **Stop** stops the drive straight away.
+- **Sound** turns the head knocking on or off. It is off by default.
+- **Playback** slows the animation to 1/4 or 1/10 speed. At real speed a
   sector passes the head in about 10 ms.
 
 The readout shows what the head and the serial bus are doing, the head's
-track and the sector under it, the motor state, and how many blocks have been
-sent. The timing comes from the 1541 ROM and is shared with the speed map; see
+track and the sector under it, the motor state, and how many bytes have been
+sent. Errors show the drive's error channel message. The timing comes from the
+1541 ROM and is shared with the speed map; see
 [Drive timing](./drive-timing.md) for the values, sources, and
 simplifications.
 

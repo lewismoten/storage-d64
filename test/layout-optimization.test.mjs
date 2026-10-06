@@ -140,3 +140,20 @@ test("a disk laid out by the DOS rule scores 100% on DOS layout", () => {
   ]);
   assert.equal(d64.scoreDosLayout(image).average, 100);
 });
+
+test("a file's first link gets no read-ahead in a stock LOAD", () => {
+  const first = d64.estimateStockLoadLink(
+    { track: 17, sector: 0 },
+    { track: 17, sector: 10 },
+    254,
+    true,
+  );
+  assert.equal(first.stallMs, first.readMs);
+  const later = d64.estimateStockLoadLink(
+    { track: 17, sector: 10 },
+    { track: 17, sector: 20 },
+    254,
+    false,
+  );
+  assert.equal(later.stallMs, 0);
+});

@@ -5073,22 +5073,29 @@
 
   // Expected delay a file link adds to a stock C64 LOAD.
   //
-  // The DOS double-buffers read channels (STRDBL $D0AF, DBLBUF $CF1E): when it
-  // starts sending a block to the C64 it queues the read of the next block,
-  // so that read only has to finish within the ~0.63 s send. The link costs
-  // extra time only when seek + rotational wait + reading the sector takes
-  // longer than that.
+  // OPEN reads only a file's first block. When the C64 has used it up, the
+  // DOS reads block 2 and waits for it (DBLBUF $CF1E), so a file's first link
+  // always stalls for the whole read: pass `firstLink`. From then on the DOS
+  // double-buffers (RDBYT $D156): as it starts sending a block it queues the
+  // read of the next, which only has to finish within the ~0.63 s send. Those
+  // links cost extra only when seek + rotational wait + reading the sector
+  // takes longer than that.
   //
   // The rotational wait uses the average of half a revolution: when the read
   // is queued depends on serial timing, and on a real disk the rotational
   // position of one track relative to another is not recorded anywhere.
-  d64.estimateStockLoadLink = function (previousBlock, nextBlock, sendBytes) {
+  d64.estimateStockLoadLink = function (
+    previousBlock,
+    nextBlock,
+    sendBytes,
+    firstLink,
+  ) {
     const seekMs = d64.driveSeekMs(previousBlock.track, nextBlock.track);
     const rotationMs = d64.driveTiming.rotationMs / 2;
     const sectorMs = d64.driveSectorMs(nextBlock.track);
     const readMs = seekMs + rotationMs + sectorMs;
     const sendMs = d64.driveSendMs(sendBytes == null ? 254 : sendBytes);
-    const stallMs = Math.max(0, readMs - sendMs);
+    const stallMs = firstLink ? readMs : Math.max(0, readMs - sendMs);
     return {
       seekMs: seekMs,
       rotationMs: rotationMs,
@@ -5096,6 +5103,7 @@
       readMs: readMs,
       sendMs: sendMs,
       stallMs: stallMs,
+      firstLink: Boolean(firstLink),
       // Share of the link's time the serial bus spends sending data.
       score: sendMs > 0 ? (sendMs / (sendMs + stallMs)) * 100 : 100,
     };

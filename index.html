@@ -151,10 +151,10 @@
                       type="button"
                       class="disk-map-toggle-button is-off"
                       disabled
-                      aria-label="Toggle read head"
-                      data-tooltip-text="Toggle the drive read head shown in the head window."
+                      aria-label="Show the 1541 drive simulation"
+                      data-tooltip-text="Show the 1541 drive simulation: the read head, the spinning disk, and the drive panel."
                     >
-                      🧲
+                      💿
                     </button>
                     <button id="disk-map-cover-toggle" type="button" disabled>
                       Cover On
@@ -195,18 +195,58 @@
               <div class="disk-map-legend-wrap">
                 <div id="disk-map-legend" class="disk-map-legend"></div>
                 <section
+                  id="drive-panel"
                   class="drive-panel"
                   aria-labelledby="drive-panel-title"
+                  hidden
                 >
                   <h4 id="drive-panel-title">1541 Drive</h4>
+                  <label class="drive-panel-field">
+                    <span>Command</span>
+                    <select id="drive-command-select">
+                      <option value="load-first">
+                        LOAD "*",8,1 &mdash; first program
+                      </option>
+                      <option value="load-file">LOAD a program by name</option>
+                      <option value="read-seq">Read a SEQ or USR file</option>
+                      <option value="directory">
+                        LOAD "$",8 &mdash; list the directory
+                      </option>
+                      <option value="rel-record">Read a REL record</option>
+                    </select>
+                  </label>
+                  <label id="drive-file-field" class="drive-panel-field" hidden>
+                    <span>File</span>
+                    <select id="drive-file-select"></select>
+                  </label>
+                  <label
+                    id="drive-record-field"
+                    class="drive-panel-field"
+                    hidden
+                  >
+                    <span>Record</span>
+                    <input
+                      id="drive-record-input"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value="1"
+                      inputmode="numeric"
+                    />
+                    <small id="drive-record-hint"></small>
+                  </label>
+                  <code
+                    id="drive-command-preview"
+                    class="drive-command-preview"
+                  ></code>
                   <div class="drive-panel-actions">
                     <button
                       id="drive-load-button"
                       type="button"
                       disabled
-                      title="Watch the drive load the first program in the directory: spin up, seek, and follow each linked sector."
+                      title="Run the command and watch the drive: spin up, seek, read each sector, and send the data to the C64."
                     >
-                      LOAD "*",8,1
+                      Run
                     </button>
                     <button
                       id="read-head-initialize-button"
@@ -219,9 +259,17 @@
                     <button id="drive-stop-button" type="button" disabled>
                       Stop
                     </button>
+                    <button
+                      id="drive-sound-button"
+                      type="button"
+                      aria-pressed="false"
+                      title="Turn on the head knocking sound."
+                    >
+                      🔇 Sound off
+                    </button>
                   </div>
                   <label class="drive-panel-speed">
-                    <span>LOAD playback</span>
+                    <span>Playback</span>
                     <select id="drive-speed-select">
                       <option value="1">Real speed (300 RPM)</option>
                       <option value="0.25">1/4 speed</option>

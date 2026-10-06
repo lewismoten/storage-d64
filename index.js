@@ -26,6 +26,12 @@
     // LOAD read, outlined on the disk map until the image changes.
     driveLastStatus: "Idle",
     driveReadKeys: [],
+    // The head knock only plays when sound is on.
+    driveSoundEnabled: false,
+    // What the drive remembers about the inserted disk: whether it has read
+    // the BAM yet, and the last program loaded, which LOAD "*" reopens.
+    driveInitialized: false,
+    driveLastProgram: null,
     hexViewContext: null,
     doctorReport: null,
     returnToDoctorReport: false,
@@ -62,6 +68,15 @@
   const readHeadInitializeButton = document.getElementById(
     "read-head-initialize-button",
   );
+  const drivePanel = document.getElementById("drive-panel");
+  const driveCommandSelect = document.getElementById("drive-command-select");
+  const driveFileField = document.getElementById("drive-file-field");
+  const driveFileSelect = document.getElementById("drive-file-select");
+  const driveRecordField = document.getElementById("drive-record-field");
+  const driveRecordInput = document.getElementById("drive-record-input");
+  const driveRecordHint = document.getElementById("drive-record-hint");
+  const driveCommandPreview = document.getElementById("drive-command-preview");
+  const driveSoundButton = document.getElementById("drive-sound-button");
   const driveLoadButton = document.getElementById("drive-load-button");
   const driveStopButton = document.getElementById("drive-stop-button");
   const driveSpeedSelect = document.getElementById("drive-speed-select");
@@ -2002,8 +2017,11 @@
     corruptButton.disabled = !state.image;
     heatmapButton.disabled = !state.image;
     doctorButton.textContent = "Doctor";
-    // Sectors outlined by a previous LOAD may no longer hold the same data.
+    // Sectors outlined by a previous LOAD may no longer hold the same data,
+    // and the drive must re-read the BAM of a changed disk.
     state.driveReadKeys = [];
+    state.driveInitialized = false;
+    state.driveLastProgram = null;
   };
 
   const resetDeletedTypeHints = function () {
@@ -2582,6 +2600,19 @@
     readHeadInitializeButton.disabled = !hasImage || driveBusy;
     driveLoadButton.disabled = !hasImage || driveBusy;
     driveStopButton.disabled = !state.driveLoad;
+    drivePanel.hidden = !hasImage || !state.readHeadVisible;
+    driveSoundButton.textContent = state.driveSoundEnabled
+      ? "🔊 Sound on"
+      : "🔇 Sound off";
+    driveSoundButton.setAttribute(
+      "aria-pressed",
+      state.driveSoundEnabled ? "true" : "false",
+    );
+    driveSoundButton.title = state.driveSoundEnabled
+      ? "Turn off the head knocking sound."
+      : "Turn on the head knocking sound.";
+    syncDriveCommandFields();
+    if (!readDriveOperation()) driveLoadButton.disabled = true;
     updateDrivePanel();
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
@@ -2704,7 +2735,7 @@
       if (!state.driveLoad.transferDone) return;
       finishDriveLoad();
     }
-    ensureReadHeadAudio();
+    if (state.driveSoundEnabled) ensureReadHeadAudio();
     state.readHeadInitializing = true;
     state.driveLastStatus =
       "Bumping: 92 half-steps outward toward the track 1 stop";
@@ -2717,7 +2748,7 @@
       if (state.readHeadTrack > 1) {
         state.readHeadTrack = Math.max(1, state.readHeadTrack - 0.5);
         syncReadHeadElement();
-      } else {
+      } else if (state.driveSoundEnabled) {
         playReadHeadStopClick();
       }
       halfStepsRemaining -= 1;
@@ -2741,20 +2772,22 @@
     step();
   };
 
-  // --- LOAD "*",8,1 animation ----------------------------------------------
+  // --- Drive animation ----------------------------------------------------
   //
-  // Plans what a stock 1541 does for LOAD "*",8,1 on a freshly inserted disk,
-  // following the DOS 2.6 ROM, then plays the plan back on the disk map:
+  // Plans what a stock 1541 does for a panel command, following the DOS 2.6
+  // ROM, then plays the plan back on the disk map. LOAD "*",8,1 on a freshly
+  // inserted disk goes like this (planDriveOperation covers the others):
   //
   //   1. Turn the motor on and wait for it to spin up.
   //   2. Initialize: step to track 18 and read the BAM and disk ID at 18/0.
-  //   3. Follow the directory chain until the first closed PRG entry. With no
-  //      earlier LOAD, "*" means the first PRG; other file types are skipped.
-  //   4. Read the file's first block, then send blocks to the C64 one at a
-  //      time. The DOS double-buffers: when it starts sending a block it
-  //      queues the read of the next one, so the head reads ahead while the
-  //      slow serial bus (about 0.63 s per block) is busy. If a read is not
-  //      finished when the send ends, the C64 waits.
+  //   3. Follow the directory chain to the first PRG entry. With no earlier
+  //      LOAD, "*" means the first PRG; other file types are skipped.
+  //   4. Read the file's first block and send it. When it is used up, read
+  //      block 2 while the C64 waits. From then on the DOS double-buffers:
+  //      when it starts sending a block it queues the read of the next one,
+  //      so the head reads ahead while the slow serial bus (about 0.63 s per
+  //      block) is busy. If a read is not finished when the send ends, the
+  //      C64 waits.
   //   5. Leave the motor running for 255 controller interrupts after the last
   //      job, then switch it off.
   //
@@ -2899,9 +2932,202 @@
     return Number.isInteger(track) ? String(track) : track.toFixed(1);
   };
 
+  // --- Drive commands -----------------------------------------------------
+  //
+  // The panel's command picker. Each command becomes an operation object
+  // that planDriveOperation turns into a timeline.
+
+  const DRIVE_COMMAND_FILE_TYPES = {
+    "load-file": ["prg"],
+    "read-seq": ["seq", "usr"],
+    "rel-record": ["rel"],
+  };
+
+  // Closed directory entries, or none if the directory can't be read.
+  const readDriveDirectoryEntries = function () {
+    if (!state.image) return [];
+    try {
+      return d64.readDirectoryEntries(state.image).filter(function (entry) {
+        return entry.closed;
+      });
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const readDriveRelInfo = function (entry) {
+    try {
+      const records = d64.readRelativeRecords(state.image, entry);
+      return records
+        ? {
+            recordLength: records.recordLength,
+            recordCount: records.recordCount,
+          }
+        : null;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const formatDriveBlocks = function (count) {
+    return String(count) + (count === 1 ? " block" : " blocks");
+  };
+
+  let driveFileOptionsSignature = "";
+
+  // Shows the file and record fields the chosen command needs, keeps the
+  // file list in step with the directory, and updates the command preview.
+  const syncDriveCommandFields = function () {
+    const command = driveCommandSelect.value;
+    const types = DRIVE_COMMAND_FILE_TYPES[command] || null;
+    driveFileField.hidden = !types;
+    driveRecordField.hidden = command !== "rel-record";
+    if (types) {
+      const entries = readDriveDirectoryEntries().filter(function (entry) {
+        return types.indexOf(entry.fileType) >= 0;
+      });
+      const signature =
+        command +
+        "|" +
+        entries
+          .map(function (entry) {
+            return String(entry.index) + ":" + entry.name;
+          })
+          .join("|");
+      if (signature !== driveFileOptionsSignature) {
+        const selected = driveFileSelect.value;
+        driveFileSelect.innerHTML = entries.length
+          ? entries
+              .map(function (entry) {
+                return (
+                  '<option value="' +
+                  String(entry.index) +
+                  '">' +
+                  escapeHtml(
+                    entry.name +
+                      " · " +
+                      entry.fileType.toUpperCase() +
+                      " · " +
+                      formatDriveBlocks(entry.blockCount),
+                  ) +
+                  "</option>"
+                );
+              })
+              .join("")
+          : '<option value="">No ' +
+            escapeHtml(
+              types
+                .map(function (type) {
+                  return type.toUpperCase();
+                })
+                .join(" or "),
+            ) +
+            " files on this disk</option>";
+        if (
+          Array.prototype.some.call(driveFileSelect.options, function (option) {
+            return option.value === selected;
+          })
+        ) {
+          driveFileSelect.value = selected;
+        }
+        driveFileOptionsSignature = signature;
+      }
+      driveFileSelect.disabled = !entries.length;
+    } else {
+      driveFileOptionsSignature = "";
+    }
+    const operation = readDriveOperation();
+    if (command === "rel-record") {
+      const info = operation && operation.relInfo;
+      driveRecordHint.textContent = info
+        ? "Records 1–" +
+          formatNumber(info.recordCount) +
+          ", " +
+          String(info.recordLength) +
+          " bytes each"
+        : "";
+    }
+    setTextIfChanged(
+      driveCommandPreview,
+      operation ? operation.basic : "Choose a file",
+    );
+  };
+
+  // The command the panel describes, or null if it can't run yet.
+  const readDriveOperation = function () {
+    const command = driveCommandSelect.value;
+    if (command === "load-first") {
+      return { kind: command, basic: 'LOAD"*",8,1' };
+    }
+    if (command === "directory") {
+      return { kind: command, basic: 'LOAD"$",8' };
+    }
+    const index = Number(driveFileSelect.value);
+    if (driveFileSelect.value === "" || !Number.isFinite(index)) return null;
+    const entry = readDriveDirectoryEntries().find(function (candidate) {
+      return candidate.index === index;
+    });
+    if (!entry) return null;
+    if (command === "load-file") {
+      return {
+        kind: command,
+        entry: entry,
+        basic: 'LOAD"' + entry.name + '",8,1',
+      };
+    }
+    if (command === "read-seq") {
+      return {
+        kind: command,
+        entry: entry,
+        basic:
+          'OPEN 2,8,2,"' +
+          entry.name +
+          (entry.fileType === "usr" ? ",U,R" : ",S,R") +
+          '"',
+      };
+    }
+    const record = Math.max(1, Math.floor(Number(driveRecordInput.value) || 1));
+    return {
+      kind: command,
+      entry: entry,
+      record: record,
+      relInfo: readDriveRelInfo(entry),
+      basic:
+        'OPEN 15,8,15:OPEN 2,8,2,"' +
+        entry.name +
+        '"\nPRINT#15,"P"CHR$(98)CHR$(' +
+        String(record % 256) +
+        ")CHR$(" +
+        String(Math.floor(record / 256)) +
+        ")CHR$(1)",
+    };
+  };
+
+  // Every line of a LOAD"$" listing is 32 bytes: the load address plus the
+  // header line, each entry line, and the BLOCKS FREE line with the end
+  // marker (lstdir.src, ROM $EC9E-$ED66).
+  const DIRECTORY_LISTING_BYTES = { line: 32 };
+
+  // Turns record bytes into text for the status line, the way they would
+  // print: stops at a carriage return, drops unprintable bytes.
+  const describeRecordText = function (bytes) {
+    let text = "";
+    for (let index = 0; index < bytes.length; index += 1) {
+      const byte = bytes[index];
+      if (byte === 13) break;
+      if (byte >= 32 && byte < 127) text += String.fromCharCode(byte);
+    }
+    return text.length > 24 ? text.slice(0, 24) + "…" : text;
+  };
+
   // `motorRunning` means the motor is still on from an earlier job, so the
   // DOS skips the spin-up wait.
-  const planDriveLoad = function (image, startTrack, motorRunning) {
+  const planDriveOperation = function (
+    image,
+    operation,
+    startTrack,
+    motorRunning,
+  ) {
     const timing = d64.driveTiming;
     const fullTurn = Math.PI * 2;
     const omega = fullTurn / timing.rotationMs;
@@ -2911,10 +3137,12 @@
       motorOffAt: Infinity,
       mech: [],
       bus: [],
-      fileName: "",
-      blockCount: 0,
+      totalBytes: 0,
       transferEnd: 0,
       finalStatus: "",
+      // What the drive will remember once this runs.
+      initializes: false,
+      program: null,
     };
     let headTrack = startTrack;
     let headFree = 0;
@@ -2977,52 +3205,24 @@
       return headFree;
     };
 
-    // 1-2. Spin up, then initialize: read the BAM and disk ID.
-    const header = d64.readHeader(image);
-    let ready = readSector(0, 18, 0, "BAM and disk ID");
+    // Sends `bytes` to the C64 starting no earlier than `start`.
+    const send = function (start, bytes, status) {
+      load.totalBytes += bytes;
+      return addPhase(load.bus, "send", start, start + d64.driveSendMs(bytes), {
+        bytes: bytes,
+        status: status,
+      });
+    };
 
-    // 3. Search the directory for the first closed PRG entry.
-    const directory = walkDriveSectorChain(
-      image,
-      header.nextDirectoryTrack,
-      header.nextDirectorySector,
-    );
-    let match = null;
-    for (let index = 0; index < directory.blocks.length && !match; index += 1) {
-      const block = directory.blocks[index];
-      ready = readSector(ready, block.track, block.sector, "directory");
-      for (let slot = 0; slot < 8 && !match; slot += 1) {
-        const entry = d64.parseDirectoryEntryBytes(
-          block.block.subarray(slot * 32, slot * 32 + 32),
-        );
-        if (entry.fileType === "prg" && entry.closed) match = entry;
-      }
-    }
-
-    if (!match) {
-      load.transferEnd = ready;
-      load.finalStatus = directory.error
-        ? "?DISK ERROR: directory " + directory.error.toLowerCase()
-        : "?FILE NOT FOUND ERROR: no PRG file in the directory";
-    } else {
-      // 4. Read the first block, then send each block while reading ahead.
-      const chain = walkDriveSectorChain(
-        image,
-        match.startTrack,
-        match.startSector,
-      );
-      const blocks = chain.blocks;
+    // Reads a file's blocks and sends them. OPEN reads only block 1; the DOS
+    // reads block 2 once block 1 is used up and waits for it (DBLBUF $CF1E).
+    // From then on it reads each next block while sending the current one
+    // (RDBYT $D156).
+    const sendChain = function (ready, blocks, name) {
       const count = blocks.length;
-      load.fileName = match.name;
-      load.blockCount = count;
       const label = function (index) {
         return (
-          '"' +
-          match.name +
-          '" block ' +
-          String(index + 1) +
-          " of " +
-          String(count)
+          '"' + name + '" block ' + String(index + 1) + " of " + String(count)
         );
       };
       const readEnds = [];
@@ -3036,13 +3236,21 @@
       }
       let busFree = count ? readEnds[0] : ready;
       for (let index = 0; index < count; index += 1) {
+        if (index === 1) {
+          readEnds[1] = readSector(
+            busFree,
+            blocks[1].track,
+            blocks[1].sector,
+            label(1),
+          );
+        }
         if (readEnds[index] > busFree) {
           busFree = addPhase(load.bus, "stall", busFree, readEnds[index], {
             status: "C64 waiting for block " + String(index + 1),
           });
         }
         const sendStart = busFree;
-        if (index + 1 < count) {
+        if (index >= 1 && index + 1 < count) {
           readEnds[index + 1] = readSector(
             sendStart,
             blocks[index + 1].track,
@@ -3053,35 +3261,380 @@
         const usedBytes = blocks[index].nextTrack
           ? 254
           : Math.max(0, Math.min(254, blocks[index].nextSector - 1));
-        busFree = addPhase(
-          load.bus,
-          "send",
+        busFree = send(
           sendStart,
-          sendStart + d64.driveSendMs(usedBytes),
-          {
-            bytes: usedBytes,
-            status:
-              "Sending block " +
-              String(index + 1) +
-              " of " +
-              String(count) +
-              " to the C64",
-          },
+          usedBytes,
+          "Sending block " +
+            String(index + 1) +
+            " of " +
+            String(count) +
+            " to the C64",
+        );
+      }
+      return busFree;
+    };
+
+    const directory = walkDriveSectorChain(
+      image,
+      d64.readHeader(image).nextDirectoryTrack,
+      d64.readHeader(image).nextDirectorySector,
+    );
+
+    // Reads directory sectors until `matches` accepts an entry (FFST $C49D).
+    // Scratched and empty slots (type byte 0) are skipped.
+    const searchDirectory = function (ready, matches) {
+      let match = null;
+      for (
+        let index = 0;
+        index < directory.blocks.length && !match;
+        index += 1
+      ) {
+        const block = directory.blocks[index];
+        ready = readSector(ready, block.track, block.sector, "directory");
+        for (let slot = 0; slot < 8 && !match; slot += 1) {
+          const entry = d64.parseDirectoryEntryBytes(
+            block.block.subarray(slot * 32, slot * 32 + 32),
+          );
+          if (entry.typeByte && matches(entry)) match = entry;
+        }
+      }
+      return { match: match, ready: ready };
+    };
+
+    // The drive's error channel text, and what the C64 shows for a LOAD.
+    const driveError = function (code, message) {
+      return String(code) + "," + message + ",00,00";
+    };
+    const failLoad = function (ready, code, message) {
+      load.transferEnd = ready;
+      load.finalStatus =
+        "?FILE NOT FOUND ERROR · drive " + driveError(code, message);
+    };
+    const failOpen = function (ready, code, message) {
+      load.transferEnd = ready;
+      load.finalStatus = "Drive error " + driveError(code, message);
+    };
+    const directoryFailure = function (ready, fail) {
+      if (directory.error) {
+        load.transferEnd = ready;
+        load.finalStatus = "?DISK ERROR: directory " + directory.error;
+      } else {
+        fail(ready, 62, "FILE NOT FOUND");
+      }
+    };
+
+    // Looks a file up by name the way OPEN does: the first entry with that
+    // name, of any type. A splat file is error 60; the wrong type is 64.
+    const openByName = function (ready, name, types, fail) {
+      const search = searchDirectory(ready, function (entry) {
+        return entry.name === name;
+      });
+      const match = search.match;
+      if (!match) {
+        directoryFailure(search.ready, fail);
+      } else if (!match.closed) {
+        fail(search.ready, 60, "WRITE FILE OPEN");
+      } else if (types && types.indexOf(match.fileType) < 0) {
+        fail(search.ready, 64, "FILE TYPE MISMATCH");
+      } else {
+        return { match: match, ready: search.ready };
+      }
+      return null;
+    };
+
+    // LOAD"$": the drive builds the listing as a file (LOADIR $DA55) and
+    // sends it in 256-byte buffers of eight 32-byte lines. The first buffer
+    // holds the load address and header line plus 7 entries. Each line is
+    // formatted when its buffer is built, and formatting an entry already
+    // searches for the next one (GETNAM $C6CE), so a buffer needs every
+    // directory sector up to the next listed entry, or to the end of the
+    // chain after the last one. Directory sectors are read like a file:
+    // 18/1 at OPEN, the second when first needed (waiting for it), then each
+    // next one ahead. "BLOCKS FREE." comes from a count in RAM.
+    const planDirectoryListing = function (ready) {
+      const lines = [];
+      directory.blocks.forEach(function (block, sectorIndex) {
+        for (let slot = 0; slot < 8; slot += 1) {
+          if (block.block[slot * 32 + 2]) lines.push(sectorIndex);
+        }
+      });
+      const lastSector = Math.max(0, directory.blocks.length - 1);
+      // Directory sectors that must be in memory to format each entry line.
+      const neededFor = lines.map(function (sectorIndex, index) {
+        return index + 1 < lines.length ? lines[index + 1] : lastSector;
+      });
+      const readEnds = [];
+      const label = "directory";
+      if (!directory.blocks.length) {
+        load.transferEnd = ready;
+        load.finalStatus = "?DISK ERROR: directory " + directory.error;
+        return ready;
+      }
+      readEnds[0] = readSector(
+        ready,
+        directory.blocks[0].track,
+        directory.blocks[0].sector,
+        label,
+      );
+      let active = 0;
+      let busFree = readEnds[0];
+      // Makes directory sectors up to `sectorIndex` current, reading the
+      // second one on demand and each later one ahead.
+      const activate = function (sectorIndex) {
+        while (active < sectorIndex) {
+          active += 1;
+          if (readEnds[active] === undefined) {
+            readEnds[active] = readSector(
+              busFree,
+              directory.blocks[active].track,
+              directory.blocks[active].sector,
+              label,
+            );
+          }
+          if (readEnds[active] > busFree) {
+            busFree = addPhase(load.bus, "stall", busFree, readEnds[active], {
+              status: "C64 waiting for the next directory sector",
+            });
+          }
+          if (active + 1 <= lastSector && readEnds[active + 1] === undefined) {
+            readEnds[active + 1] = readSector(
+              busFree,
+              directory.blocks[active + 1].track,
+              directory.blocks[active + 1].sector,
+              label + " (read ahead)",
+            );
+          }
+        }
+      };
+      // Line 0 is the header, then one line per entry, then BLOCKS FREE.
+      const totalLines = 1 + lines.length + 1;
+      for (let first = 0; first < totalLines; first += 8) {
+        const last = Math.min(totalLines, first + 8) - 1;
+        let needed = 0;
+        for (let line = Math.max(1, first); line <= last; line += 1) {
+          if (line <= lines.length)
+            needed = Math.max(needed, neededFor[line - 1]);
+        }
+        activate(needed);
+        busFree = send(
+          busFree,
+          (last - first + 1) * DIRECTORY_LISTING_BYTES.line,
+          "Sending directory lines " +
+            String(first + 1) +
+            "-" +
+            String(last + 1) +
+            " to the C64",
         );
       }
       load.transferEnd = busFree;
-      load.finalStatus = chain.error
-        ? "?DISK ERROR: " + chain.error
-        : 'Loaded "' +
-          match.name +
-          '": ' +
-          String(count) +
-          " blocks in " +
+      load.finalStatus = directory.error
+        ? "?DISK ERROR: directory " + directory.error
+        : "Listed " +
+          String(lines.length) +
+          (lines.length === 1 ? " entry" : " entries") +
+          " in " +
           (busFree / 1000).toFixed(1) +
           " s";
+      return busFree;
+    };
+
+    // Reading a REL record. OPEN reads the file's first data block, then
+    // side sector 0. The P command maps the record to a data block
+    // (FNDREL $CE0E): offset = (record - 1) * length, block = offset / 254,
+    // side sector = block / 120. It reads a different side sector only if
+    // one is needed, and the data block plus the block after it (STRDBL),
+    // unless the record is in the block already in memory. The drive sends
+    // the record up to its last non-zero byte.
+    const planRelRecord = function (ready) {
+      const target = operation.entry;
+      const found = openByName(ready, target.name, null, failOpen);
+      if (!found) return load.transferEnd;
+      const match = found.match;
+      ready = found.ready;
+      if (match.fileType !== "rel") {
+        // OPEN works, but the P command is refused.
+        failOpen(ready, 64, "FILE TYPE MISMATCH");
+        return ready;
+      }
+      const sideSectors = d64.readRelativeSideSectors(
+        image,
+        match.sideSectorTrack,
+        match.sideSectorSector,
+      );
+      const chain = walkDriveSectorChain(
+        image,
+        match.startTrack,
+        match.startSector,
+      );
+      if (!chain.blocks.length || !sideSectors.length) {
+        failOpen(ready, 50, "RECORD NOT PRESENT");
+        return ready;
+      }
+      const readEnds = {};
+      const readData = function (queuedAt, blockIndex, label) {
+        const block = chain.blocks[blockIndex];
+        readEnds[blockIndex] = readSector(
+          queuedAt,
+          block.track,
+          block.sector,
+          label,
+        );
+        return readEnds[blockIndex];
+      };
+      ready = readData(ready, 0, '"' + match.name + '" data block 1');
+      ready = readSector(
+        ready,
+        sideSectors[0].track,
+        sideSectors[0].sector,
+        "side sector 1 of " + String(sideSectors.length),
+      );
+      const recordLength = Math.max(1, match.recordLength || 1);
+      const offset = (operation.record - 1) * recordLength;
+      const blockIndex = Math.floor(offset / 254);
+      const sideIndex = Math.floor(blockIndex / 120);
+      const records = d64.readRelativeRecords(image, match);
+      const recordBytes = records && records.records[operation.record - 1];
+      if (
+        !sideSectors[sideIndex] ||
+        blockIndex >= chain.blocks.length ||
+        !recordBytes
+      ) {
+        failOpen(ready, 50, "RECORD NOT PRESENT");
+        return ready;
+      }
+      if (sideIndex > 0) {
+        ready = readSector(
+          ready,
+          sideSectors[sideIndex].track,
+          sideSectors[sideIndex].sector,
+          "side sector " + String(sideIndex + 1),
+        );
+      }
+      const label = "record " + String(operation.record);
+      if (blockIndex > 0) {
+        ready = readData(ready, blockIndex, label);
+        if (blockIndex + 1 < chain.blocks.length) {
+          readData(ready, blockIndex + 1, label + " (read ahead)");
+        }
+      }
+      // A record that runs past its block continues in the next one.
+      if ((offset % 254) + recordLength > 254) {
+        if (readEnds[blockIndex + 1] === undefined) {
+          readData(ready, blockIndex + 1, "rest of " + label);
+        }
+        ready = Math.max(ready, readEnds[blockIndex + 1] || ready);
+      }
+      // Sent up to the last non-zero byte; an unwritten record is one byte.
+      let sentLength = recordBytes.length;
+      while (sentLength > 1 && !recordBytes[sentLength - 1]) sentLength -= 1;
+      load.transferEnd = send(
+        ready,
+        sentLength,
+        "Sending record " + String(operation.record) + " to the C64",
+      );
+      load.finalStatus =
+        "Record " +
+        String(operation.record) +
+        ' of "' +
+        match.name +
+        '": "' +
+        describeRecordText(recordBytes.subarray(0, sentLength)) +
+        '"';
+      return load.transferEnd;
+    };
+
+    const kind = operation.kind;
+    let ready = 0;
+    // Initialize: the DOS reads the BAM after a disk change (AUTOI $C63D).
+    // The first LOAD"*" reads it again regardless ($D828).
+    if (
+      !state.driveInitialized ||
+      (kind === "load-first" && !state.driveLastProgram)
+    ) {
+      ready = readSector(0, 18, 0, "BAM and disk ID");
+      load.initializes = true;
     }
 
-    // 5. Motor run-on after the last job, then coast to a stop.
+    if (kind === "load-first" || kind === "load-file") {
+      let program = null;
+      if (kind === "load-first" && state.driveLastProgram) {
+        // After a LOAD, "*" reopens the last program without a search.
+        program = state.driveLastProgram;
+      } else if (kind === "load-first") {
+        // The first LOAD"*" matches the first PRG entry.
+        const search = searchDirectory(ready, function (entry) {
+          return entry.fileType === "prg";
+        });
+        ready = search.ready;
+        if (!search.match) {
+          directoryFailure(ready, failLoad);
+        } else if (!search.match.closed) {
+          failLoad(ready, 60, "WRITE FILE OPEN");
+        } else {
+          program = search.match;
+        }
+      } else {
+        // LOAD never sends ",1" to the drive; it asks for a PRG by name.
+        const found = openByName(
+          ready,
+          operation.entry.name,
+          ["prg"],
+          failLoad,
+        );
+        if (found) {
+          ready = found.ready;
+          program = found.match;
+        }
+      }
+      if (program) {
+        load.program = {
+          name: program.name,
+          startTrack: program.startTrack,
+          startSector: program.startSector,
+        };
+        const chain = walkDriveSectorChain(
+          image,
+          program.startTrack,
+          program.startSector,
+        );
+        load.transferEnd = sendChain(ready, chain.blocks, program.name);
+        load.finalStatus = chain.error
+          ? "?DISK ERROR: " + chain.error
+          : 'Loaded "' +
+            program.name +
+            '": ' +
+            formatDriveBlocks(chain.blocks.length) +
+            " in " +
+            (load.transferEnd / 1000).toFixed(1) +
+            " s";
+      }
+    } else if (kind === "read-seq") {
+      const target = operation.entry;
+      const found = openByName(ready, target.name, [target.fileType], failOpen);
+      if (found) {
+        const chain = walkDriveSectorChain(
+          image,
+          found.match.startTrack,
+          found.match.startSector,
+        );
+        load.transferEnd = sendChain(found.ready, chain.blocks, target.name);
+        load.finalStatus = chain.error
+          ? "?DISK ERROR: " + chain.error
+          : 'Read "' +
+            target.name +
+            '": ' +
+            formatDriveBlocks(chain.blocks.length) +
+            " in " +
+            (load.transferEnd / 1000).toFixed(1) +
+            " s";
+      }
+    } else if (kind === "directory") {
+      ready = planDirectoryListing(ready);
+    } else if (kind === "rel-record") {
+      ready = planRelRecord(ready);
+    }
+
+    // Motor run-on after the last job, then coast to a stop.
     load.motorOffAt = headFree + timing.runOnMs;
     load.end = load.motorOffAt + DRIVE_COAST_MS;
     return load;
@@ -3145,17 +3698,15 @@
     if (load) {
       setTextIfChanged(
         driveProgress,
-        load.blockCount
+        load.totalBytes
           ? "Sent " +
-              String(load.sentBlocks) +
-              " of " +
-              String(load.blockCount) +
-              " blocks · " +
               formatNumber(load.sentBytes) +
+              " of " +
+              formatNumber(load.totalBytes) +
               " bytes"
           : load.time < load.transferEnd
             ? "Reading the directory"
-            : "Nothing loaded",
+            : "Nothing sent",
       );
     }
     driveReadLed.classList.toggle("is-on", reading);
@@ -3211,7 +3762,6 @@
       } else if (done.type === "seek") {
         load.track = done.toTrack;
       } else if (done.type === "send") {
-        load.sentBlocks += 1;
         load.sentBytes += done.bytes;
       }
       load.index[lane] += 1;
@@ -3271,17 +3821,25 @@
       previous && previous.time < previous.motorOffAt,
     );
     if (previous) finishDriveLoad();
+    const operation = readDriveOperation();
+    if (!operation) return;
     let load;
     try {
-      load = planDriveLoad(state.image, state.readHeadTrack, motorRunning);
+      load = planDriveOperation(
+        state.image,
+        operation,
+        state.readHeadTrack,
+        motorRunning,
+      );
     } catch (error) {
       setStatus(error.message || String(error), true);
       return;
     }
+    if (load.initializes) state.driveInitialized = true;
+    if (load.program) state.driveLastProgram = load.program;
     load.track = state.readHeadTrack;
     load.index = { mech: 0, bus: 0 };
     load.time = 0;
-    load.sentBlocks = 0;
     load.sentBytes = 0;
     load.speed = readDriveSpeed();
     load.simAnchor = 0;
@@ -3936,6 +4494,20 @@
     }
   };
 
+  // "track:sector" of every file's first block. A file's first link gets no
+  // read-ahead in a stock LOAD.
+  const readFileStartKeys = function (image) {
+    const keys = {};
+    try {
+      d64.readDirectoryEntries(image).forEach(function (entry) {
+        keys[String(entry.startTrack) + ":" + String(entry.startSector)] = true;
+      });
+    } catch (error) {
+      // An unreadable directory leaves every link treated as read ahead.
+    }
+    return keys;
+  };
+
   // Scores one file link for the speed map. See estimateStockLoadLink and
   // scoreDosLayoutLink in support.js for the models.
   const estimateSectorLinkMetrics = function (
@@ -3944,6 +4516,7 @@
     nextTrack,
     nextSector,
     dosLinks,
+    fileStartKeys,
   ) {
     if (!isValidSectorAddress(nextTrack, nextSector, state.image)) {
       return null;
@@ -3963,9 +4536,15 @@
           ),
       );
     }
+    const startKeys = fileStartKeys || readFileStartKeys(state.image);
     return Object.assign(
       { model: "stock" },
-      d64.estimateStockLoadLink(previousBlock, nextBlock),
+      d64.estimateStockLoadLink(
+        previousBlock,
+        nextBlock,
+        254,
+        Boolean(startKeys[String(track) + ":" + String(sector)]),
+      ),
     );
   };
 
@@ -4240,13 +4819,19 @@
             "is-inferred",
             "Read Ahead",
             linkMetrics.readMs.toFixed(0) + " ms",
-            "Expected time to read the linked sector: seek " +
+            (linkMetrics.firstLink
+              ? "A file's second block is read only after the first has been sent, so the C64 waits for all of it. "
+              : "") +
+              "Expected time to read the linked sector: seek " +
               linkMetrics.seekMs.toFixed(0) +
               " ms + average rotational wait " +
               linkMetrics.rotationMs.toFixed(0) +
               " ms + " +
               linkMetrics.sectorMs.toFixed(1) +
-              " ms for the sector to pass the head. The 1541 starts this read while it sends the current block to the C64.",
+              " ms for the sector to pass the head." +
+              (linkMetrics.firstLink
+                ? ""
+                : " The 1541 starts this read while it sends the current block to the C64."),
           ) +
           renderTimingChip(
             "is-expected",
@@ -4646,6 +5231,8 @@
 
     const dosLinks =
       state.heatMapMode === "dos" ? readDosLayoutLinks(image) : null;
+    const fileStartKeys =
+      state.heatMapMode === "dos" ? null : readFileStartKeys(image);
     Object.keys(sectorMap).forEach(function (key) {
       const sectorInfo = sectorMap[key];
       if (
@@ -4668,6 +5255,7 @@
         nextTrack,
         nextSector,
         dosLinks,
+        fileStartKeys,
       );
       if (!metrics) return;
       sectorInfo.linkMetrics = metrics;
@@ -5966,7 +6554,7 @@
         diskMapHeatmapSummary.title =
           "Across " +
           formatNumber(layout.scoredSectorCount || 0) +
-          " file links: how much of a stock C64 LOAD the serial bus spends sending data, and the expected time links add by making the drive wait. The 1541 reads each block ahead while it sends the previous one (about 0.63 s), so only long seeks stall it. Rotational waits use the average, because a real disk does not record where each track starts.";
+          " file links: how much of a stock C64 LOAD the serial bus spends sending data, and the expected time links add by making the drive wait. Each file's first link always waits for the read of block 2; after that the 1541 reads each block ahead while it sends the previous one (about 0.63 s), so only long seeks stall it. Rotational waits use the average, because a real disk does not record where each track starts.";
       }
       diskMapHeatmapSummary.style.background = scoreToHeatColor(averageScore);
     } else if (state.heatMapVisible && layout) {
@@ -10019,12 +10607,22 @@
     readHeadButton.addEventListener("click", function () {
       if (!state.image) return;
       state.readHeadVisible = !state.readHeadVisible;
+      // The drive panel goes away with the head, so stop anything running.
+      if (!state.readHeadVisible && state.driveLoad) stopDriveLoad();
       syncDiskMapControls();
       renderDiskMap(state.image);
     });
     readHeadInitializeButton.addEventListener("click", initializeReadHead);
     driveLoadButton.addEventListener("click", startDriveLoad);
     driveStopButton.addEventListener("click", stopDriveLoad);
+    driveSoundButton.addEventListener("click", function () {
+      state.driveSoundEnabled = !state.driveSoundEnabled;
+      if (state.driveSoundEnabled) ensureReadHeadAudio();
+      syncDiskMapControls();
+    });
+    driveCommandSelect.addEventListener("change", syncDiskMapControls);
+    driveFileSelect.addEventListener("change", syncDiskMapControls);
+    driveRecordInput.addEventListener("input", syncDiskMapControls);
     driveSpeedSelect.addEventListener("change", function () {
       const load = state.driveLoad;
       if (!load) return;
