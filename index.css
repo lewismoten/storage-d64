@@ -3073,3 +3073,8 @@ body.has-managed-dialog {
     align-items: flex-start;
   }
 }
+
+.disk-map-read-head {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}

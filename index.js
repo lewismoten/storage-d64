@@ -15,6 +15,9 @@
     selectedSectorKey: "",
     diskCoverVisible: false,
     heatMapVisible: false,
+    readHeadVisible: false,
+    readHeadTrack: 18,
+    readHeadInitializing: false,
     hexViewContext: null,
     doctorReport: null,
     returnToDoctorReport: false,
@@ -61,6 +64,10 @@
   const defragmentButton = document.getElementById("defragment-button");
   const corruptButton = document.getElementById("corrupt-button");
   const heatmapButton = document.getElementById("heatmap-button");
+  const readHeadButton = document.getElementById("read-head-button");
+  const readHeadInitializeButton = document.getElementById(
+    "read-head-initialize-button",
+  );
   const currentFileName = document.getElementById("current-file-name");
   const dialogScrim = document.getElementById("dialog-scrim");
   const status = document.getElementById("status");
@@ -483,6 +490,14 @@
     diskCenterX: 275,
     diskCenterY: 276,
   });
+  // A 1541 "bump" drives the stepper toward track 1 well past the point
+  // where the head hits the stop, which produces the familiar knocking.
+  // The stepper takes roughly 30 ms per track, so a 40-step bump lasts
+  // about 1.2 seconds.
+  const READ_HEAD_BUMP_STEPS = 40;
+  const READ_HEAD_STEP_MS = 30;
+  let readHeadAudioContext = null;
+  let readHeadNoiseBuffer = null;
   const diskMapView = {
     scale: 1,
     offsetX: 0,
@@ -2527,9 +2542,153 @@
         ? "Speed map is on. Toggle to hide the overlay that colors sectors by estimated read efficiency."
         : "Speed map is off. Toggle to color sectors by estimated read efficiency.",
     );
+    readHeadButton.disabled = !hasImage;
+    readHeadButton.classList.toggle("is-on", hasImage && state.readHeadVisible);
+    readHeadButton.classList.toggle(
+      "is-off",
+      !hasImage || !state.readHeadVisible,
+    );
+    readHeadButton.setAttribute(
+      "aria-label",
+      state.readHeadVisible ? "Hide read head" : "Show read head",
+    );
+    readHeadButton.setAttribute(
+      "data-tooltip-text",
+      (state.readHeadVisible
+        ? "Read head is on. Toggle to hide it."
+        : "Read head is off. Toggle to show it in the head window.") +
+        " Head is on track " +
+        String(state.readHeadTrack) +
+        ".",
+    );
+    readHeadInitializeButton.disabled = !hasImage || state.readHeadInitializing;
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
     diskMapZoomReset.disabled = !hasImage;
+  };
+
+  const readHeadOffsetForTrack = function (track) {
+    const trackBand =
+      (DISK_MAP_PHYSICAL.mechanismOuterRadius -
+        DISK_MAP_PHYSICAL.mechanismInnerRadius) /
+      DISK_MAP_PHYSICAL.mechanismTrackCount;
+    return DISK_MAP_PHYSICAL.mechanismOuterRadius - (track - 0.5) * trackBand;
+  };
+
+  const readHeadTransform = function (track) {
+    return (
+      "translate(" +
+      DISK_MAP_VIEWBOX.diskCenterX.toFixed(2) +
+      " " +
+      (DISK_MAP_VIEWBOX.diskCenterY + readHeadOffsetForTrack(track)).toFixed(
+        2,
+      ) +
+      ")"
+    );
+  };
+
+  const buildReadHeadMarkup = function () {
+    if (!state.readHeadVisible) return "";
+    return (
+      '<g id="disk-map-read-head" class="disk-map-read-head" transform="' +
+      readHeadTransform(state.readHeadTrack) +
+      '">' +
+      "<title>Read head on track " +
+      String(state.readHeadTrack) +
+      "</title>" +
+      '<rect x="-18" y="-7.5" width="36" height="15" rx="3" fill="#c7cfd4" stroke="#20262b" stroke-width="1.2" />' +
+      '<rect x="-10" y="-3" width="20" height="6" rx="1.5" fill="#1b2126" />' +
+      '<path d="M -8 0 H 8" stroke="#e8bd52" stroke-width="1" />' +
+      "</g>"
+    );
+  };
+
+  const syncReadHeadElement = function () {
+    const head = diskMap.querySelector("#disk-map-read-head");
+    if (!head) return;
+    head.setAttribute("transform", readHeadTransform(state.readHeadTrack));
+    const title = head.querySelector("title");
+    if (title) {
+      title.textContent = "Read head on track " + String(state.readHeadTrack);
+    }
+  };
+
+  const ensureReadHeadAudio = function () {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!readHeadAudioContext) {
+      readHeadAudioContext = new AudioContextClass();
+      const length = Math.floor(readHeadAudioContext.sampleRate * 0.03);
+      readHeadNoiseBuffer = readHeadAudioContext.createBuffer(
+        1,
+        length,
+        readHeadAudioContext.sampleRate,
+      );
+      const data = readHeadNoiseBuffer.getChannelData(0);
+      for (let i = 0; i < length; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3);
+      }
+    }
+    if (readHeadAudioContext.state === "suspended") {
+      readHeadAudioContext.resume();
+    }
+    return readHeadAudioContext;
+  };
+
+  // The head carriage slamming into the track 1 stop: a sharp plastic
+  // clack layered over a short low knock from the drive chassis.
+  const playReadHeadStopClick = function () {
+    const context = readHeadAudioContext;
+    if (!context || !readHeadNoiseBuffer) return;
+    const now = context.currentTime;
+
+    const noise = context.createBufferSource();
+    noise.buffer = readHeadNoiseBuffer;
+    const band = context.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = 2200;
+    band.Q.value = 1.4;
+    const clackGain = context.createGain();
+    clackGain.gain.setValueAtTime(0.9, now);
+    clackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+    noise.connect(band).connect(clackGain).connect(context.destination);
+    noise.start(now);
+    noise.stop(now + 0.03);
+
+    const knock = context.createOscillator();
+    knock.type = "sine";
+    knock.frequency.setValueAtTime(180, now);
+    knock.frequency.exponentialRampToValueAtTime(70, now + 0.04);
+    const knockGain = context.createGain();
+    knockGain.gain.setValueAtTime(0.6, now);
+    knockGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    knock.connect(knockGain).connect(context.destination);
+    knock.start(now);
+    knock.stop(now + 0.06);
+  };
+
+  const initializeReadHead = function () {
+    if (!state.image || state.readHeadInitializing) return;
+    ensureReadHeadAudio();
+    state.readHeadInitializing = true;
+    syncDiskMapControls();
+    let stepsRemaining = READ_HEAD_BUMP_STEPS;
+    const step = function () {
+      if (state.readHeadTrack > 1) {
+        state.readHeadTrack -= 1;
+        syncReadHeadElement();
+      } else {
+        playReadHeadStopClick();
+      }
+      stepsRemaining -= 1;
+      if (stepsRemaining > 0) {
+        window.setTimeout(step, READ_HEAD_STEP_MS);
+      } else {
+        state.readHeadInitializing = false;
+        syncDiskMapControls();
+      }
+    };
+    step();
   };
 
   const resetDiskMapView = function () {
@@ -5387,6 +5546,7 @@
           '" rx="' +
           DISK_MAP_PHYSICAL.headWindowRadius.toFixed(2) +
           '" fill="none" stroke="rgba(42, 48, 54, 0.74)" stroke-width="1.4" />' +
+          buildReadHeadMarkup() +
           '<circle cx="' +
           indexHolePoint.x.toFixed(2) +
           '" cy="' +
@@ -9272,6 +9432,13 @@
       syncDiskMapControls();
       renderDiskMap(state.image);
     });
+    readHeadButton.addEventListener("click", function () {
+      if (!state.image) return;
+      state.readHeadVisible = !state.readHeadVisible;
+      syncDiskMapControls();
+      renderDiskMap(state.image);
+    });
+    readHeadInitializeButton.addEventListener("click", initializeReadHead);
     diskMapZoomOut.addEventListener("click", function () {
       zoomDiskMap(-1);
     });
