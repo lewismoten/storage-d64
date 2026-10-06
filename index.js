@@ -5122,11 +5122,11 @@
       );
       diskMapHeatmapSummary.hidden = false;
       diskMapHeatmapSummary.textContent =
-        "Avg Read Score " + averageScore.toFixed(0) + "%";
+        "Avg Layout Score " + averageScore.toFixed(0) + "%";
       diskMapHeatmapSummary.title =
-        "Average read optimization score across " +
+        "Average deterministic D64 layout score across " +
         formatNumber(layout.scoredSectorCount || 0) +
-        " linked sectors.";
+        " linked sectors. A D64 has no recorded rotational phase, so this is not a measured drive-time benchmark.";
       diskMapHeatmapSummary.style.background = scoreToHeatColor(averageScore);
     } else if (state.heatMapVisible && layout) {
       diskMapHeatmapSummary.hidden = false;

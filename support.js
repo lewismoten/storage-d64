@@ -4872,7 +4872,7 @@
     const seekDistance = Math.abs(targetTrack - previousBlock.track);
     const rotationalLead = Math.min(
       previousSectorCount + targetSectorCount,
-      seekDistance === 0 ? 9 : seekDistance === 1 ? 4 : 2 + seekDistance * 2,
+      seekDistance === 0 ? 10 : seekDistance === 1 ? 4 : 2 + seekDistance * 2,
     );
     return (previousBlock.sector + rotationalLead) % targetSectorCount;
   };
@@ -4903,14 +4903,17 @@
         previousBlock == null
           ? candidate.sector
           : (candidate.sector - predictedSector + sectorCount) % sectorCount;
-      const score =
-        seekDistance * 100 +
-        rotationalDistance * 3 +
-        (previousSide && candidateSide !== previousSide ? 180 : 0) +
-        Math.abs(candidate.track - DIRECTORY_TRACK) * 2 +
-        candidate.sector / 100;
-      if (score < bestScore) {
-        bestScore = score;
+      const totalDelay = seekDistance * 3 + (rotationalDistance / sectorCount) * 200;
+      const rank = [
+        totalDelay,
+        rotationalDistance,
+        seekDistance,
+        previousSide && candidateSide !== previousSide ? 1 : 0,
+        Math.abs(candidate.track - DIRECTORY_TRACK),
+        candidate.sector,
+      ];
+      if (!best || rank.some((value, index) => value < bestScore[index] && rank.slice(0, index).every((item, prior) => item === bestScore[prior]))) {
+        bestScore = rank;
         best = candidate;
       }
     }
@@ -5519,13 +5522,35 @@
     );
   };
 
+  d64.averageFileLinkScore = function (image) {
+    const scores = [];
+    d64.readFiles(image).forEach(function (file) {
+      const blocks = Array.isArray(file.blocks) ? file.blocks : [];
+      for (let index = 0; index + 1 < blocks.length; index += 1) {
+        const previous = blocks[index];
+        const next = blocks[index + 1];
+        const predicted = d64.estimateNextSectorWindow(previous, next.track);
+        const sectorCount = d64.trackSectorCount(next.track);
+        const distance = (next.sector - predicted + sectorCount) % sectorCount;
+        scores.push(((sectorCount - 1 - distance) / (sectorCount - 1)) * 100);
+      }
+    });
+    return scores.length
+      ? scores.reduce(function (sum, score) { return sum + score; }, 0) / scores.length
+      : null;
+  };
+
   d64.defragmentImage = function (image, options) {
-    return d64.reflowImage(
+    const before = d64.averageFileLinkScore(image);
+    const nextImage = d64.reflowImage(
       image,
       Object.assign({}, options || {}, {
         allocationMode: "sequential",
       }),
     );
+    if (!nextImage || before == null) return nextImage;
+    const after = d64.averageFileLinkScore(nextImage);
+    return after != null && after + 1e-9 < before ? image.slice() : nextImage;
   };
 
   d64.fragmentImage = function (image, options) {
