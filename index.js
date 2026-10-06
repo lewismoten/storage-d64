@@ -2574,10 +2574,14 @@
         formatDriveTrack(state.readHeadTrack) +
         ".",
     );
-    const driveBusy = state.readHeadInitializing || Boolean(state.driveLoad);
+    // Once the transfer ends the C64 is free again, even while the drive's
+    // motor runs on, so LOAD and Initialize only wait for the transfer.
+    const driveBusy =
+      state.readHeadInitializing ||
+      Boolean(state.driveLoad && !state.driveLoad.transferDone);
     readHeadInitializeButton.disabled = !hasImage || driveBusy;
     driveLoadButton.disabled = !hasImage || driveBusy;
-    driveStopButton.disabled = !state.driveLoad || state.driveLoad.stopping;
+    driveStopButton.disabled = !state.driveLoad;
     updateDrivePanel();
     diskMapZoomIn.disabled = !hasImage;
     diskMapZoomOut.disabled = !hasImage;
@@ -2695,7 +2699,11 @@
   // half-step knocks against it. The stock DOS bumps during error recovery
   // and before formatting.
   const initializeReadHead = function () {
-    if (!state.image || state.readHeadInitializing || state.driveLoad) return;
+    if (!state.image || state.readHeadInitializing) return;
+    if (state.driveLoad) {
+      if (!state.driveLoad.transferDone) return;
+      finishDriveLoad();
+    }
     ensureReadHeadAudio();
     state.readHeadInitializing = true;
     state.driveLastStatus =
@@ -2870,11 +2878,12 @@
   // after `load.motorOffAt`.
   const driveRotationAt = function (load, t) {
     const omega = (Math.PI * 2) / d64.driveTiming.rotationMs;
-    const spinUp = d64.driveTiming.spinUpMs;
+    const spinUp = load.spinUpMs;
     if (t <= 0) return load.startRotation;
     if (t <= spinUp) {
       return load.startRotation + (omega * t * t) / (2 * spinUp);
     }
+    // spinUp is 0 when the motor was already running.
     const fullSpeedStart = load.startRotation + (omega * spinUp) / 2;
     if (t <= load.motorOffAt) return fullSpeedStart + omega * (t - spinUp);
     const motorOffRotation =
@@ -2890,12 +2899,15 @@
     return Number.isInteger(track) ? String(track) : track.toFixed(1);
   };
 
-  const planDriveLoad = function (image, startTrack) {
+  // `motorRunning` means the motor is still on from an earlier job, so the
+  // DOS skips the spin-up wait.
+  const planDriveLoad = function (image, startTrack, motorRunning) {
     const timing = d64.driveTiming;
     const fullTurn = Math.PI * 2;
     const omega = fullTurn / timing.rotationMs;
     const load = {
       startRotation: state.driveRotation,
+      spinUpMs: motorRunning ? 0 : timing.spinUpMs,
       motorOffAt: Infinity,
       mech: [],
       bus: [],
@@ -2923,8 +2935,8 @@
     // Runs a read job queued at `queuedAt` and returns when the read ends.
     const readSector = function (queuedAt, track, sector, label) {
       let t = Math.max(queuedAt, headFree);
-      if (t < timing.spinUpMs) {
-        t = addPhase(load.mech, "spin-up", t, timing.spinUpMs, {
+      if (t < load.spinUpMs) {
+        t = addPhase(load.mech, "spin-up", t, load.spinUpMs, {
           status: "Waiting for the motor to spin up",
         });
       }
@@ -3091,7 +3103,6 @@
   };
 
   const describeDriveStatus = function (load) {
-    if (load.stopping) return "Stopped";
     const parts = [];
     const mech = currentDriveLanePhase(load, "mech");
     const bus = currentDriveLanePhase(load, "bus");
@@ -3119,7 +3130,7 @@
     let motor = "Off";
     if (load) {
       motor =
-        load.time < d64.driveTiming.spinUpMs
+        load.time < load.spinUpMs
           ? "Spinning up"
           : load.time < load.motorOffAt
             ? "On · 300 RPM"
@@ -3228,6 +3239,10 @@
         : load.track;
     state.driveRotation = driveRotationAt(load, load.time);
     applyDriveLoadToDiskMap(false);
+    if (!load.transferDone && load.time >= load.transferEnd) {
+      load.transferDone = true;
+      syncDiskMapControls();
+    }
     if (load.time >= load.end) {
       finishDriveLoad();
       return;
@@ -3248,10 +3263,17 @@
   };
 
   const startDriveLoad = function () {
-    if (!state.image || state.driveLoad || state.readHeadInitializing) return;
+    if (!state.image || state.readHeadInitializing) return;
+    const previous = state.driveLoad;
+    if (previous && !previous.transferDone) return;
+    // A new job during the run-on keeps the motor going without spin-up.
+    const motorRunning = Boolean(
+      previous && previous.time < previous.motorOffAt,
+    );
+    if (previous) finishDriveLoad();
     let load;
     try {
-      load = planDriveLoad(state.image, state.readHeadTrack);
+      load = planDriveLoad(state.image, state.readHeadTrack, motorRunning);
     } catch (error) {
       setStatus(error.message || String(error), true);
       return;
@@ -3265,6 +3287,7 @@
     load.simAnchor = 0;
     load.realAnchor = window.performance.now();
     load.stopping = false;
+    load.transferDone = false;
     clearDriveReadMarks();
     state.driveLoad = load;
     // The animation is about the head and the media, so show both.
@@ -3280,34 +3303,13 @@
     load.frameId = window.requestAnimationFrame(stepDriveLoad);
   };
 
-  // Ends the LOAD early: the head stops where it is and the motor coasts down.
+  // Stops the drive right away: the head stays where it is and the motor
+  // switches off. During the run-on this just switches the motor off early.
   const stopDriveLoad = function () {
     const load = state.driveLoad;
-    if (!load || load.stopping || load.time >= load.motorOffAt) return;
-    const t = load.time;
-    ["mech", "bus"].forEach(function (lane) {
-      const phases = load[lane].slice(0, load.index[lane] + 1);
-      const last = phases[phases.length - 1];
-      if (last && last.start < t) {
-        // A partly read sector or partly sent block does not count.
-        phases[phases.length - 1] = Object.assign({}, last, {
-          type:
-            last.type === "read" || last.type === "send"
-              ? "stopped"
-              : last.type,
-          end: Math.min(last.end, t),
-        });
-      } else if (last) {
-        phases.pop();
-      }
-      load[lane] = phases;
-    });
-    if (state.readHeadTrack !== load.track) load.track = state.readHeadTrack;
-    load.transferEnd = t;
-    load.motorOffAt = Math.max(t, d64.driveTiming.spinUpMs);
-    load.end = load.motorOffAt + DRIVE_COAST_MS;
-    load.stopping = true;
-    syncDiskMapControls();
+    if (!load) return;
+    load.stopping = !load.transferDone;
+    finishDriveLoad();
   };
 
   const resetDiskMapView = function () {
