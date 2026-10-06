@@ -1,5 +1,10 @@
 (function () {
   const d64 = window.TPP && window.TPP.d64;
+  const STORAGE_D64_MESSAGE_TYPE = "storage-d64:load";
+  const STORAGE_D64_READY_MESSAGE_TYPE = "storage-d64:ready";
+  const receiveRequestId = new URLSearchParams(
+    window.location.hash.slice(1),
+  ).get("receive");
 
   const state = {
     image: null,
@@ -31,6 +36,20 @@
   const createButton = document.getElementById("create-button");
   const createCancel = document.getElementById("create-cancel");
   const loadButton = document.getElementById("load-button");
+  const openUrlButton = document.getElementById("open-url-button");
+  const integrationHelpButton = document.getElementById(
+    "integration-help-button",
+  );
+  const urlDialog = document.getElementById("url-dialog");
+  const urlForm = document.getElementById("url-form");
+  const urlInput = document.getElementById("url-input");
+  const urlCancel = document.getElementById("url-cancel");
+  const urlSubmit = document.getElementById("url-submit");
+  const integrationDialog = document.getElementById("integration-dialog");
+  const integrationUrlInput = document.getElementById("integration-url-input");
+  const integrationCode = document.getElementById("integration-code");
+  const integrationCopy = document.getElementById("integration-copy");
+  const integrationClose = document.getElementById("integration-close");
   const diskNameInput = document.getElementById("disk-name");
   const diskIdInput = document.getElementById("disk-id");
   const diskFormatSelect = document.getElementById("disk-format");
@@ -510,7 +529,9 @@
 
   const updateManagedDialogState = function () {
     const visibleStack = managedDialogStack.filter(function (dialog) {
-      return Boolean(dialog && dialog.hasAttribute && dialog.hasAttribute("open"));
+      return Boolean(
+        dialog && dialog.hasAttribute && dialog.hasAttribute("open"),
+      );
     });
     managedDialogStack.length = 0;
     visibleStack.forEach(function (dialog) {
@@ -6120,6 +6141,44 @@
     setStatus(message || "Disk image ready.");
   };
 
+  const receiveD64Message = function (event) {
+    const message = event.data;
+    if (!message || message.type !== STORAGE_D64_MESSAGE_TYPE) return;
+    const bytes =
+      message.bytes instanceof Uint8Array
+        ? message.bytes
+        : message.bytes instanceof ArrayBuffer
+          ? new Uint8Array(message.bytes)
+          : null;
+    if (!bytes || !bytes.length) {
+      setStatus("Received D64 message did not include image bytes.", true);
+      return;
+    }
+    const sourceName = String(message.sourceName || "received.d64")
+      .replace(/[^A-Za-z0-9._-]/g, "_")
+      .slice(0, 128);
+    try {
+      loadImageBytes(
+        bytes,
+        sourceName || "received.d64",
+        "Loaded D64 image sent from GitHub Pages.",
+      );
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
+  };
+
+  const notifyOpenerReady = function () {
+    if (!receiveRequestId || !window.opener) return;
+    window.opener.postMessage(
+      {
+        type: STORAGE_D64_READY_MESSAGE_TYPE,
+        receiveRequestId: receiveRequestId,
+      },
+      "*",
+    );
+  };
+
   const createDiskImage = function (event) {
     event.preventDefault();
     try {
@@ -6167,6 +6226,72 @@
       setStatus(error.message || String(error), true);
     } finally {
       imageUpload.value = "";
+    }
+  };
+
+  const openUrlDialog = function () {
+    urlInput.value = "";
+    openManagedDialog(urlDialog);
+    urlInput.focus();
+  };
+
+  const closeUrlDialog = function () {
+    closeManagedDialog(urlDialog);
+  };
+
+  const loadImageFromUrl = async function (event) {
+    event.preventDefault();
+    const url = String(urlInput.value || "").trim();
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+        throw new Error("Enter an http or https URL for a D64 image.");
+      }
+      urlSubmit.disabled = true;
+      setStatus("Loading D64 image from URL...");
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(
+          "Could not load the URL (HTTP " + String(response.status) + ").",
+        );
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const sourceName =
+        parsedUrl.pathname.split("/").filter(Boolean).pop() || "remote.d64";
+      loadImageBytes(bytes, sourceName, "Loaded D64 image from URL.");
+      closeUrlDialog();
+    } catch (error) {
+      setStatus(
+        error.message ||
+          "Could not load that URL. Its server must allow cross-origin requests.",
+        true,
+      );
+    } finally {
+      urlSubmit.disabled = false;
+    }
+  };
+
+  const renderIntegrationCode = function () {
+    const url = String(integrationUrlInput.value || "").trim();
+    const inspectorUrl = window.location.href.split("#")[0];
+    integrationCode.value = `async function inspectD64(url) {\n  const inspectorUrl = ${JSON.stringify(inspectorUrl)};\n  const inspectorOrigin = new URL(inspectorUrl).origin;\n  const requestId = crypto.randomUUID();\n  const inspector = window.open(\n    inspectorUrl + "#receive=" + encodeURIComponent(requestId),\n    "storage-d64-inspector",\n  );\n  if (!inspector) throw new Error("Allow popups to inspect this D64.");\n\n  await new Promise((resolve, reject) => {\n    const timeout = setTimeout(() => {\n      window.removeEventListener("message", ready);\n      reject(new Error("The D64 inspector did not become ready."));\n    }, 10000);\n    function ready(event) {\n      if (event.source !== inspector || event.origin !== inspectorOrigin) return;\n      if (event.data?.type !== "storage-d64:ready") return;\n      if (event.data.receiveRequestId !== requestId) return;\n      clearTimeout(timeout);\n      window.removeEventListener("message", ready);\n      resolve();\n    }\n    window.addEventListener("message", ready);\n  });\n\n  const response = await fetch(url);\n  if (!response.ok) throw new Error("Could not fetch D64: " + response.status);\n  const bytes = new Uint8Array(await response.arrayBuffer());\n  const sourceName = new URL(url).pathname.split("/").pop() || "disk.d64";\n  inspector.postMessage(\n    { type: "storage-d64:load", sourceName, bytes },\n    inspectorOrigin,\n  );\n}\n\ninspectD64(${JSON.stringify(url || "https://example.com/disk.d64")});`;
+  };
+
+  const openIntegrationDialog = function () {
+    integrationUrlInput.value = "";
+    renderIntegrationCode();
+    openManagedDialog(integrationDialog);
+    integrationUrlInput.focus();
+  };
+
+  const copyIntegrationCode = async function () {
+    try {
+      await navigator.clipboard.writeText(integrationCode.value);
+      setStatus("Copied integration code to the clipboard.");
+    } catch (error) {
+      integrationCode.focus();
+      integrationCode.select();
+      setStatus("Select and copy the generated integration code.", true);
     }
   };
 
@@ -6930,9 +7055,9 @@
               '" because it started on track 18.'
           : result.mode === "truncated-before-track-18"
             ? 'Truncated "' +
-                String(result.fileName || "file") +
-                '" before its first track-18 sector.'
-            : 'No reserved-track sectors needed repair.',
+              String(result.fileName || "file") +
+              '" before its first track-18 sector.'
+            : "No reserved-track sectors needed repair.",
         { resetDeletedTypeHints: false },
       );
       refreshDoctorReportAfterImageChange();
@@ -6957,8 +7082,8 @@
               '" because it started in T18 S0.'
           : result.mode === "truncated-before-bam"
             ? 'Truncated "' +
-                String(result.fileName || "file") +
-                '" before T18 S0.'
+              String(result.fileName || "file") +
+              '" before T18 S0.'
             : "No BAM/header-sector repair was needed.",
         { resetDeletedTypeHints: false },
       );
@@ -7052,7 +7177,9 @@
         });
       const targets = getCrossLinkedRemovalTargets(issue);
       if (!targets.length) {
-        setStatus("No later conflicting directory entries were available to remove.");
+        setStatus(
+          "No later conflicting directory entries were available to remove.",
+        );
         return;
       }
       let nextImage = state.image.slice();
@@ -7441,10 +7568,7 @@
         }
       }
 
-      if (
-        hasIssue("damaged-bam-or-header") &&
-        !needsBamRepair
-      ) {
+      if (hasIssue("damaged-bam-or-header") && !needsBamRepair) {
         nextImage = d64.validateImage(nextImage);
         steps.push("rebuilt BAM");
       }
@@ -7703,20 +7827,15 @@
         }
         const buttonMarkup =
           '<button type="button" class="file-type-button" data-action="repair-doctor-cross-linked-sectors"' +
-          (disabledReason
-            ? ' disabled aria-disabled="true"'
-            : "") +
+          (disabledReason ? ' disabled aria-disabled="true"' : "") +
           ">" +
           "Repair" +
           "</button>";
-        const removeButtonMarkup =
-          removalTargets.length
-            ? '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entries">' +
-              (removalTargets.length === 1
-                ? "Remove Entry"
-                : "Remove Entries") +
-              "</button>"
-            : "";
+        const removeButtonMarkup = removalTargets.length
+          ? '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entries">' +
+            (removalTargets.length === 1 ? "Remove Entry" : "Remove Entries") +
+            "</button>"
+          : "";
         return (
           '<div class="doctor-issue-actions">' +
           (disabledReason
@@ -7739,9 +7858,7 @@
           '<button type="button" class="file-type-button" data-action="repair-doctor-reserved-track" data-entry-index="' +
           encodeHtmlAttribute(String(Number(issue.entryIndex) || 0)) +
           '"' +
-          (disabledReason
-            ? ' disabled aria-disabled="true"'
-            : "") +
+          (disabledReason ? ' disabled aria-disabled="true"' : "") +
           ">" +
           "Repair" +
           "</button>";
@@ -7832,7 +7949,10 @@
             ? renderDuplicateDoctorGroups(issue.duplicateGroups, issueIndex)
             : "";
         const renderLinkedDoctorText = function (value) {
-          return renderDoctorTextWithSectorLinks(String(value || ""), issueIndex);
+          return renderDoctorTextWithSectorLinks(
+            String(value || ""),
+            issueIndex,
+          );
         };
         const hasSectorItemGrid = isDoctorSectorItemList(issue.items);
         const shouldCollapseSectorItems =
@@ -7841,7 +7961,7 @@
           issue.items.length > 18;
         const items =
           issue.code === "directory-block-count-mismatch" &&
-            Array.isArray(issue.items)
+          Array.isArray(issue.items)
             ? issue.items
                 .map(function (item) {
                   const track = Math.max(
@@ -7882,36 +8002,98 @@
                 .join("")
             : issue.code === "cross-linked-file-sectors" &&
                 Array.isArray(issue.conflicts)
-            ? issue.conflicts
-                .map(function (conflict) {
-                  const track = Math.max(
-                    0,
-                    Math.floor(Number(conflict && conflict.track) || 0),
-                  );
-                  const sector = Math.max(
-                    0,
-                    Math.floor(Number(conflict && conflict.sector) || 0),
-                  );
-                  const owners = Array.isArray(conflict && conflict.owners)
-                    ? conflict.owners
-                    : [];
-                  const primaryOwner =
-                    owners.length && owners[0] && owners[0].fileName
-                      ? String(owners[0].fileName)
-                      : "UNKNOWN";
-                  return owners
-                    .slice(1)
-                    .map(function (owner) {
-                      const ownerName =
-                        owner && owner.fileName
-                          ? String(owner.fileName)
-                          : "UNKNOWN";
-                      const ownerEntryIndex = Math.max(
+              ? issue.conflicts
+                  .map(function (conflict) {
+                    const track = Math.max(
+                      0,
+                      Math.floor(Number(conflict && conflict.track) || 0),
+                    );
+                    const sector = Math.max(
+                      0,
+                      Math.floor(Number(conflict && conflict.sector) || 0),
+                    );
+                    const owners = Array.isArray(conflict && conflict.owners)
+                      ? conflict.owners
+                      : [];
+                    const primaryOwner =
+                      owners.length && owners[0] && owners[0].fileName
+                        ? String(owners[0].fileName)
+                        : "UNKNOWN";
+                    return owners
+                      .slice(1)
+                      .map(function (owner) {
+                        const ownerName =
+                          owner && owner.fileName
+                            ? String(owner.fileName)
+                            : "UNKNOWN";
+                        const ownerEntryIndex = Math.max(
+                          0,
+                          Math.floor(Number(owner && owner.entryIndex) || 0),
+                        );
+                        return (
+                          '<li class="doctor-invalid-file-type-item">' +
+                          '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                          encodeHtmlAttribute(String(issueIndex)) +
+                          '" data-track="' +
+                          encodeHtmlAttribute(String(track)) +
+                          '" data-sector="' +
+                          encodeHtmlAttribute(String(sector)) +
+                          '">' +
+                          escapeHtml(
+                            "T" + String(track) + " S" + String(sector),
+                          ) +
+                          "</button> " +
+                          '<span class="doctor-inline-name">' +
+                          escapeHtml(
+                            "shared by " + primaryOwner + " and " + ownerName,
+                          ) +
+                          "</span> " +
+                          '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entry" data-entry-index="' +
+                          encodeHtmlAttribute(String(ownerEntryIndex)) +
+                          '">' +
+                          "Remove Entry" +
+                          "</button>" +
+                          "</li>"
+                        );
+                      })
+                      .join("");
+                  })
+                  .join("")
+              : issue.code === "recoverable-deleted-entries" &&
+                  Array.isArray(issue.items)
+                ? issue.items
+                    .map(function (item) {
+                      const track = Math.max(
                         0,
-                        Math.floor(Number(owner && owner.entryIndex) || 0),
+                        Math.floor(Number(item && item.track) || 0),
+                      );
+                      const sector = Math.max(
+                        0,
+                        Math.floor(Number(item && item.sector) || 0),
+                      );
+                      const slot = Math.max(
+                        0,
+                        Math.floor(Number(item && item.slot) || 0),
+                      );
+                      const entryIndex = Math.max(
+                        0,
+                        Math.floor(Number(item && item.entryIndex) || 0),
+                      );
+                      const name =
+                        String((item && item.name) || "").trim() || "Unnamed";
+                      const sectorCount = Math.max(
+                        0,
+                        Math.floor(Number(item && item.sectors) || 0),
                       );
                       return (
                         '<li class="doctor-invalid-file-type-item">' +
+                        '<span class="doctor-inline-name">' +
+                        escapeHtml('Deleted "' + name + '"') +
+                        "</span> may still be recoverable from " +
+                        escapeHtml(String(sectorCount)) +
+                        " sector" +
+                        (sectorCount === 1 ? "" : "s") +
+                        " " +
                         '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
                         encodeHtmlAttribute(String(issueIndex)) +
                         '" data-track="' +
@@ -7919,170 +8101,119 @@
                         '" data-sector="' +
                         encodeHtmlAttribute(String(sector)) +
                         '">' +
-                        escapeHtml("T" + String(track) + " S" + String(sector)) +
-                        "</button> " +
-                        '<span class="doctor-inline-name">' +
                         escapeHtml(
-                          "shared by " + primaryOwner + " and " + ownerName,
+                          "T" + String(track) + " S" + String(sector),
                         ) +
-                        "</span> " +
-                        '<button type="button" class="file-type-button" data-action="remove-doctor-cross-linked-entry" data-entry-index="' +
-                        encodeHtmlAttribute(String(ownerEntryIndex)) +
+                        "</button> " +
+                        '<button type="button" class="doctor-sector-link" data-action="open-doctor-deleted-entry" data-entry-index="' +
+                        encodeHtmlAttribute(String(entryIndex)) +
                         '">' +
-                        "Remove Entry" +
+                        escapeHtml("Slot " + String(slot)) +
                         "</button>" +
                         "</li>"
                       );
                     })
-                    .join("");
-                })
-                .join("")
-            : issue.code === "recoverable-deleted-entries" &&
-                Array.isArray(issue.items)
-            ? issue.items
-                .map(function (item) {
-                  const track = Math.max(
-                    0,
-                    Math.floor(Number(item && item.track) || 0),
-                  );
-                  const sector = Math.max(
-                    0,
-                    Math.floor(Number(item && item.sector) || 0),
-                  );
-                  const slot = Math.max(
-                    0,
-                    Math.floor(Number(item && item.slot) || 0),
-                  );
-                  const entryIndex = Math.max(
-                    0,
-                    Math.floor(Number(item && item.entryIndex) || 0),
-                  );
-                  const name =
-                    String((item && item.name) || "").trim() || "Unnamed";
-                  const sectorCount = Math.max(
-                    0,
-                    Math.floor(Number(item && item.sectors) || 0),
-                  );
-                  return (
-                    '<li class="doctor-invalid-file-type-item">' +
-                    '<span class="doctor-inline-name">' +
-                    escapeHtml('Deleted "' + name + '"') +
-                    "</span> may still be recoverable from " +
-                    escapeHtml(String(sectorCount)) +
-                    " sector" +
-                    (sectorCount === 1 ? "" : "s") +
-                    " " +
-                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
-                    encodeHtmlAttribute(String(issueIndex)) +
-                    '" data-track="' +
-                    encodeHtmlAttribute(String(track)) +
-                    '" data-sector="' +
-                    encodeHtmlAttribute(String(sector)) +
-                    '">' +
-                    escapeHtml("T" + String(track) + " S" + String(sector)) +
-                    "</button> " +
-                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-deleted-entry" data-entry-index="' +
-                    encodeHtmlAttribute(String(entryIndex)) +
-                    '">' +
-                    escapeHtml("Slot " + String(slot)) +
-                    "</button>" +
-                    "</li>"
-                  );
-                })
-                .join("")
-            : issue.code === "invalid-file-types" && Array.isArray(issue.items)
-            ? issue.items
-                .map(function (item) {
-                  const track = Math.max(
-                    0,
-                    Math.floor(Number(item && item.track) || 0),
-                  );
-                  const sector = Math.max(
-                    0,
-                    Math.floor(Number(item && item.sector) || 0),
-                  );
-                  const slot = Math.max(
-                    0,
-                    Math.floor(Number(item && item.slot) || 0),
-                  );
-                  const entryIndex = Math.max(
-                    0,
-                    Math.floor(Number(item && item.entryIndex) || 0),
-                  );
-                  const name =
-                    String((item && item.name) || "").trim() || "Unnamed";
-                  return (
-                    '<li class="doctor-invalid-file-type-item">' +
-                    '<span class="doctor-inline-name">' +
-                    escapeHtml(name) +
-                    "</span> " +
-                    '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
-                    encodeHtmlAttribute(String(issueIndex)) +
-                    '" data-track="' +
-                    encodeHtmlAttribute(String(track)) +
-                    '" data-sector="' +
-                    encodeHtmlAttribute(String(sector)) +
-                    '">' +
-                    escapeHtml("T" + String(track) + " S" + String(sector)) +
-                    "</button> " +
-                    '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
-                    encodeHtmlAttribute(String(entryIndex)) +
-                    '" data-issue-index="' +
-                    encodeHtmlAttribute(String(issueIndex)) +
-                    '">' +
-                    escapeHtml("Slot " + String(slot)) +
-                    "</button>" +
-                    "</li>"
-                  );
-                })
-                .join("")
-            : issue.code === "malformed-directory-entry" &&
-                Number.isFinite(Number(issue.entryIndex))
-            ? (function () {
-                const entryIndex = Math.max(
-                  0,
-                  Math.floor(Number(issue.entryIndex) || 0),
-                );
-                const sector = Math.max(
-                  0,
-                  Math.floor(Number(issue.sector) || 0),
-                );
-                const slot = Math.max(
-                  0,
-                  Math.floor(Number(issue.slot) || 0),
-                );
-                const track = Math.max(
-                  0,
-                  Math.floor(Number(issue.track) || 0),
-                );
-                return (
-                  '<li class="doctor-invalid-file-type-item">' +
-                  '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
-                  encodeHtmlAttribute(String(issueIndex)) +
-                  '" data-track="' +
-                  encodeHtmlAttribute(String(track)) +
-                  '" data-sector="' +
-                  encodeHtmlAttribute(String(sector)) +
-                  '">' +
-                  escapeHtml("T" + String(track) + " S" + String(sector)) +
-                  "</button> " +
-                  '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
-                  encodeHtmlAttribute(String(entryIndex)) +
-                  '" data-issue-index="' +
-                  encodeHtmlAttribute(String(issueIndex)) +
-                  '">' +
-                  escapeHtml("Slot " + String(slot)) +
-                  "</button>" +
-                  "</li>"
-                );
-              })()
-            : Array.isArray(issue.items)
-              ? issue.items
-                  .map(function (item) {
-                    return "<li>" + renderLinkedDoctorText(item) + "</li>";
-                  })
-                  .join("")
-              : "";
+                    .join("")
+                : issue.code === "invalid-file-types" &&
+                    Array.isArray(issue.items)
+                  ? issue.items
+                      .map(function (item) {
+                        const track = Math.max(
+                          0,
+                          Math.floor(Number(item && item.track) || 0),
+                        );
+                        const sector = Math.max(
+                          0,
+                          Math.floor(Number(item && item.sector) || 0),
+                        );
+                        const slot = Math.max(
+                          0,
+                          Math.floor(Number(item && item.slot) || 0),
+                        );
+                        const entryIndex = Math.max(
+                          0,
+                          Math.floor(Number(item && item.entryIndex) || 0),
+                        );
+                        const name =
+                          String((item && item.name) || "").trim() || "Unnamed";
+                        return (
+                          '<li class="doctor-invalid-file-type-item">' +
+                          '<span class="doctor-inline-name">' +
+                          escapeHtml(name) +
+                          "</span> " +
+                          '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                          encodeHtmlAttribute(String(issueIndex)) +
+                          '" data-track="' +
+                          encodeHtmlAttribute(String(track)) +
+                          '" data-sector="' +
+                          encodeHtmlAttribute(String(sector)) +
+                          '">' +
+                          escapeHtml(
+                            "T" + String(track) + " S" + String(sector),
+                          ) +
+                          "</button> " +
+                          '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+                          encodeHtmlAttribute(String(entryIndex)) +
+                          '" data-issue-index="' +
+                          encodeHtmlAttribute(String(issueIndex)) +
+                          '">' +
+                          escapeHtml("Slot " + String(slot)) +
+                          "</button>" +
+                          "</li>"
+                        );
+                      })
+                      .join("")
+                  : issue.code === "malformed-directory-entry" &&
+                      Number.isFinite(Number(issue.entryIndex))
+                    ? (function () {
+                        const entryIndex = Math.max(
+                          0,
+                          Math.floor(Number(issue.entryIndex) || 0),
+                        );
+                        const sector = Math.max(
+                          0,
+                          Math.floor(Number(issue.sector) || 0),
+                        );
+                        const slot = Math.max(
+                          0,
+                          Math.floor(Number(issue.slot) || 0),
+                        );
+                        const track = Math.max(
+                          0,
+                          Math.floor(Number(issue.track) || 0),
+                        );
+                        return (
+                          '<li class="doctor-invalid-file-type-item">' +
+                          '<button type="button" class="doctor-sector-link" data-action="open-doctor-sector" data-issue-index="' +
+                          encodeHtmlAttribute(String(issueIndex)) +
+                          '" data-track="' +
+                          encodeHtmlAttribute(String(track)) +
+                          '" data-sector="' +
+                          encodeHtmlAttribute(String(sector)) +
+                          '">' +
+                          escapeHtml(
+                            "T" + String(track) + " S" + String(sector),
+                          ) +
+                          "</button> " +
+                          '<button type="button" class="doctor-slot-link" data-action="edit-doctor-entry" data-entry-index="' +
+                          encodeHtmlAttribute(String(entryIndex)) +
+                          '" data-issue-index="' +
+                          encodeHtmlAttribute(String(issueIndex)) +
+                          '">' +
+                          escapeHtml("Slot " + String(slot)) +
+                          "</button>" +
+                          "</li>"
+                        );
+                      })()
+                    : Array.isArray(issue.items)
+                      ? issue.items
+                          .map(function (item) {
+                            return (
+                              "<li>" + renderLinkedDoctorText(item) + "</li>"
+                            );
+                          })
+                          .join("")
+                      : "";
         return (
           '<article class="doctor-issue doctor-issue-' +
           escapeHtml(issue.level || "informational") +
@@ -8896,18 +9027,15 @@
             locked: doctorEntryLocked.checked,
           },
         );
-        const repairedRestore =
-          d64.repairUnreachableDirectoryEntryWithReport(
-            restoredImage,
-            entry.index,
-          );
+        const repairedRestore = d64.repairUnreachableDirectoryEntryWithReport(
+          restoredImage,
+          entry.index,
+        );
         const finalRestoredImage = repairedRestore.image || restoredImage;
         loadImageBytes(
           finalRestoredImage,
           state.sourceName || "disk.d64",
-          (repairedRestore.repaired
-            ? "Restored and relinked "
-            : "Restored ") +
+          (repairedRestore.repaired ? "Restored and relinked " : "Restored ") +
             nextName +
             " as " +
             nextType.fileType.toUpperCase() +
@@ -9070,6 +9198,15 @@
     createButton.addEventListener("click", openCreateDialog);
     loadButton.addEventListener("click", function () {
       imageUpload.click();
+    });
+    openUrlButton.addEventListener("click", openUrlDialog);
+    urlForm.addEventListener("submit", loadImageFromUrl);
+    urlCancel.addEventListener("click", closeUrlDialog);
+    integrationHelpButton.addEventListener("click", openIntegrationDialog);
+    integrationUrlInput.addEventListener("input", renderIntegrationCode);
+    integrationCopy.addEventListener("click", copyIntegrationCode);
+    integrationClose.addEventListener("click", function () {
+      closeManagedDialog(integrationDialog);
     });
     createForm.addEventListener("submit", createDiskImage);
     createCancel.addEventListener("click", function () {
@@ -9729,7 +9866,9 @@
       handleDoctorActionClick(event.target.closest("button[data-action]"));
     });
     const handleDoctorTooltipPointer = function (event) {
-      const target = event.target.closest(".doctor-disabled-action[data-tooltip]");
+      const target = event.target.closest(
+        ".doctor-disabled-action[data-tooltip]",
+      );
       if (!target) {
         hideDoctorTooltip();
         return;
@@ -9743,7 +9882,9 @@
     doctorDialog.addEventListener("mousemove", handleDoctorTooltipPointer);
     doctorDialog.addEventListener("mouseleave", hideDoctorTooltip);
     doctorDialog.addEventListener("focusin", function (event) {
-      const target = event.target.closest(".doctor-disabled-action[data-tooltip]");
+      const target = event.target.closest(
+        ".doctor-disabled-action[data-tooltip]",
+      );
       if (!target) {
         hideDoctorTooltip();
         return;
@@ -10092,5 +10233,7 @@
     }
   };
 
+  window.addEventListener("message", receiveD64Message);
   initialize();
+  notifyOpenerReady();
 })();

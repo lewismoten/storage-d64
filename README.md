@@ -43,6 +43,7 @@ Optimize, and Deoptimize controls make those tradeoffs visible and testable.
   low-risk repairs.
 - Compare fragmented and optimized layouts to understand their estimated
   emulator read performance.
+- Accept a D64 sent by another browser window for immediate inspection.
 
 ## Use the lab
 
@@ -55,6 +56,25 @@ npm run lab
 ```
 
 Open <http://localhost:1541/>. The project has no build step.
+
+## Inspect a D64 from GitHub Pages
+
+The hosted lab can receive a disk image from an opener on
+`https://lewismoten.github.io`. The opener opens the lab with a unique
+`#receive=<request-id>` fragment, waits for the `storage-d64:ready` message,
+then sends this message back to the lab:
+
+```js
+{
+  type: "storage-d64:load",
+  sourceName: "example.d64",
+  bytes: new Uint8Array(/* D64 bytes */),
+}
+```
+
+The lab loads the received bytes through the same inspection path used for a
+locally selected image. The receiver intentionally accepts messages only from
+the GitHub Pages origin above.
 
 ## Use the plug-in
 

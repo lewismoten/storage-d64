@@ -28,6 +28,15 @@
                 title="Help and visual tour"
                 >?</a
               >
+              <button
+                id="integration-help-button"
+                class="hero-help-link"
+                type="button"
+                aria-label="Show website integration instructions"
+                title="Link a website to this D64 inspector"
+              >
+                &lt;/&gt;
+              </button>
             </div>
           </div>
         </div>
@@ -41,6 +50,7 @@
               <div class="action-row">
                 <button id="create-button" type="button">Create</button>
                 <button id="load-button" type="button">Load</button>
+                <button id="open-url-button" type="button">Open URL</button>
                 <button id="download-button" type="button" disabled>
                   Download
                 </button>
@@ -678,6 +688,63 @@
                 <button id="bam-save" type="submit">Save</button>
               </div>
             </form>
+          </dialog>
+
+          <dialog id="url-dialog" class="file-type-dialog">
+            <form id="url-form" method="dialog" class="file-type-form">
+              <div class="section-heading">
+                <h3>Open D64 from URL</h3>
+                <p>
+                  Paste a public http or https D64 URL. Its server must allow
+                  cross-origin browser requests (CORS).
+                </p>
+              </div>
+              <label class="field">
+                <span>D64 URL</span>
+                <input
+                  id="url-input"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="url"
+                  placeholder="https://example.com/disk.d64"
+                  required
+                />
+              </label>
+              <div class="dialog-actions">
+                <button id="url-cancel" type="button">Cancel</button>
+                <button id="url-submit" type="submit">Open</button>
+              </div>
+            </form>
+          </dialog>
+
+          <dialog id="integration-dialog" class="file-type-dialog">
+            <div class="file-type-form">
+              <div class="section-heading">
+                <h3>Link your site to this inspector</h3>
+                <p>
+                  Paste your public D64 URL to generate a copy-and-paste loader.
+                  The disk host must allow cross-origin browser requests (CORS).
+                </p>
+              </div>
+              <label class="field">
+                <span>D64 URL</span>
+                <input
+                  id="integration-url-input"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="url"
+                  placeholder="https://example.com/disk.d64"
+                />
+              </label>
+              <label class="field">
+                <span>Website JavaScript</span>
+                <textarea id="integration-code" rows="14" readonly></textarea>
+              </label>
+              <div class="dialog-actions">
+                <button id="integration-close" type="button">Close</button>
+                <button id="integration-copy" type="button">Copy Code</button>
+              </div>
+            </div>
           </dialog>
 
           <dialog id="create-dialog" class="file-type-dialog">
